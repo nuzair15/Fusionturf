@@ -1,8 +1,8 @@
 import { Router } from "express";
-import authRoutes from "./auth";
-import bookingRoutes from "./booking";
-import leagueRoutes from "./league";
-import adminRoutes from "./admin";
+import authRoutes from "./auth.js";
+import bookingRoutes from "./booking.js";
+import leagueRoutes from "./league.js";
+import adminRoutes from "./admin.js";
 
 const router = Router();
 

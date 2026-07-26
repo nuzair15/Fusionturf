@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
-import prisma from "../config/database";
-import { AppError } from "../middleware/errorHandler";
-import { paginate, paginatedResponse } from "../utils/helpers";
+import prisma from "../config/database.js";
+import { AppError } from "../middleware/errorHandler.js";
+import { paginate, paginatedResponse } from "../utils/helpers.js";
 
 // ─── Seasons Management ───
 

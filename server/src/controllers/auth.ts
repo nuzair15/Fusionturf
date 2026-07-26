@@ -2,9 +2,9 @@ import { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
-import prisma from "../config/database";
-import { config } from "../config";
-import { AppError } from "../middleware/errorHandler";
+import prisma from "../config/database.js";
+import { config } from "../config/index.js";
+import { AppError } from "../middleware/errorHandler.js";
 
 const registerSchema = z.object({
   body: z.object({

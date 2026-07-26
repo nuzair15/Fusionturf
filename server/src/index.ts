@@ -3,9 +3,9 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import rateLimit from "express-rate-limit";
-import { config } from "./config";
-import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
-import routes from "./routes";
+import { config } from "./config/index.js";
+import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
+import routes from "./routes/index.js";
 
 const app = express();
 

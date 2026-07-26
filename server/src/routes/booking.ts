@@ -3,8 +3,8 @@ import {
   getVenues, getVenueBySlug, getAvailableSlots, createBooking,
   getMyBookings, cancelBooking,
   adminGetAllBookings, adminBlockDate, adminRevenueAnalytics,
-} from "../controllers/booking";
-import { authenticate, authorize } from "../middleware/auth";
+} from "../controllers/booking.js";
+import { authenticate, authorize } from "../middleware/auth.js";
 
 const router = Router();
 

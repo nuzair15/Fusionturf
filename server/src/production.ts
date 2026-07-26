@@ -14,4 +14,4 @@ try {
 }
 
 // Start the main server
-import "./index";
+import "./index.js";

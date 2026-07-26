@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 import { z } from "zod";
-import prisma from "../config/database";
-import { AppError } from "../middleware/errorHandler";
-import { paginate, paginatedResponse, calculateMatchStats } from "../utils/helpers";
+import prisma from "../config/database.js";
+import { AppError } from "../middleware/errorHandler.js";
+import { paginate, paginatedResponse, calculateMatchStats } from "../utils/helpers.js";
 
 // ─── Seasons ───
 

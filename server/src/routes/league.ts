@@ -4,8 +4,8 @@ import {
   getPlayers, getPlayerBySlug, getFixtures, getFixtureById,
   getStandings, getTopScorers, getTopAssists, getPlayerStats,
   getAwards, getAwardBySlug, voteForAward, getNews, getGallery,
-} from "../controllers/league";
-import { authenticate, optionalAuth } from "../middleware/auth";
+} from "../controllers/league.js";
+import { authenticate, optionalAuth } from "../middleware/auth.js";
 
 const router = Router();
 

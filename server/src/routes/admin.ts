@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { authenticate, authorize } from "../middleware/auth";
-import * as admin from "../controllers/admin";
-import * as bookingAdmin from "../controllers/booking";
+import { authenticate, authorize } from "../middleware/auth.js";
+import * as admin from "../controllers/admin.js";
+import * as bookingAdmin from "../controllers/booking.js";
 
 const router = Router();
 
