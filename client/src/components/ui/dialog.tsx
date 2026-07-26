@@ -25,7 +25,7 @@ export function Dialog({ open, onClose, title, children }: { open: boolean; onCl
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-bold">{title}</h2>
-              <button onClick={onClose} className="rounded-lg p-1 text-muted-foreground hover:bg-accent"><X className="h-5 w-5" /></button>
+              <button onClick={onClose} className="rounded-full p-1 text-muted-foreground hover:bg-accent"><X className="h-5 w-5" /></button>
             </div>
             {children}
           </motion.div>

@@ -49,9 +49,9 @@ export function HomePage() {
     <div className="space-y-0">
       {/* ─── Hero Section ─── */}
       <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#060e20] via-[#0a1838] to-[#0d2247]" />
-        <div className="absolute inset-0 bg-cover bg-center opacity-20" style={{ backgroundImage: `url(${heroImage})` }} />
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${heroImage})` }} />
+        <div className="absolute inset-0 bg-gradient-to-br from-[#060e20]/75 via-[#0a1838]/60 to-[#0d2247]/40" />
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/10 to-transparent" />
 
         <div className="relative mx-auto max-w-7xl px-4 pb-20 pt-16 sm:px-6 sm:pb-28 sm:pt-24 lg:px-8">
           <motion.div initial="hidden" animate="show" variants={stagger} className="text-center">
@@ -82,10 +82,10 @@ export function HomePage() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <motion.div initial="hidden" whileInView="show" viewport={{ once: true }} variants={stagger} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
-              { icon: Trophy, label: "Teams", value: "6", color: "text-[#00d66f]" },
-              { icon: Users, label: "Active Players", value: "108+", color: "text-[#00d66f]" },
-              { icon: Calendar, label: "Matches Played", value: "40+", color: "text-[#00d66f]" },
-              { icon: MapPin, label: "Turf Venues", value: "1", color: "text-[#00d66f]" },
+              { icon: Trophy, label: "Teams", value: settings?.stat_teams || "6", color: "text-[#00d66f]" },
+              { icon: Users, label: "Active Players", value: settings?.stat_players || "108+", color: "text-[#00d66f]" },
+              { icon: Calendar, label: "Matches Played", value: settings?.stat_matches || "40+", color: "text-[#00d66f]" },
+              { icon: MapPin, label: "Turf Venues", value: settings?.stat_venues || "1", color: "text-[#00d66f]" },
             ].map((stat) => (
               <motion.div key={stat.label} variants={fadeUp} className="border bg-card p-6 text-center">
                 <stat.icon className={`mx-auto h-8 w-8 ${stat.color}`} />

@@ -29,7 +29,7 @@ export function Footer() {
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <Link to="/" className="flex items-center gap-2">
-              <img src="/logo.png" alt="Fusion Turf" className="h-8 w-auto" />
+              <img src="/logo.png" alt="Fusion Turf" fetchPriority="high" className="h-8 w-auto" />
               <span className="text-lg font-bold">Fusion Turf</span>
             </Link>
             <p className="mt-3 text-sm text-muted-foreground">

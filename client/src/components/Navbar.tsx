@@ -22,12 +22,9 @@ export function Navbar() {
       <div className="mx-auto flex h-16 items-center justify-between px-4 sm:px-6 md:h-20">
         <Link to="/" className="flex items-center gap-3">
           {siteLogoUrl ? (
-            <img src={siteLogoUrl} alt={siteName} className="h-9 w-auto max-w-[140px] object-contain md:h-10 md:max-w-[160px]" />
+            <img src={siteLogoUrl} alt={siteName} fetchPriority="high" className="h-9 w-auto max-w-[140px] object-contain md:h-10 md:max-w-[160px]" />
           ) : (
-            <>
-              <img src="/logo.png" alt={siteName} className="h-9 w-auto object-contain md:h-10" />
-              <span className="text-lg font-bold md:text-xl">{siteName}</span>
-            </>
+            <img src="/logo.png" alt={siteName} fetchPriority="high" className="h-9 w-auto object-contain md:h-10" />
           )}
         </Link>
 

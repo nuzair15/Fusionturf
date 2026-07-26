@@ -71,6 +71,10 @@ async function main() {
     { key: "social_twitter", value: "https://twitter.com/fusionleague", group: "social" },
     { key: "currency", value: "INR", group: "general" },
     { key: "timezone", value: "Asia/Kolkata", group: "general" },
+    { key: "stat_teams", value: "6", group: "stats" },
+    { key: "stat_players", value: "108+", group: "stats" },
+    { key: "stat_matches", value: "40+", group: "stats" },
+    { key: "stat_venues", value: "1", group: "stats" },
   ];
 
   for (const s of settings) {
