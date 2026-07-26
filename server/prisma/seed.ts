@@ -1,6 +1,10 @@
 import { PrismaClient, UserRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/fusion_league";
+}
+
 const prisma = new PrismaClient();
 
 async function main() {

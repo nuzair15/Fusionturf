@@ -1,6 +1,11 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+const fallbackDatabaseUrl = "postgresql://postgres:postgres@localhost:5432/fusion_league";
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = fallbackDatabaseUrl;
+}
+
 export const config = {
   port: parseInt(process.env.PORT || "5000", 10),
   nodeEnv: process.env.NODE_ENV || "development",
@@ -8,7 +13,7 @@ export const config = {
   frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
 
   database: {
-    url: process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/fusion_league",
+    url: process.env.DATABASE_URL || fallbackDatabaseUrl,
   },
 
   jwt: {
