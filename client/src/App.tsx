@@ -10,6 +10,7 @@ import { RegisterPage } from "@/pages/auth/RegisterPage";
 import { BookingPage } from "@/pages/booking/BookingPage";
 import { VenueDetailPage } from "@/pages/booking/VenueDetailPage";
 import { LeaguePage } from "@/pages/league/LeaguePage";
+import { FixturesPage } from "@/pages/league/FixturesPage";
 import { TeamDetailPage } from "@/pages/league/TeamDetailPage";
 import { PlayerDetailPage } from "@/pages/league/PlayerDetailPage";
 import { FixtureDetailPage } from "@/pages/league/FixtureDetailPage";
@@ -42,6 +43,7 @@ export default function App() {
                   <Route path="/booking" element={<BookingPage />} />
                   <Route path="/booking/:slug" element={<VenueDetailPage />} />
                   <Route path="/league" element={<LeaguePage />} />
+                  <Route path="/league/fixtures" element={<FixturesPage />} />
                   <Route path="/league/standings" element={<StandingsPage />} />
                   <Route path="/league/stats" element={<StatsPage />} />
                   <Route path="/league/awards" element={<AwardsPage />} />

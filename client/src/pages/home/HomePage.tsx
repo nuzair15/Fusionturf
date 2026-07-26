@@ -22,6 +22,14 @@ const fadeUp = {
 export function HomePage() {
   const navigate = useNavigate();
 
+  const { data: settings } = useQuery({
+    queryKey: ["site-settings"],
+    queryFn: () => api.get<Record<string, string>>("/admin/settings"),
+    retry: false,
+  });
+
+  const heroImage = settings?.site_hero_url || "https://images.unsplash.com/photo-1577223625816-6500cc85a8b5?w=1920";
+
   const { data: fixtures } = useQuery({ queryKey: ["featured-fixtures"], queryFn: () => api.get<PaginatedResponse<Fixture>>("/league/fixtures?limit=3") });
   const { data: standings } = useQuery({ queryKey: ["standings"], queryFn: () => api.get<Standing[]>("/league/standings") });
   const { data: venues } = useQuery({ queryKey: ["venues"], queryFn: () => api.get<PaginatedResponse<Venue>>("/bookings/venues?limit=3") });
@@ -39,7 +47,7 @@ export function HomePage() {
       {/* ─── Hero Section ─── */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-[#060e20] via-[#0a1838] to-[#0d2247]" />
-        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1577223625816-6500cc85a8b5?w=1920')] bg-cover bg-center opacity-20" />
+        <div className="absolute inset-0 bg-cover bg-center opacity-20" style={{ backgroundImage: `url(${heroImage})` }} />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
 
         <div className="relative mx-auto max-w-7xl px-4 pb-20 pt-16 sm:px-6 sm:pb-28 sm:pt-24 lg:px-8">

@@ -30,7 +30,7 @@ export function LeaguePage() {
         <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
           {[
             { label: "Standings", icon: Trophy, to: "/league/standings" },
-            { label: "Fixtures", icon: Calendar, to: "/league" },
+            { label: "Fixtures", icon: Calendar, to: "/league/fixtures" },
             { label: "Statistics", icon: BarChart3, to: "/league/stats" },
             { label: "Awards", icon: Medal, to: "/league/awards" },
             { label: "News", icon: Newspaper, to: "/league/news" },

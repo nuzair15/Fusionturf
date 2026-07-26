@@ -61,6 +61,8 @@ async function main() {
   const settings = [
     { key: "site_name", value: "Fusion League", group: "general" },
     { key: "site_description", value: "Premium Turf Booking & League Management", group: "general" },
+    { key: "site_logo_url", value: "", group: "general" },
+    { key: "site_hero_url", value: "https://images.unsplash.com/photo-1577223625816-6500cc85a8b5?w=1920", group: "general" },
     { key: "contact_email", value: "info@fusionleague.com", group: "contact" },
     { key: "contact_phone", value: "+91-9876543210", group: "contact" },
     { key: "social_facebook", value: "https://facebook.com/fusionleague", group: "social" },
