@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "@/providers/AuthProvider";
 import { ThemeProvider } from "@/providers/ThemeProvider";
+import { SEOHead } from "@/components/SEOHead";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { ScrollToTop } from "@/components/ScrollToTop";
@@ -33,6 +34,7 @@ export default function App() {
       <ThemeProvider>
         <AuthProvider>
           <BrowserRouter>
+            <SEOHead />
             <ScrollToTop />
             <div className="flex min-h-screen flex-col pb-16 md:pb-0">
               <Navbar />
