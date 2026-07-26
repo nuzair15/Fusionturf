@@ -1,14 +1,16 @@
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import type { Award } from "@/types";
-import { Medal, Trophy, Users, Clock, Vote } from "lucide-react";
+import { Medal, Trophy, Users, Clock, Vote, ChevronLeft } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
 export function AwardsPage() {
+  const navigate = useNavigate();
   const { data: awards } = useQuery({
     queryKey: ["awards"],
     queryFn: () => api.get<Award[]>("/league/awards"),
@@ -19,6 +21,9 @@ export function AwardsPage() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+        <Button variant="ghost" onClick={() => navigate("/league")} className="mb-4 gap-1">
+          <ChevronLeft className="h-4 w-4" /> Back to League
+        </Button>
         <h1 className="mb-2 text-3xl font-bold">Awards</h1>
         <p className="mb-8 text-muted-foreground">Season awards and recognition</p>
 

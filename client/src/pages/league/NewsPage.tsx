@@ -1,11 +1,15 @@
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import type { News } from "@/types";
+import { ChevronLeft } from "lucide-react";
 
 export function NewsPage() {
+  const navigate = useNavigate();
   const { data } = useQuery({
     queryKey: ["news"],
     queryFn: () => api.get<{ data: News[] }>("/league/news", { limit: "50" }),
@@ -16,6 +20,9 @@ export function NewsPage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+        <Button variant="ghost" onClick={() => navigate("/league")} className="mb-4 gap-1">
+          <ChevronLeft className="h-4 w-4" /> Back to League
+        </Button>
         <h1 className="mb-2 text-3xl font-bold">News</h1>
         <p className="mb-8 text-muted-foreground">Latest updates from Fusion League</p>
 

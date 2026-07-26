@@ -3,7 +3,9 @@ import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { Standing } from "@/types";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { ChevronLeft } from "lucide-react";
 
 export function StandingsPage() {
   const navigate = useNavigate();
@@ -18,6 +20,9 @@ export function StandingsPage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+        <Button variant="ghost" onClick={() => navigate("/league")} className="mb-4 gap-1">
+          <ChevronLeft className="h-4 w-4" /> Back to League
+        </Button>
         <h1 className="mb-2 text-3xl font-bold">League Standings</h1>
         <p className="mb-8 text-muted-foreground">Season 2025-2026</p>
 

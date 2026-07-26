@@ -14,23 +14,28 @@ router.get("/dashboard", admin.getDashboardStats);
 router.get("/activity-logs", admin.getActivityLogs);
 
 // Seasons
+router.get("/seasons", admin.getSeasons);
 router.post("/seasons", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.createSeason);
 router.patch("/seasons/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.updateSeason);
 
 // Teams
+router.get("/teams", admin.getTeams);
 router.post("/teams", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.createTeam);
 router.patch("/teams/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.updateTeam);
 
 // Players
+router.get("/players", admin.getPlayers);
 router.post("/players", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.createPlayer);
 router.patch("/players/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.updatePlayer);
 
 // Fixtures
+router.get("/fixtures", admin.getFixtures);
 router.post("/fixtures", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.createFixture);
 router.patch("/fixtures/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.updateFixture);
 router.patch("/fixtures/:id/score", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.updateFixtureScore);
 
 // Awards
+router.get("/awards", admin.getAwards);
 router.post("/awards", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.createAward);
 router.patch("/awards/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.updateAward);
 router.patch("/awards/:id/voting", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.toggleVoting);
@@ -38,6 +43,7 @@ router.post("/awards/:id/nominations", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"),
 router.post("/awards/:id/announce-winner", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.announceWinner);
 
 // CMS
+router.get("/news", admin.getNews);
 router.post("/news", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "CONTENT_EDITOR"), admin.createNews);
 router.patch("/news/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "CONTENT_EDITOR"), admin.updateNews);
 router.delete("/news/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "CONTENT_EDITOR"), admin.deleteNews);

@@ -38,7 +38,7 @@ export function HomePage() {
     <div className="space-y-0">
       {/* ─── Hero Section ─── */}
       <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-900 via-slate-900 to-purple-900" />
+        <div className="absolute inset-0 bg-gradient-to-br from-[#060e20] via-[#0a1838] to-[#0d2247]" />
         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1577223625816-6500cc85a8b5?w=1920')] bg-cover bg-center opacity-20" />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
 
@@ -49,7 +49,7 @@ export function HomePage() {
             </motion.div>
             <motion.h1 variants={fadeUp} className="text-4xl font-extrabold tracking-tight text-white sm:text-6xl lg:text-7xl">
               Where Champions
-              <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent"> Are Made</span>
+              <span className="bg-gradient-to-r from-[#00d66f] to-[#00e87a] bg-clip-text text-transparent"> Are Made</span>
             </motion.h1>
             <motion.p variants={fadeUp} className="mx-auto mt-6 max-w-2xl text-lg text-white/60 sm:text-xl">
               Book premium turfs, compete in the Fusion League, track statistics, and experience football like never before.
@@ -71,10 +71,10 @@ export function HomePage() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <motion.div initial="hidden" whileInView="show" viewport={{ once: true }} variants={stagger} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
-              { icon: Trophy, label: "Teams", value: "6", color: "text-blue-400" },
-              { icon: Users, label: "Active Players", value: "108+", color: "text-green-400" },
-              { icon: Calendar, label: "Matches Played", value: "40+", color: "text-purple-400" },
-              { icon: MapPin, label: "Turf Venues", value: "1", color: "text-orange-400" },
+              { icon: Trophy, label: "Teams", value: "6", color: "text-[#00d66f]" },
+              { icon: Users, label: "Active Players", value: "108+", color: "text-[#00d66f]" },
+              { icon: Calendar, label: "Matches Played", value: "40+", color: "text-[#00d66f]" },
+              { icon: MapPin, label: "Turf Venues", value: "1", color: "text-[#00d66f]" },
             ].map((stat) => (
               <motion.div key={stat.label} variants={fadeUp} className="glass rounded-2xl p-6 text-center">
                 <stat.icon className={`mx-auto h-8 w-8 ${stat.color}`} />
@@ -99,7 +99,7 @@ export function HomePage() {
             {items.map((fixture: Fixture) => (
               <motion.div key={fixture.id} variants={fadeUp}>
                 <Card className="cursor-pointer overflow-hidden transition-all hover:shadow-lg" onClick={() => navigate(`/league/fixtures/${fixture.id}`)}>
-                  <div className="relative bg-gradient-to-r from-blue-600 to-purple-600 p-4 text-center text-white">
+                  <div className="relative bg-gradient-to-r from-[#0a1838] to-[#00b359] p-4 text-center text-white">
                     <Badge className={`absolute right-2 top-2 ${getMatchStatusColor(fixture.status)}`}>
                       {fixture.status}
                     </Badge>
@@ -283,7 +283,7 @@ export function HomePage() {
 
       {/* ─── CTA ─── */}
       <section className="relative overflow-hidden py-16 sm:py-24">
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-purple-700" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#0a1838] to-[#00b359]" />
         <div className="relative mx-auto max-w-4xl px-4 text-center sm:px-6">
           <motion.div initial="hidden" whileInView="show" viewport={{ once: true }} variants={stagger}>
             <motion.h2 variants={fadeUp} className="text-3xl font-bold text-white sm:text-4xl">

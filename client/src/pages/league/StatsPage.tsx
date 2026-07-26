@@ -1,11 +1,13 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import type { PlayerStat } from "@/types";
-import { Trophy, Target, Shield, Zap, Eye, Swords, Award } from "lucide-react";
+import { Trophy, Target, Shield, Zap, Eye, Swords, Award, ChevronLeft } from "lucide-react";
 
 const statCategories = [
   { key: "goals", label: "Top Scorers", icon: Trophy, color: "text-yellow-500" },
@@ -20,6 +22,7 @@ const statCategories = [
 ];
 
 export function StatsPage() {
+  const navigate = useNavigate();
   const [activeStat, setActiveStat] = useState("goals");
 
   const { data } = useQuery({
@@ -32,6 +35,9 @@ export function StatsPage() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+        <Button variant="ghost" onClick={() => navigate("/league")} className="mb-4 gap-1">
+          <ChevronLeft className="h-4 w-4" /> Back to League
+        </Button>
         <h1 className="mb-2 text-3xl font-bold">Statistics</h1>
         <p className="mb-8 text-muted-foreground">League-wide player statistics and rankings</p>
 

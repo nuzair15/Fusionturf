@@ -286,6 +286,8 @@ export interface SlotAvailability {
 export interface Booking {
   id: string;
   bookingNumber: string;
+  userId: string;
+  user?: { id: string; firstName: string; lastName: string; email: string; phone?: string };
   turfId: string;
   turf: Turf & { venue: { name: string; slug: string } };
   date: string;

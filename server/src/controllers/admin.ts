@@ -5,6 +5,18 @@ import { paginate, paginatedResponse } from "../utils/helpers.js";
 
 // ─── Seasons Management ───
 
+export const getSeasons = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const seasons = await prisma.season.findMany({
+      orderBy: { startDate: "desc" },
+      include: { _count: { select: { teams: true, players: true, fixtures: true } } },
+    });
+    res.json(seasons);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const createSeason = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const season = await prisma.season.create({
@@ -29,6 +41,18 @@ export const updateSeason = async (req: Request, res: Response, next: NextFuncti
 };
 
 // ─── Teams Management ───
+
+export const getTeams = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const teams = await prisma.team.findMany({
+      orderBy: { name: "asc" },
+      include: { _count: { select: { players: true, homeMatches: true } } },
+    });
+    res.json(teams);
+  } catch (error) {
+    next(error);
+  }
+};
 
 export const createTeam = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -55,6 +79,23 @@ export const updateTeam = async (req: Request, res: Response, next: NextFunction
 
 // ─── Players Management ───
 
+export const getPlayers = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { page, limit, skip } = paginate(req.query);
+    const [data, total] = await Promise.all([
+      prisma.player.findMany({
+        include: { team: { select: { name: true, slug: true } } },
+        skip, take: limit,
+        orderBy: { firstName: "asc" },
+      }),
+      prisma.player.count(),
+    ]);
+    res.json(paginatedResponse(data, total, page, limit));
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const createPlayer = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const player = await prisma.player.create({ data: req.body });
@@ -77,6 +118,23 @@ export const updatePlayer = async (req: Request, res: Response, next: NextFuncti
 };
 
 // ─── Fixtures Management ───
+
+export const getFixtures = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { page, limit, skip } = paginate(req.query);
+    const [data, total] = await Promise.all([
+      prisma.fixture.findMany({
+        include: { homeTeam: { select: { name: true, slug: true, logoUrl: true } }, awayTeam: { select: { name: true, slug: true, logoUrl: true } }, season: { select: { name: true } } },
+        skip, take: limit,
+        orderBy: { matchDate: "desc" },
+      }),
+      prisma.fixture.count(),
+    ]);
+    res.json(paginatedResponse(data, total, page, limit));
+  } catch (error) {
+    next(error);
+  }
+};
 
 export const createFixture = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -170,6 +228,18 @@ function calculateMatchStats(homeScore: number, awayScore: number) {
 
 // ─── Awards Management ───
 
+export const getAwards = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const awards = await prisma.award.findMany({
+      include: { winner: { select: { firstName: true, lastName: true, photoUrl: true } }, _count: { select: { votes: true, nominations: true } } },
+      orderBy: { name: "asc" },
+    });
+    res.json(awards);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const createAward = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const award = await prisma.award.create({
@@ -238,6 +308,23 @@ export const announceWinner = async (req: Request, res: Response, next: NextFunc
 };
 
 // ─── CMS ───
+
+export const getNews = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { page, limit, skip } = paginate(req.query);
+    const [data, total] = await Promise.all([
+      prisma.news.findMany({
+        include: { team: { select: { name: true, slug: true } } },
+        skip, take: limit,
+        orderBy: { publishedAt: "desc" },
+      }),
+      prisma.news.count(),
+    ]);
+    res.json(paginatedResponse(data, total, page, limit));
+  } catch (error) {
+    next(error);
+  }
+};
 
 export const createNews = async (req: Request, res: Response, next: NextFunction) => {
   try {
