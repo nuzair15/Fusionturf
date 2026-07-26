@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { formatDate, formatTime, getMatchStatusColor } from "@/lib/utils";
-import type { Fixture, Standing, Team, Season } from "@/types";
+import type { Fixture, Standing, Team, Season, Venue, News } from "@/types";
 import { Trophy, Calendar, BarChart3, Medal, Newspaper, ChevronRight, Users, MapPin, Target, Shield, Flame } from "lucide-react";
 import { LeagueHero, LeagueCard, LeagueEmptyState, LeaguePills, SectionLink, StatTile, TrendBadge } from "@/components/league/LeagueUI";
 import { useMemo, useState } from "react";
@@ -19,10 +19,14 @@ export function LeaguePage() {
   const { data: fixtures } = useQuery({ queryKey: ["fixtures"], queryFn: () => api.get<{ data: Fixture[] }>("/league/fixtures", { limit: "20" }) });
   const { data: standings } = useQuery({ queryKey: ["standings"], queryFn: () => api.get<Standing[]>("/league/standings") });
   const { data: teams } = useQuery({ queryKey: ["teams"], queryFn: () => api.get<Team[]>("/league/teams") });
+  const { data: venues } = useQuery({ queryKey: ["venues"], queryFn: () => api.get<Venue[]>("/booking/venues") });
+  const { data: newsData } = useQuery({ queryKey: ["news"], queryFn: () => api.get<News[]>("/league/news") });
 
   const fixtureList = fixtures?.data || [];
   const standingsList = standings || [];
   const teamList = teams || [];
+  const venueList = venues || [];
+  const newsList = newsData || [];
 
   const liveFixtures = useMemo(() => fixtureList.filter((f) => f.status === "LIVE"), [fixtureList]);
   const upcomingFixtures = useMemo(() => fixtureList.filter((f) => f.status === "SCHEDULED").slice(0, 4), [fixtureList]);
