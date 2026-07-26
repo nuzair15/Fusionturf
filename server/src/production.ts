@@ -1,16 +1,16 @@
 import { execSync } from "child_process";
 import path from "path";
 
-// Run database migrations before starting the server
-console.log("⏳ Running database migrations...");
+// Sync database schema before starting the server
+console.log("⏳ Syncing database schema...");
 try {
-  execSync("npx prisma migrate deploy", {
+  execSync("npx prisma db push --accept-data-loss", {
     cwd: path.resolve(__dirname, ".."),
     stdio: "inherit",
   });
-  console.log("✅ Migrations complete");
+  console.log("✅ Schema sync complete");
 } catch (error) {
-  console.error("⚠️ Migration failed, continuing anyway:", error);
+  console.error("⚠️ Schema sync failed, continuing anyway:", error);
 }
 
 // Start the main server
