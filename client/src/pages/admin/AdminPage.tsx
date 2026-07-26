@@ -86,7 +86,12 @@ export function AdminPage() {
   const submitForm = async (type: string, url: string, invalidateKey: string) => {
     try {
       setFormErrors("");
-      await api.post(url, getSubmitPayload(type));
+      if (editingItem) {
+        await api.patch(`${url}/${editingItem.id}`, getSubmitPayload(type));
+      } else {
+        await api.post(url, getSubmitPayload(type));
+      }
+      setEditingItem(null);
       setShowForm(null);
       queryClient.invalidateQueries({ queryKey: [invalidateKey] });
     } catch (err: any) {
@@ -264,7 +269,8 @@ export function AdminPage() {
                 s._count?.players || 0,
                 s._count?.fixtures || 0,
               ]}
-              onAdd={() => openForm("season", { name: "", isActive: true, isCurrent: false })}
+              onAdd={() => { setEditingItem(null); openForm("season", { name: "", isActive: true, isCurrent: false }); }}
+              onEdit={(s) => { setEditingItem(s); openForm("season", { name: s.name, slug: s.slug, startDate: s.startDate, endDate: s.endDate, isActive: s.isActive, isCurrent: s.isCurrent }); }}
             />
             <div className="mb-4 rounded-2xl border bg-card p-4 shadow-sm">
               <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">League System Actions</h3>
@@ -299,7 +305,7 @@ export function AdminPage() {
               </div>
               {formErrors && <p className="mt-2 text-sm text-destructive">{formErrors}</p>}
             </div>
-            <Dialog open={showForm === "season"} onClose={() => setShowForm(null)} title="Add Season">
+            <Dialog open={showForm === "season"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Season" : "Add Season"}>
               <div className="space-y-4">
                 <div className="space-y-1.5">
                   <Label>Season Name</Label>
@@ -323,7 +329,7 @@ export function AdminPage() {
                 </label>
                 {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                 <Button className="w-full" onClick={() => submitForm("season", "/admin/seasons", "admin-seasons")}
-                  disabled={!formData.name || !formData.startDate || !formData.endDate}>Create Season</Button>
+                  disabled={!formData.name || !formData.startDate || !formData.endDate}>{editingItem ? "Update Season" : "Create Season"}</Button>
               </div>
             </Dialog>
           </>
@@ -1194,8 +1200,8 @@ function ImageUploadField({ label, value, onChange }: {
   );
 }
 
-function AdminTable<T extends { id: string }>({ title, columns, data, renderRow, onAdd }: {
-  title: string; columns: string[]; data: T[]; renderRow: (item: T) => React.ReactNode[]; onAdd?: () => void;
+function AdminTable<T extends { id: string }>({ title, columns, data, renderRow, onAdd, onEdit }: {
+  title: string; columns: string[]; data: T[]; renderRow: (item: T) => React.ReactNode[]; onAdd?: () => void; onEdit?: (item: T) => void;
 }) {
   return (
     <div className="space-y-4">
@@ -1210,11 +1216,12 @@ function AdminTable<T extends { id: string }>({ title, columns, data, renderRow,
           </thead>
           <tbody>
             {data.length === 0 ? (
-              <tr><td colSpan={columns.length} className="p-8 text-center text-muted-foreground">No {title.toLowerCase()} yet</td></tr>
+              <tr><td colSpan={columns.length + (onEdit ? 1 : 0)} className="p-8 text-center text-muted-foreground">No {title.toLowerCase()} yet</td></tr>
             ) : (
               data.map((item) => (
                 <tr key={item.id} className="border-t hover:bg-muted/20">
                   {renderRow(item).map((cell, i) => <td key={i} className="p-3">{cell}</td>)}
+                  {onEdit && <td className="p-3"><Button variant="ghost" size="sm" onClick={() => onEdit(item)}><Edit2 className="h-4 w-4" /></Button></td>}
                 </tr>
               ))
             )}

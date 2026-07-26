@@ -40,10 +40,22 @@ export const createSeason = async (req: Request, res: Response, next: NextFuncti
 
 export const updateSeason = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const season = await prisma.season.update({
-      where: { id: req.params.id },
-      data: req.body,
-    });
+    const { name, slug, startDate, endDate, isActive, isCurrent } = req.body;
+    const sets: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+    if (name !== undefined) { sets.push(`"name" = $${idx++}`); values.push(name); }
+    if (slug !== undefined) { sets.push(`"slug" = $${idx++}`); values.push(slug); }
+    if (startDate !== undefined) { sets.push(`"startDate" = $${idx++}`); values.push(new Date(startDate)); }
+    if (endDate !== undefined) { sets.push(`"endDate" = $${idx++}`); values.push(new Date(endDate)); }
+    if (isActive !== undefined) { sets.push(`"isActive" = $${idx++}`); values.push(!!isActive); }
+    if (isCurrent !== undefined) { sets.push(`"isCurrent" = $${idx++}`); values.push(!!isCurrent); }
+    if (sets.length === 0) return res.status(400).json({ error: "Nothing to update" });
+    values.push(req.params.id);
+    const [season] = await prisma.$queryRawUnsafe(
+      `UPDATE "seasons" SET ${sets.join(", ")}, "updatedAt" = NOW() WHERE "id" = $${idx} RETURNING *`,
+      ...values
+    ) as any[];
     res.json(season);
   } catch (error) {
     next(error);
