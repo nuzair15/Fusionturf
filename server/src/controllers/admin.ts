@@ -511,3 +511,73 @@ export const getActivityLogs = async (req: Request, res: Response, next: NextFun
     next(error);
   }
 };
+
+// ─── Venue Management ───
+
+export const getVenues = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const venues = await prisma.venue.findMany({
+      include: { turfs: { where: { isActive: true } }, _count: { select: { turfs: true } } },
+      orderBy: { name: "asc" },
+    });
+    res.json({ data: venues });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createVenue = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const venue = await prisma.venue.create({ data: req.body });
+    res.status(201).json(venue);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateVenue = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const venue = await prisma.venue.update({ where: { id: req.params.id }, data: req.body });
+    res.json(venue);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteVenue = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await prisma.venue.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── Turf Management ───
+
+export const createTurf = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const turf = await prisma.turf.create({ data: req.body });
+    res.status(201).json(turf);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateTurf = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const turf = await prisma.turf.update({ where: { id: req.params.id }, data: req.body });
+    res.json(turf);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteTurf = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await prisma.turf.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+};

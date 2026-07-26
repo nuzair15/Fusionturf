@@ -64,4 +64,15 @@ router.patch("/users/:id/role", authorize("SUPER_ADMIN"), admin.updateUserRole);
 router.get("/bookings", bookingAdmin.adminGetAllBookings);
 router.post("/bookings/block-date", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), bookingAdmin.adminBlockDate);
 
+// Venue Management
+router.get("/venues", admin.getVenues);
+router.post("/venues", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), admin.createVenue);
+router.patch("/venues/:id", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), admin.updateVenue);
+router.delete("/venues/:id", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), admin.deleteVenue);
+
+// Turf Management
+router.post("/turfs", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), admin.createTurf);
+router.patch("/turfs/:id", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), admin.updateTurf);
+router.delete("/turfs/:id", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), admin.deleteTurf);
+
 export default router;

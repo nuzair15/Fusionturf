@@ -8,8 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
 import { formatDate, formatCurrency } from "@/lib/utils";
-import type { DashboardStats, User, Season, Team, Player, Fixture, Award, News, Booking, PaginatedResponse } from "@/types";
-import { LayoutDashboard, Users, Calendar, Trophy, Settings, BarChart3, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock } from "lucide-react";
+import type { DashboardStats, User, Season, Team, Player, Fixture, Award, News, Booking, PaginatedResponse, Venue, Turf } from "@/types";
+import { LayoutDashboard, Users, Calendar, Trophy, Settings, BarChart3, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin } from "lucide-react";
 
 const ADMIN_PASSWORD = "Abdurahman.15";
 const STORAGE_KEY = "admin_unlocked";
@@ -21,6 +21,7 @@ const adminTabs = [
   { id: "players", label: "Players", icon: Users },
   { id: "fixtures", label: "Fixtures", icon: Activity },
   { id: "awards", label: "Awards", icon: Medal },
+  { id: "venues", label: "Venues", icon: MapPin },
   { id: "bookings", label: "Bookings", icon: Calendar },
   { id: "news", label: "News", icon: Newspaper },
   { id: "settings", label: "Settings", icon: Settings },
@@ -98,6 +99,8 @@ export function AdminPage() {
   const { data: bookings } = useQuery({ queryKey: ["admin-bookings"], queryFn: () => api.get<PaginatedResponse<Booking>>("/admin/bookings", { limit: "50" }) });
 
   const { data: news } = useQuery({ queryKey: ["admin-news"], queryFn: () => api.get<PaginatedResponse<News>>("/admin/news", { limit: "50" }) });
+
+  const { data: venues } = useQuery({ queryKey: ["admin-venues"], queryFn: () => api.get<{ data: Venue[] }>("/admin/venues") });
 
   const { data: settings } = useQuery({ queryKey: ["admin-settings"], queryFn: () => api.get<Record<string, string>>("/admin/settings") });
 
@@ -322,6 +325,73 @@ export function AdminPage() {
           </div>
         )}
 
+        {activeTab === "venues" && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold">Venues & Turfs</h2>
+              <Button size="sm" onClick={() => {
+                const name = prompt("Venue name:");
+                if (name) api.post("/admin/venues", { name, slug: name.toLowerCase().replace(/\s+/g, "-"), address: prompt("Address:"), city: prompt("City:"), state: prompt("State:"), description: prompt("Description:") || "" }).then(() => queryClient.invalidateQueries({ queryKey: ["admin-venues"] }));
+              }}><Plus className="mr-1 h-4 w-4" /> Add Venue</Button>
+            </div>
+            {(venues?.data || []).map((v: Venue) => (
+              <Card key={v.id}>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted">
+                      {v.coverImage ? <img src={v.coverImage} alt="" className="h-12 w-12 rounded-xl object-cover" /> : <MapPin className="h-6 w-6 text-muted-foreground" />}
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg">{v.name}</CardTitle>
+                      <p className="text-xs text-muted-foreground">{v.city}, {v.state} • {v.openingTime} - {v.closingTime}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => {
+                      const newName = prompt("Name:", v.name);
+                      if (newName) api.patch(`/admin/venues/${v.id}`, { name: newName, city: prompt("City:", v.city), state: prompt("State:", v.state), coverImage: prompt("Cover image URL:", v.coverImage || ""), openingTime: prompt("Opening time (HH:MM):", v.openingTime), closingTime: prompt("Closing time (HH:MM):", v.closingTime) }).then(() => queryClient.invalidateQueries({ queryKey: ["admin-venues"] }));
+                    }}><Edit2 className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="sm" onClick={() => {
+                      if (confirm("Delete this venue?")) api.delete(`/admin/venues/${v.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-venues"] }));
+                    }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {v.turfs && v.turfs.length > 0 ? (
+                    <div className="space-y-2">
+                      {v.turfs.map((t: Turf) => (
+                        <div key={t.id} className="flex items-center justify-between rounded-lg border p-3 text-sm">
+                          <div className="flex items-center gap-2">
+                            <div className="h-2 w-2 rounded-full bg-primary" />
+                            <span className="font-medium">{t.name}</span>
+                            <span className="text-muted-foreground">• {t.size} • {t.surface}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="font-medium">₹{(t.basePrice / 100).toFixed(0)}/hr</span>
+                            <Button variant="ghost" size="sm" onClick={() => {
+                              const newName = prompt("Turf name:", t.name);
+                              if (newName) api.patch(`/admin/turfs/${t.id}`, { name: newName, size: prompt("Size (5-a-side, 7-a-side, 11-a-side):", t.size || ""), surface: prompt("Surface:", t.surface || ""), basePrice: parseInt(prompt("Base price (in paise):", String(t.basePrice)) || String(t.basePrice)) }).then(() => queryClient.invalidateQueries({ queryKey: ["admin-venues"] }));
+                            }}><Edit2 className="h-4 w-4" /></Button>
+                            <Button variant="ghost" size="sm" onClick={() => {
+                              if (confirm("Delete this turf?")) api.delete(`/admin/turfs/${t.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-venues"] }));
+                            }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No turfs yet</p>
+                  )}
+                  <Button variant="outline" size="sm" className="mt-3" onClick={() => {
+                    const name = prompt("Turf name:");
+                    if (name) api.post("/admin/turfs", { name, venueId: v.id, slug: name.toLowerCase().replace(/\s+/g, "-"), size: prompt("Size (5-a-side, 7-a-side, 11-a-side):") || "5-a-side", surface: prompt("Surface:") || "Artificial", basePrice: parseInt(prompt("Base price (in paise, e.g. 50000 for ₹500):") || "50000") }).then(() => queryClient.invalidateQueries({ queryKey: ["admin-venues"] }));
+                  }}><Plus className="mr-1 h-4 w-4" /> Add Turf</Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
         {activeTab === "bookings" && (
           <div className="space-y-4">
             <h2 className="text-xl font-bold">Bookings</h2>
@@ -376,41 +446,95 @@ export function AdminPage() {
         )}
 
         {activeTab === "settings" && (
-          <Card>
-            <CardHeader><CardTitle>Site Settings</CardTitle></CardHeader>
-            <CardContent>
-              {settings && Object.entries(settings).length > 0 ? (
-                <div className="space-y-4">
-                  {Object.entries(settings).map(([key, value]) => (
-                    <div key={key} className="flex items-center justify-between rounded-lg border p-3">
-                      <div>
-                        <p className="text-sm font-medium">{key}</p>
-                        <p className="text-xs text-muted-foreground break-all">{String(value)}</p>
-                      </div>
-                      <Button variant="ghost" size="sm" onClick={() => {
-                        const newVal = prompt(`Value for ${key}:`, String(value));
-                        if (newVal !== null) api.patch("/admin/settings", { [key]: newVal }).then(() => queryClient.invalidateQueries({ queryKey: ["admin-settings"] }));
-                      }}><Edit2 className="h-4 w-4" /></Button>
+          <div className="space-y-6">
+            {/* Site Images */}
+            <Card>
+              <CardHeader><CardTitle>Site Images</CardTitle></CardHeader>
+              <CardContent className="grid gap-6 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Site Logo</p>
+                  {settings?.site_logo_url ? (
+                    <div className="relative overflow-hidden rounded-lg border bg-muted p-4">
+                      <img src={settings.site_logo_url} alt="Logo" className="mx-auto h-16 w-auto object-contain" />
+                      <Button variant="outline" size="sm" className="mt-2 w-full" onClick={() => {
+                        const val = prompt("Logo image URL:", settings.site_logo_url);
+                        if (val !== null) api.patch("/admin/settings", { site_logo_url: val }).then(() => queryClient.invalidateQueries({ queryKey: ["admin-settings"] }));
+                      }}>Change URL</Button>
                     </div>
-                  ))}
-                  <Button className="mt-4" onClick={() => {
-                    const key = prompt("Setting key:");
-                    if (key) api.patch("/admin/settings", { [key]: prompt(`Value for ${key}:`) }).then(() => queryClient.invalidateQueries({ queryKey: ["admin-settings"] }));
-                  }}><Plus className="mr-2 h-4 w-4" /> Add Setting</Button>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed p-6">
+                      <Image className="h-8 w-8 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">No logo set</p>
+                      <Button variant="outline" size="sm" onClick={() => {
+                        const val = prompt("Logo image URL:");
+                        if (val) api.patch("/admin/settings", { site_logo_url: val }).then(() => queryClient.invalidateQueries({ queryKey: ["admin-settings"] }));
+                      }}>Add Logo URL</Button>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="text-center py-8">
-                  <Settings className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-medium">No Settings Yet</h3>
-                  <p className="text-sm text-muted-foreground mb-4">Add settings like site name, contact info, etc.</p>
-                  <Button onClick={() => {
-                    const key = prompt("Setting key:");
-                    if (key) api.patch("/admin/settings", { [key]: prompt(`Value for ${key}:`) }).then(() => queryClient.invalidateQueries({ queryKey: ["admin-settings"] }));
-                  }}><Plus className="mr-2 h-4 w-4" /> Add First Setting</Button>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Hero Banner</p>
+                  {settings?.site_hero_url ? (
+                    <div className="relative overflow-hidden rounded-lg border bg-muted">
+                      <img src={settings.site_hero_url} alt="Hero" className="aspect-video w-full object-cover" />
+                      <div className="p-2">
+                        <Button variant="outline" size="sm" className="w-full" onClick={() => {
+                          const val = prompt("Hero image URL:", settings.site_hero_url);
+                          if (val !== null) api.patch("/admin/settings", { site_hero_url: val }).then(() => queryClient.invalidateQueries({ queryKey: ["admin-settings"] }));
+                        }}>Change URL</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed p-6">
+                      <Image className="h-8 w-8 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">No hero banner</p>
+                      <Button variant="outline" size="sm" onClick={() => {
+                        const val = prompt("Hero image URL:");
+                        if (val) api.patch("/admin/settings", { site_hero_url: val }).then(() => queryClient.invalidateQueries({ queryKey: ["admin-settings"] }));
+                      }}>Add Hero URL</Button>
+                    </div>
+                  )}
                 </div>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+
+            {/* All Settings */}
+            <Card>
+              <CardHeader><CardTitle>All Settings</CardTitle></CardHeader>
+              <CardContent>
+                {settings && Object.entries(settings).length > 0 ? (
+                  <div className="space-y-4">
+                    {Object.entries(settings).map(([key, value]) => (
+                      <div key={key} className="flex items-center justify-between rounded-lg border p-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium">{key}</p>
+                          <p className="truncate text-xs text-muted-foreground">{String(value)}</p>
+                        </div>
+                        <Button variant="ghost" size="sm" className="shrink-0" onClick={() => {
+                          const newVal = prompt(`Value for ${key}:`, String(value));
+                          if (newVal !== null) api.patch("/admin/settings", { [key]: newVal }).then(() => queryClient.invalidateQueries({ queryKey: ["admin-settings"] }));
+                        }}><Edit2 className="h-4 w-4" /></Button>
+                      </div>
+                    ))}
+                    <Button className="mt-4" onClick={() => {
+                      const key = prompt("Setting key:");
+                      if (key) api.patch("/admin/settings", { [key]: prompt(`Value for ${key}:`) }).then(() => queryClient.invalidateQueries({ queryKey: ["admin-settings"] }));
+                    }}><Plus className="mr-2 h-4 w-4" /> Add Setting</Button>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <Settings className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-medium">No Settings Yet</h3>
+                    <p className="text-sm text-muted-foreground mb-4">Add settings like site name, contact info, etc.</p>
+                    <Button onClick={() => {
+                      const key = prompt("Setting key:");
+                      if (key) api.patch("/admin/settings", { [key]: prompt(`Value for ${key}:`) }).then(() => queryClient.invalidateQueries({ queryKey: ["admin-settings"] }));
+                    }}><Plus className="mr-2 h-4 w-4" /> Add First Setting</Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         )}
 
         {activeTab === "users" && (
