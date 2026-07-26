@@ -6,8 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { formatDate, formatTime, getMatchStatusColor, formatCurrency } from "@/lib/utils";
-import type { Fixture, Standing, Venue, News, Award, PaginatedResponse } from "@/types";
-import { Calendar, Trophy, MapPin, Users, ArrowRight, Star, ChevronRight, Medal, Sparkles } from "lucide-react";
+import type { Fixture, Standing, Venue, News, Award, PaginatedResponse, Sponsor } from "@/types";
+import { Calendar, Trophy, MapPin, Users, ArrowRight, Star, ChevronRight, Medal, Sparkles, Handshake } from "lucide-react";
 
 const stagger = {
   hidden: { opacity: 0 },
@@ -35,12 +35,14 @@ export function HomePage() {
   const { data: venues } = useQuery({ queryKey: ["venues"], queryFn: () => api.get<PaginatedResponse<Venue>>("/bookings/venues?limit=3") });
   const { data: news } = useQuery({ queryKey: ["news"], queryFn: () => api.get<PaginatedResponse<News>>("/league/news?limit=3") });
   const { data: awards } = useQuery({ queryKey: ["awards"], queryFn: () => api.get<Award[]>("/league/awards") });
+  const { data: sponsors } = useQuery({ queryKey: ["sponsors"], queryFn: () => api.get<{ data: Sponsor[] }>("/league/sponsors") });
 
   const items = fixtures?.data || [];
   const standingsList = standings || [];
   const venueList = venues?.data || [];
   const newsList = news?.data || [];
   const awardList = awards || [];
+  const sponsorList = sponsors?.data || [];
 
   return (
     <div className="space-y-0">
@@ -255,6 +257,30 @@ export function HomePage() {
                     </CardContent>
                   </Card>
                 </motion.div>
+              ))}
+            </motion.div>
+          </div>
+        </section>
+      )}
+
+      {/* ─── Sponsors ─── */}
+      {sponsorList.length > 0 && (
+        <section className="py-12 sm:py-16">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6">
+            <h2 className="mb-6 text-center text-lg font-semibold text-muted-foreground sm:mb-8">Our Partners & Sponsors</h2>
+            <motion.div initial="hidden" whileInView="show" viewport={{ once: true }} variants={stagger} className="flex flex-wrap items-center justify-center gap-8 sm:gap-12">
+              {sponsorList.map((s: Sponsor) => (
+                <motion.a
+                  key={s.id}
+                  variants={fadeUp}
+                  href={s.website || "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 opacity-60 grayscale transition-all hover:opacity-100 hover:grayscale-0"
+                >
+                  <img src={s.logoUrl} alt={s.name} className="h-10 w-auto max-w-[120px] object-contain sm:h-12" />
+                  <span className="text-sm text-muted-foreground">{s.name}</span>
+                </motion.a>
               ))}
             </motion.div>
           </div>

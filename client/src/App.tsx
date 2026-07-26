@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/providers/ThemeProvider";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { ScrollToTop } from "@/components/ScrollToTop";
+import { BottomNav } from "@/components/BottomNav";
 import { HomePage } from "@/pages/home/HomePage";
 import { BookingPage } from "@/pages/booking/BookingPage";
 import { VenueDetailPage } from "@/pages/booking/VenueDetailPage";
@@ -33,7 +34,7 @@ export default function App() {
         <AuthProvider>
           <BrowserRouter>
             <ScrollToTop />
-            <div className="flex min-h-screen flex-col">
+            <div className="flex min-h-screen flex-col pb-16 md:pb-0">
               <Navbar />
               <main className="flex-1">
                 <Routes>
@@ -54,6 +55,7 @@ export default function App() {
                   <Route path="/admin/*" element={<AdminPage />} />
                 </Routes>
               </main>
+              <BottomNav />
               <Footer />
             </div>
           </BrowserRouter>

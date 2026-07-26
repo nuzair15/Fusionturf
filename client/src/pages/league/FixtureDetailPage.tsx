@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
@@ -5,9 +6,40 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
-import { formatDate, formatTime, getMatchStatusColor } from "@/lib/utils";
+import { formatDate, getMatchStatusColor } from "@/lib/utils";
 import type { Fixture } from "@/types";
-import { ChevronLeft, ChevronRight, MapPin, Users, Clock, Shield, Swords } from "lucide-react";
+import { ChevronLeft, ChevronRight, Swords } from "lucide-react";
+
+function AnimatedScore({ value }: { value: number }) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!value || value === 0) return;
+    const duration = 800;
+    const steps = 20;
+    const increment = value / steps;
+    let current = 0;
+    const timer = setInterval(() => {
+      current += increment;
+      if (current >= value) {
+        setCount(value);
+        clearInterval(timer);
+      } else {
+        setCount(Math.floor(current));
+      }
+    }, duration / steps);
+    return () => clearInterval(timer);
+  }, [value]);
+  return <span>{count}</span>;
+}
+
+function PlayerLink({ player, children }: { player: { id: string; slug?: string; firstName?: string; lastName?: string }; children: React.ReactNode }) {
+  const navigate = useNavigate();
+  return (
+    <span className="cursor-pointer transition-colors hover:text-primary" onClick={() => navigate(`/league/players/${player.slug || player.id}`)}>
+      {children}
+    </span>
+  );
+}
 
 export function FixtureDetailPage() {
   const { id } = useParams();
@@ -41,7 +73,9 @@ export function FixtureDetailPage() {
             </div>
             <div className="text-center">
               {fixture.status === "COMPLETED" ? (
-                <div className="text-3xl font-bold sm:text-5xl">{fixture.homeScore} - {fixture.awayScore}</div>
+                <div className="text-3xl font-bold sm:text-5xl tabular-nums">
+                  <AnimatedScore value={fixture.homeScore ?? 0} /> - <AnimatedScore value={fixture.awayScore ?? 0} />
+                </div>
               ) : (
                 <div className="text-2xl font-bold text-muted-foreground sm:text-3xl">VS</div>
               )}
@@ -57,9 +91,20 @@ export function FixtureDetailPage() {
           </div>
         </div>
 
+        {fixture.highlights && (
+          <div className="mb-8 overflow-hidden rounded-2xl">
+            <iframe
+              className="aspect-video w-full"
+              src={`https://www.youtube.com/embed/${fixture.highlights.replace("https://www.youtube.com/watch?v=", "").replace("https://youtu.be/", "").split("&")[0]}`}
+              title="Match Highlights"
+              allowFullScreen
+            />
+          </div>
+        )}
+
         <div className="grid gap-8 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">
-            {/* Match Events */}
+            {/* Goals */}
             {fixture.goals && fixture.goals.length > 0 && (
               <Card>
                 <CardHeader><CardTitle>Goals</CardTitle></CardHeader>
@@ -67,7 +112,9 @@ export function FixtureDetailPage() {
                   {fixture.goals.map((goal) => (
                     <div key={goal.id} className="flex items-center gap-3 rounded-lg border p-3">
                       <Swords className="h-4 w-4 text-green-500" />
-                      <span className="text-sm font-medium">{goal.player.firstName} {goal.player.lastName}</span>
+                      <PlayerLink player={goal.player}>
+                        <span className="text-sm font-medium">{goal.player.firstName} {goal.player.lastName}</span>
+                      </PlayerLink>
                       <Badge variant="secondary">{goal.minute}'</Badge>
                       {goal.isPenalty && <Badge>Penalty</Badge>}
                       {goal.isOwnGoal && <Badge variant="destructive">Own Goal</Badge>}
@@ -85,7 +132,9 @@ export function FixtureDetailPage() {
                   {fixture.cards.map((card) => (
                     <div key={card.id} className="flex items-center gap-3 rounded-lg border p-3">
                       <div className={`h-4 w-3 rounded-sm ${card.type === "RED" ? "bg-red-500" : "bg-yellow-400"}`} />
-                      <span className="text-sm font-medium">{card.player.firstName} {card.player.lastName}</span>
+                      <PlayerLink player={card.player}>
+                        <span className="text-sm font-medium">{card.player.firstName} {card.player.lastName}</span>
+                      </PlayerLink>
                       <Badge variant="secondary">{card.minute}'</Badge>
                       <span className="text-xs text-muted-foreground">{card.type}</span>
                     </div>
@@ -102,9 +151,13 @@ export function FixtureDetailPage() {
                   {fixture.substitutions.map((sub) => (
                     <div key={sub.id} className="flex items-center gap-3 rounded-lg border p-3 text-sm">
                       <ArrowRightLeft className="h-4 w-4 text-blue-500" />
-                      <span className="text-muted-foreground line-through">{sub.playerOff.firstName} {sub.playerOff.lastName}</span>
+                      <PlayerLink player={sub.playerOff}>
+                        <span className="text-muted-foreground line-through">{sub.playerOff.firstName} {sub.playerOff.lastName}</span>
+                      </PlayerLink>
                       <ChevronRight className="h-3 w-3" />
-                      <span className="font-medium">{sub.playerOn.firstName} {sub.playerOn.lastName}</span>
+                      <PlayerLink player={sub.playerOn}>
+                        <span className="font-medium">{sub.playerOn.firstName} {sub.playerOn.lastName}</span>
+                      </PlayerLink>
                       <Badge variant="secondary">{sub.minute}'</Badge>
                     </div>
                   ))}
@@ -129,7 +182,9 @@ export function FixtureDetailPage() {
                             {starters.map((l) => (
                               <div key={l.id} className="flex items-center gap-2 rounded border px-2 py-1 text-xs">
                                 <span className="w-4 text-muted-foreground">{l.jerseyNumber}</span>
-                                <span>{l.player.firstName} {l.player.lastName}</span>
+                                <PlayerLink player={l.player}>
+                                  <span>{l.player.firstName} {l.player.lastName}</span>
+                                </PlayerLink>
                                 <span className="ml-auto text-muted-foreground">{l.position}</span>
                               </div>
                             ))}
@@ -150,7 +205,9 @@ export function FixtureDetailPage() {
                   <div className="space-y-2">
                     {fixture.matchPlayerRatings.sort((a, b) => b.rating - a.rating).slice(0, 10).map((r) => (
                       <div key={r.id} className="flex items-center justify-between rounded-lg border p-2">
-                        <span className="text-sm">{r.player.firstName} {r.player.lastName}</span>
+                        <PlayerLink player={r.player}>
+                          <span className="text-sm">{r.player.firstName} {r.player.lastName}</span>
+                        </PlayerLink>
                         <Badge variant={r.rating >= 8 ? "default" : "secondary"}>{r.rating.toFixed(1)}</Badge>
                       </div>
                     ))}
@@ -218,8 +275,11 @@ export function FixtureDetailPage() {
                 {fixture.referee && <div className="flex justify-between"><span className="text-muted-foreground">Referee</span><span>{fixture.referee}</span></div>}
                 {fixture.attendance && <div className="flex justify-between"><span className="text-muted-foreground">Attendance</span><span>{fixture.attendance.toLocaleString()}</span></div>}
                 {fixture.manOfTheMatch && (
-                  <div className="flex justify-between"><span className="text-muted-foreground">Man of the Match</span>
-                    <span className="font-medium">{fixture.manOfTheMatch.firstName} {fixture.manOfTheMatch.lastName}</span>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Man of the Match</span>
+                    <PlayerLink player={fixture.manOfTheMatch}>
+                      <span className="font-medium">{fixture.manOfTheMatch.firstName} {fixture.manOfTheMatch.lastName}</span>
+                    </PlayerLink>
                   </div>
                 )}
                 {fixture.competition && <div className="flex justify-between"><span className="text-muted-foreground">Competition</span><span>{fixture.competition.name}</span></div>}

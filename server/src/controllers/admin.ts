@@ -395,6 +395,24 @@ export const updateSponsor = async (req: Request, res: Response, next: NextFunct
   }
 };
 
+export const getSponsors = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sponsors = await prisma.sponsor.findMany({ orderBy: { tier: "asc" } });
+    res.json({ data: sponsors });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteSponsor = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await prisma.sponsor.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getSettings = async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const settings = await prisma.setting.findMany();

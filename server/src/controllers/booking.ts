@@ -6,14 +6,13 @@ import { paginate, paginatedResponse, generateBookingNumber } from "../utils/hel
 
 const createBookingSchema = z.object({
   body: z.object({
-    turfId: z.string().uuid(),
+    turfId: z.string(),
     date: z.string(),
     startTime: z.string(),
     endTime: z.string(),
-    duration: z.number().int().min(30).max(180),
-    numPlayers: z.number().int().min(1).max(50),
-    services: z.array(z.object({ serviceId: z.string().uuid(), quantity: z.number().int().min(1) })).optional(),
-    couponCode: z.string().optional(),
+    customerName: z.string().min(1),
+    customerPhone: z.string().min(1),
+    customerEmail: z.string().email().optional().or(z.literal("")),
     notes: z.string().optional(),
   }),
 });
@@ -114,43 +113,41 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
       totalAmount = turf.peakPrice || totalAmount;
     }
 
-    let discountAmount = 0;
-    if (data.couponCode) {
-      const coupon = await prisma.coupon.findUnique({ where: { code: data.couponCode } });
-      if (coupon && coupon.isActive && (!coupon.expiresAt || coupon.expiresAt > new Date())) {
-        if (!coupon.maxUses || coupon.usedCount < coupon.maxUses) {
-          discountAmount = coupon.discountType === "PERCENTAGE"
-            ? Math.floor(totalAmount * coupon.discountValue / 100)
-            : coupon.discountValue;
-          await prisma.coupon.update({
-            where: { id: coupon.id },
-            data: { usedCount: { increment: 1 } },
-          });
-        }
-      }
+    // Create or find guest user for walk-in bookings
+    const guestEmail = data.customerEmail || `guest-${Date.now()}@fusionleague.com`;
+    let guest = await prisma.user.findUnique({ where: { email: guestEmail } });
+    if (!guest) {
+      guest = await prisma.user.create({
+        data: {
+          email: guestEmail,
+          passwordHash: "guest",
+          firstName: data.customerName.split(" ")[0] || "Guest",
+          lastName: data.customerName.split(" ").slice(1).join(" ") || "User",
+          role: "CUSTOMER",
+          phone: data.customerPhone,
+          emailVerified: false,
+        },
+      });
     }
+
+    const customerInfo = JSON.stringify({ name: data.customerName, phone: data.customerPhone, email: data.customerEmail || "" });
+    const bookingNotes = data.notes ? `${data.notes} | Customer: ${customerInfo}` : `Customer: ${customerInfo}`;
 
     const bookingNumber = generateBookingNumber();
     const booking = await prisma.booking.create({
       data: {
         bookingNumber,
-        userId: req.user!.userId,
+        userId: guest.id,
         turfId: data.turfId,
         date: matchDate,
         startTime: data.startTime,
         endTime: data.endTime,
-        duration: data.duration,
-        numPlayers: data.numPlayers,
+        duration: 60,
         totalAmount,
-        discountAmount,
-        couponCode: data.couponCode,
-        notes: data.notes,
+        notes: bookingNotes,
         status: "PENDING",
-        bookingServices: data.services
-          ? { create: data.services.map((s) => ({ additionalServiceId: s.serviceId, quantity: s.quantity, price: 0 })) }
-          : undefined,
       },
-      include: { turf: { include: { venue: true } }, bookingServices: { include: { additionalService: true } } },
+      include: { turf: { include: { venue: true } }, user: { select: { firstName: true, lastName: true, email: true, phone: true } } },
     });
 
     res.status(201).json(booking);

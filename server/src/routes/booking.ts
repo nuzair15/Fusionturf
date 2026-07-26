@@ -12,9 +12,7 @@ const router = Router();
 router.get("/venues", getVenues);
 router.get("/venues/:slug", getVenueBySlug);
 router.get("/slots", getAvailableSlots);
-
-// Protected
-router.post("/", authenticate, createBooking);
+router.post("/", createBooking);
 router.get("/my", authenticate, getMyBookings);
 router.patch("/:id/cancel", authenticate, cancelBooking);
 

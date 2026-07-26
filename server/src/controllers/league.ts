@@ -195,7 +195,7 @@ export const getFixtureById = async (req: Request, res: Response, next: NextFunc
           orderBy: [{ isStarter: "desc" }, { position: "asc" }],
         },
         matchPlayerRatings: {
-          include: { player: { select: { firstName: true, lastName: true } } },
+          include: { player: { select: { id: true, slug: true, firstName: true, lastName: true } } },
           orderBy: { rating: "desc" },
         },
         comments: {
@@ -453,6 +453,18 @@ export const getGallery = async (req: Request, res: Response, next: NextFunction
       take: 50,
     });
     res.json(items);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getSponsors = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sponsors = await prisma.sponsor.findMany({
+      where: { isActive: true },
+      orderBy: { tier: "asc" },
+    });
+    res.json({ data: sponsors });
   } catch (error) {
     next(error);
   }

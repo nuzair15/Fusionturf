@@ -145,6 +145,7 @@ export interface Fixture {
   referee?: string;
   stadium?: string;
   attendance?: number;
+  highlights?: string;
   manOfTheMatch?: Player;
   isFeatured?: boolean;
   goals?: Goal[];
@@ -199,7 +200,7 @@ export interface Lineup {
 
 export interface MatchPlayerRating {
   id: string;
-  player: { firstName: string; lastName: string };
+  player: { id: string; slug?: string; firstName: string; lastName: string };
   rating: number;
 }
 

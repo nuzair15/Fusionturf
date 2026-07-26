@@ -3,7 +3,7 @@ import {
   getSeasons, getCurrentSeason, getTeams, getTeamBySlug,
   getPlayers, getPlayerBySlug, getFixtures, getFixtureById,
   getStandings, getTopScorers, getTopAssists, getPlayerStats,
-  getAwards, getAwardBySlug, voteForAward, getNews, getGallery,
+  getAwards, getAwardBySlug, voteForAward, getNews, getGallery, getSponsors,
 } from "../controllers/league.js";
 import { authenticate, optionalAuth } from "../middleware/auth.js";
 
@@ -43,5 +43,8 @@ router.get("/news", getNews);
 
 // Gallery
 router.get("/gallery", getGallery);
+
+// Sponsors
+router.get("/sponsors", getSponsors);
 
 export default router;
