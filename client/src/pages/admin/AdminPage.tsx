@@ -339,18 +339,20 @@ export function AdminPage() {
           <>
             <AdminTable
               title="Teams"
-              columns={["Logo", "Name", "City", "Players", "Matches"]}
+              columns={["Logo", "Name", "City", "Status", "Players", "Matches"]}
               data={teams || []}
               renderRow={(t: Team) => [
                 <img src={t.logoUrl || "/placeholder.svg"} alt="" className="h-8 w-8 rounded-full bg-muted" />,
                 <span className="font-medium">{t.name}</span>,
                 t.city || "-",
+                <Badge variant={t.status === "active" || !t.status ? "default" : t.status === "relegated" ? "secondary" : "destructive"}>{t.status || "active"}</Badge>,
                 t._count?.players || 0,
                 t._count?.homeMatches || 0,
               ]}
-              onAdd={() => openForm("team", { name: "", shortName: "", city: "", seasonId: seasons?.[0]?.id || "" })}
+              onAdd={() => { setEditingItem(null); openForm("team", { name: "", shortName: "", city: "", seasonId: seasons?.[0]?.id || "", status: "active" }); }}
+              onEdit={(t) => { setEditingItem(t); openForm("team", { name: t.name, slug: t.slug, shortName: t.shortName || "", city: t.city || "", seasonId: t.seasonId, logoUrl: t.logoUrl || "", status: t.status || "active" }); }}
             />
-            <Dialog open={showForm === "team"} onClose={() => setShowForm(null)} title="Add Team">
+            <Dialog open={showForm === "team"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Team" : "Add Team"}>
               <div className="space-y-4">
                 <div className="space-y-1.5">
                   <Label>Team Name</Label>
@@ -367,6 +369,14 @@ export function AdminPage() {
                   </div>
                 </div>
                 <div className="space-y-1.5">
+                  <Label>Status</Label>
+                  <Select value={formData.status || "active"} onChange={(e) => handleFormChange("status", e.target.value)}>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="relegated">Relegated</option>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
                   <Label>Season</Label>
                   <Select value={formData.seasonId || ""} onChange={(e) => handleFormChange("seasonId", e.target.value)}>
                     <option value="">Select season...</option>
@@ -378,7 +388,7 @@ export function AdminPage() {
                 <ImageUploadField label="Logo" value={formData.logoUrl || ""} onChange={(value) => handleFormChange("logoUrl", value)} />
                 {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                 <Button className="w-full" onClick={() => submitForm("team", "/admin/teams", "admin-teams")}
-                  disabled={!formData.name || !formData.seasonId}>Create Team</Button>
+                  disabled={!formData.name || !formData.seasonId}>{editingItem ? "Update Team" : "Create Team"}</Button>
               </div>
             </Dialog>
           </>
@@ -397,9 +407,10 @@ export function AdminPage() {
                 p.position || "-",
                 p.jerseyNumber || "-",
               ]}
-              onAdd={() => openForm("player", { firstName: "", lastName: "", position: "", teamId: "", jerseyNumber: "", seasonId: seasons?.[0]?.id || "" })}
+              onAdd={() => { setEditingItem(null); openForm("player", { firstName: "", lastName: "", position: "", teamId: "", jerseyNumber: "", squadType: "" }); }}
+              onEdit={(p) => { setEditingItem(p); openForm("player", { firstName: p.firstName, lastName: p.lastName || "", position: p.position || "", teamId: p.teamId || "", jerseyNumber: p.jerseyNumber || "", squadType: p.squadType || "", photoUrl: p.photoUrl || "" }); }}
             />
-            <Dialog open={showForm === "player"} onClose={() => setShowForm(null)} title="Add Player">
+            <Dialog open={showForm === "player"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Player" : "Add Player"}>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
@@ -445,18 +456,10 @@ export function AdminPage() {
                     ))}
                   </Select>
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Season</Label>
-                  <Select value={formData.seasonId || ""} onChange={(e) => handleFormChange("seasonId", e.target.value)}>
-                    {(seasons || []).map((s: Season) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </Select>
-                </div>
                 <ImageUploadField label="Player Photo" value={formData.photoUrl || ""} onChange={(value) => handleFormChange("photoUrl", value)} />
                 {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                 <Button className="w-full" onClick={() => submitForm("player", "/admin/players", "admin-players")}
-                  disabled={!formData.firstName || !formData.teamId}>Create Player</Button>
+                  disabled={!formData.firstName || !formData.teamId}>{editingItem ? "Update Player" : "Create Player"}</Button>
               </div>
             </Dialog>
           </>

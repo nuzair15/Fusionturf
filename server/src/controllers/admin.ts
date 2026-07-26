@@ -78,10 +78,12 @@ export const getTeams = async (_req: Request, res: Response, next: NextFunction)
 
 export const createTeam = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const userId = req.user!.userId === "admin-panel" ? undefined : req.user!.userId;
-    const team = await prisma.team.create({
-      data: { ...req.body, ...(userId ? { managedById: userId } : {}) },
-    });
+    const { name, slug, shortName, logoUrl, city, seasonId, status } = req.body;
+    const teamSlug = slug || name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    const [team] = await prisma.$queryRawUnsafe(
+      `INSERT INTO "teams" ("id", "name", "slug", "shortName", "logoUrl", "city", "seasonId", "status", "isActive", "createdAt", "updatedAt") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW()) RETURNING *`,
+      require("uuid").v4(), name, teamSlug, shortName || null, logoUrl || null, city || null, seasonId, status || "active", status !== "inactive"
+    ) as any[];
     res.status(201).json(team);
   } catch (error) {
     next(error);
@@ -90,10 +92,23 @@ export const createTeam = async (req: Request, res: Response, next: NextFunction
 
 export const updateTeam = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const team = await prisma.team.update({
-      where: { id: req.params.id },
-      data: req.body,
-    });
+    const { name, slug, shortName, logoUrl, city, seasonId, status } = req.body;
+    const sets: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+    if (name !== undefined) { sets.push(`"name" = $${idx++}`); values.push(name); }
+    if (slug !== undefined) { sets.push(`"slug" = $${idx++}`); values.push(slug); }
+    if (shortName !== undefined) { sets.push(`"shortName" = $${idx++}`); values.push(shortName); }
+    if (logoUrl !== undefined) { sets.push(`"logoUrl" = $${idx++}`); values.push(logoUrl); }
+    if (city !== undefined) { sets.push(`"city" = $${idx++}`); values.push(city); }
+    if (seasonId !== undefined) { sets.push(`"seasonId" = $${idx++}`); values.push(seasonId); }
+    if (status !== undefined) { sets.push(`"status" = $${idx++}`, `"isActive" = $${idx++}`); values.push(status, status !== "inactive"); }
+    if (sets.length === 0) return res.status(400).json({ error: "Nothing to update" });
+    values.push(req.params.id);
+    const [team] = await prisma.$queryRawUnsafe(
+      `UPDATE "teams" SET ${sets.join(", ")}, "updatedAt" = NOW() WHERE "id" = $${idx} RETURNING *`,
+      ...values
+    ) as any[];
     res.json(team);
   } catch (error) {
     next(error);
@@ -121,7 +136,16 @@ export const getPlayers = async (req: Request, res: Response, next: NextFunction
 
 export const createPlayer = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const player = await prisma.player.create({ data: req.body });
+    const { firstName, lastName, position, teamId, jerseyNumber, squadType, photoUrl } = req.body;
+    if (!firstName || !teamId) return res.status(400).json({ error: "firstName and teamId are required" });
+    const slug = `${firstName.toLowerCase()}-${(lastName || "player").toLowerCase()}-${Date.now()}`.replace(/[^a-z0-9-]+/g, "-");
+    const seasonRow = await prisma.$queryRawUnsafe<{ seasonId: string }[]>(`SELECT "seasonId" FROM "teams" WHERE "id" = $1`, teamId);
+    const seasonId = seasonRow[0]?.seasonId;
+    if (!seasonId) return res.status(400).json({ error: "Team not found or has no season" });
+    const [player] = await prisma.$queryRawUnsafe(
+      `INSERT INTO "players" ("id", "firstName", "lastName", "slug", "position", "jerseyNumber", "squadType", "teamId", "seasonId", "photoUrl", "isActive", "createdAt", "updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW()) RETURNING *`,
+      require("uuid").v4(), firstName, lastName || "", slug, position || null, jerseyNumber ? parseInt(jerseyNumber) : null, squadType || null, teamId, seasonId, photoUrl || null, true
+    ) as any[];
     res.status(201).json(player);
   } catch (error) {
     next(error);
@@ -130,10 +154,31 @@ export const createPlayer = async (req: Request, res: Response, next: NextFuncti
 
 export const updatePlayer = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const player = await prisma.player.update({
-      where: { id: req.params.id },
-      data: req.body,
-    });
+    const { firstName, lastName, position, teamId, jerseyNumber, squadType, photoUrl } = req.body;
+    const sets: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+    if (firstName !== undefined) { sets.push(`"firstName" = $${idx++}`); values.push(firstName); }
+    if (lastName !== undefined) { sets.push(`"lastName" = $${idx++}`); values.push(lastName); }
+    if (position !== undefined) { sets.push(`"position" = $${idx++}`); values.push(position); }
+    if (jerseyNumber !== undefined) { sets.push(`"jerseyNumber" = $${idx++}`); values.push(parseInt(jerseyNumber)); }
+    if (squadType !== undefined) { sets.push(`"squadType" = $${idx++}`); values.push(squadType); }
+    if (teamId !== undefined) {
+      sets.push(`"teamId" = $${idx++}`);
+      values.push(teamId);
+      const seasonRow = await prisma.$queryRawUnsafe<{ seasonId: string }[]>(`SELECT "seasonId" FROM "teams" WHERE "id" = $1`, teamId);
+      if (seasonRow[0]?.seasonId) {
+        sets.push(`"seasonId" = $${idx++}`);
+        values.push(seasonRow[0].seasonId);
+      }
+    }
+    if (photoUrl !== undefined) { sets.push(`"photoUrl" = $${idx++}`); values.push(photoUrl); }
+    if (sets.length === 0) return res.status(400).json({ error: "Nothing to update" });
+    values.push(req.params.id);
+    const [player] = await prisma.$queryRawUnsafe(
+      `UPDATE "players" SET ${sets.join(", ")}, "updatedAt" = NOW() WHERE "id" = $${idx} RETURNING *`,
+      ...values
+    ) as any[];
     res.json(player);
   } catch (error) {
     next(error);

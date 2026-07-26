@@ -42,6 +42,8 @@ export interface Team {
   achievements?: any;
   website?: string;
   socialLinks?: any;
+  status?: string;
+  isActive?: boolean;
   players?: Player[];
   staff?: Staff[];
   standings?: Standing[];
@@ -71,6 +73,7 @@ export interface Player {
   position?: string;
   photoUrl?: string;
   biography?: string;
+  squadType?: string;
   homeStats?: PlayerStat[];
   awards?: AwardWinner[];
   galleries?: Gallery[];

@@ -482,6 +482,7 @@ model Team {
   achievements Json?
   website      String?
   socialLinks  Json?
+  status       String   @default("active")
   isActive     Boolean  @default(true)
   managedById  String?
   managedBy    User?    @relation("ManagedTeams", fields: [managedById], references: [id])
