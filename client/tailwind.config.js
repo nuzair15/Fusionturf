@@ -43,6 +43,8 @@ export default {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        xl: "var(--radius)",
+        "2xl": "var(--radius)",
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],

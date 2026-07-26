@@ -54,7 +54,7 @@ export function HomePage() {
 
         <div className="relative mx-auto max-w-7xl px-4 pb-20 pt-16 sm:px-6 sm:pb-28 sm:pt-24 lg:px-8">
           <motion.div initial="hidden" animate="show" variants={stagger} className="text-center">
-            <motion.div variants={fadeUp} className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-white/80 backdrop-blur-sm">
+            <motion.div variants={fadeUp} className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-white/80">
               <Sparkles className="h-4 w-4 text-yellow-400" /> Season 2025-2026 is live
             </motion.div>
             <motion.h1 variants={fadeUp} className="text-4xl font-extrabold tracking-tight text-white sm:text-6xl lg:text-7xl">
@@ -86,7 +86,7 @@ export function HomePage() {
               { icon: Calendar, label: "Matches Played", value: "40+", color: "text-[#00d66f]" },
               { icon: MapPin, label: "Turf Venues", value: "1", color: "text-[#00d66f]" },
             ].map((stat) => (
-              <motion.div key={stat.label} variants={fadeUp} className="glass rounded-2xl p-6 text-center">
+              <motion.div key={stat.label} variants={fadeUp} className="border bg-card p-6 text-center">
                 <stat.icon className={`mx-auto h-8 w-8 ${stat.color}`} />
                 <p className="mt-2 text-2xl font-bold">{stat.value}</p>
                 <p className="text-sm text-muted-foreground">{stat.label}</p>

@@ -18,7 +18,7 @@ export function Navbar() {
   const siteName = settings?.site_name || "Fusion League";
 
   return (
-    <nav className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-xl">
+    <nav className="sticky top-0 z-50 w-full border-b bg-background">
       <div className="mx-auto flex h-16 items-center justify-between px-4 sm:px-6 md:h-20">
         <Link to="/" className="flex items-center gap-3">
           {siteLogoUrl ? (

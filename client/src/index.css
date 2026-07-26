@@ -23,7 +23,7 @@
     --border: 222 30% 86%;
     --input: 222 30% 86%;
     --ring: 142 76% 46%;
-    --radius: 0.75rem;
+    --radius: 0px;
   }
 
   .dark {
@@ -58,18 +58,6 @@
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
   }
-}
-
-/* Glassmorphism */
-.glass {
-  background: rgba(10, 24, 56, 0.05);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(10, 24, 56, 0.1);
-}
-
-.dark .glass {
-  background: rgba(6, 14, 32, 0.4);
-  border: 1px solid rgba(6, 14, 32, 0.1);
 }
 
 /* Custom scrollbar */
