@@ -2,6 +2,7 @@ import { Router } from "express";
 import { authenticate, authorize } from "../middleware/auth.js";
 import * as admin from "../controllers/admin.js";
 import * as bookingAdmin from "../controllers/booking.js";
+import prisma from "../config/database.js";
 
 const router = Router();
 
@@ -90,5 +91,33 @@ router.post("/process-match-result/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"
 // Live Match Stats
 router.get("/fixtures/:id/live-stats", admin.getLiveStats);
 router.post("/fixtures/:id/live-stats/update", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.updateLiveStat);
+
+// Debug - schema check
+router.get("/debug/schema", async (_req, res) => {
+  try {
+    const result = await prisma.$queryRawUnsafe(
+      `SELECT column_name, data_type, is_nullable, column_default 
+       FROM information_schema.columns 
+       WHERE table_name = 'seasons' 
+       ORDER BY ordinal_position`
+    );
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Debug - test season create
+router.post("/debug/create-season", async (req, res) => {
+  try {
+    const { name, slug, startDate, endDate, isActive, isCurrent } = req.body;
+    const season = await prisma.season.create({
+      data: { name, slug, startDate: new Date(startDate), endDate: new Date(endDate), isActive: !!isActive, isCurrent: !!isCurrent },
+    });
+    res.status(201).json(season);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message, code: err.code, meta: err.meta });
+  }
+});
 
 export default router;
