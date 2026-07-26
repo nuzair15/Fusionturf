@@ -6,10 +6,15 @@ if (!process.env.DATABASE_URL) {
   process.env.DATABASE_URL = fallbackDatabaseUrl;
 }
 
+const corsOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173,https://fusion-league-client.onrender.com")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 export const config = {
   port: parseInt(process.env.PORT || "5000", 10),
   nodeEnv: process.env.NODE_ENV || "development",
-  corsOrigin: process.env.CORS_ORIGIN || "http://localhost:5173",
+  corsOrigin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
   frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
 
   database: {

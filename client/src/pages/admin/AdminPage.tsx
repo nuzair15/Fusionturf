@@ -264,11 +264,44 @@ export function AdminPage() {
               ]}
               onAdd={() => openForm("season", { name: "", isActive: true, isCurrent: false })}
             />
+            <div className="mb-4 rounded-2xl border bg-card p-4 shadow-sm">
+              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">League System Actions</h3>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={async () => {
+                  const s = (seasons || []).find((s: Season) => s.isCurrent);
+                  if (!s) return setFormErrors("No current season selected");
+                  try { setFormErrors(""); await api.post(`/admin/seasons/${s.id}/generate-fixtures`, {}); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); } catch (e: any) { setFormErrors(e.message); }
+                }}>Generate Fixtures (30)</Button>
+                <Button size="sm" variant="outline" onClick={async () => {
+                  const s = (seasons || []).find((s: Season) => s.isCurrent);
+                  if (!s) return setFormErrors("No current season selected");
+                  try { setFormErrors(""); await api.post(`/admin/seasons/${s.id}/postseason`, {}); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); } catch (e: any) { setFormErrors(e.message); }
+                }}>Generate Post-Season</Button>
+                <Button size="sm" variant="outline" onClick={async () => {
+                  const s = (seasons || []).find((s: Season) => s.isCurrent);
+                  if (!s) return setFormErrors("No current season selected");
+                  try { setFormErrors(""); await api.post(`/admin/seasons/${s.id}/transfer-window/open`, {}); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); } catch (e: any) { setFormErrors(e.message); }
+                }}>Open Transfer Window</Button>
+                <Button size="sm" variant="outline" onClick={async () => {
+                  const s = (seasons || []).find((s: Season) => s.isCurrent);
+                  if (!s) return setFormErrors("No current season selected");
+                  try { setFormErrors(""); await api.post(`/admin/seasons/${s.id}/transfer-window/close`, {}); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); } catch (e: any) { setFormErrors(e.message); }
+                }}>Close Transfer Window</Button>
+                <Button size="sm" variant="default" onClick={async () => {
+                  const s = (seasons || []).find((s: Season) => s.isCurrent);
+                  if (!s) return setFormErrors("No current season selected");
+                  const name = prompt("New season name (e.g. April – June 2026):");
+                  if (!name) return;
+                  try { setFormErrors(""); await api.post(`/admin/seasons/${s.id}/create-next`, { name, startDate: new Date().toISOString(), endDate: new Date(Date.now() + 120 * 86400000).toISOString() }); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); } catch (e: any) { setFormErrors(e.message); }
+                }}>Create Next Season</Button>
+              </div>
+              {formErrors && <p className="mt-2 text-sm text-destructive">{formErrors}</p>}
+            </div>
             <Dialog open={showForm === "season"} onClose={() => setShowForm(null)} title="Add Season">
               <div className="space-y-4">
                 <div className="space-y-1.5">
                   <Label>Season Name</Label>
-                  <Input value={formData.name || ""} onChange={(e) => handleFormChange("name", e.target.value)} placeholder="e.g. January - March 2026" />
+                  <Input value={formData.name || ""} onChange={(e) => handleFormChange("name", e.target.value)} placeholder="e.g. January – March 2026" />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Start Date</Label>
@@ -385,6 +418,15 @@ export function AdminPage() {
                     <Label>Jersey #</Label>
                     <Input type="number" min={1} max={99} value={formData.jerseyNumber || ""} onChange={(e) => handleFormChange("jerseyNumber", e.target.value ? parseInt(e.target.value) : "")} placeholder="10" />
                   </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Squad Type</Label>
+                  <Select value={formData.squadType || ""} onChange={(e) => handleFormChange("squadType", e.target.value)}>
+                    <option value="">Select squad type...</option>
+                    <option value="STARTER">Starter (6 per team)</option>
+                    <option value="SUBSTITUTE">Substitute (2 per team)</option>
+                    <option value="RESERVE">Reserve (4 per team)</option>
+                  </Select>
                 </div>
                 <div className="space-y-1.5">
                   <Label>Team *</Label>
@@ -513,15 +555,27 @@ export function AdminPage() {
                     <Input type="number" min={0} value={formData.awayScore ?? 0} onChange={(e) => handleFormChange("awayScore", parseInt(e.target.value) || 0)} />
                   </div>
                 </div>
-                <Button className="w-full" onClick={async () => {
-                  try {
-                    await api.patch(`/admin/fixtures/${formData.fixtureId}/score`, { homeScore: formData.homeScore, awayScore: formData.awayScore });
-                    setShowForm(null);
-                    queryClient.invalidateQueries({ queryKey: ["admin-fixtures"] });
-                  } catch (err: any) {
-                    setFormErrors(err.message);
-                  }
-                }}>Update Score</Button>
+                <div className="flex gap-2">
+                  <Button className="flex-1" variant="outline" onClick={async () => {
+                    try {
+                      await api.patch(`/admin/fixtures/${formData.fixtureId}/score`, { homeScore: formData.homeScore, awayScore: formData.awayScore });
+                      setShowForm(null);
+                      queryClient.invalidateQueries({ queryKey: ["admin-fixtures"] });
+                    } catch (err: any) {
+                      setFormErrors(err.message);
+                    }
+                  }}>Update Score Only</Button>
+                  <Button className="flex-1" onClick={async () => {
+                    try {
+                      await api.post(`/admin/process-match-result/${formData.fixtureId}`, { homeScore: formData.homeScore, awayScore: formData.awayScore });
+                      setShowForm(null);
+                      queryClient.invalidateQueries({ queryKey: ["admin-fixtures"] });
+                      queryClient.invalidateQueries({ queryKey: ["admin-standings"] });
+                    } catch (err: any) {
+                      setFormErrors(err.message);
+                    }
+                  }}>Process Full Result</Button>
+                </div>
               </div>
             </Dialog>
           </>

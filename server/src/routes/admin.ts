@@ -77,4 +77,14 @@ router.post("/turfs", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), admin.createT
 router.patch("/turfs/:id", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), admin.updateTurf);
 router.delete("/turfs/:id", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), admin.deleteTurf);
 
+// League System Operations
+router.post("/seasons/:id/generate-fixtures", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.generateFixtures);
+router.post("/seasons/:id/postseason", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.generatePostSeason);
+router.post("/seasons/:id/transfer-window/open", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.adminOpenTransferWindow);
+router.post("/seasons/:id/transfer-window/close", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.adminCloseTransferWindow);
+router.post("/seasons/:id/create-next", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.adminCreateNextSeason);
+router.post("/fixtures/:id/squad", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.adminSelectMatchdaySquad);
+router.get("/teams/:id/validate-squad", admin.adminValidateSquad);
+router.post("/process-match-result/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.adminProcessMatchResult);
+
 export default router;

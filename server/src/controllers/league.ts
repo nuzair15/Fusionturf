@@ -469,3 +469,73 @@ export const getSponsors = async (_req: Request, res: Response, next: NextFuncti
     next(error);
   }
 };
+
+// ─── League System ───
+
+export const getMatchdaySquad = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const squad = await prisma.matchdaySquad.findMany({
+      where: { fixtureId: req.params.id },
+      include: {
+        team: { select: { id: true, name: true, shortName: true, logoUrl: true } },
+        entries: { include: { player: { select: { id: true, firstName: true, lastName: true, photoUrl: true, jerseyNumber: true, position: true } } } },
+      },
+    });
+    res.json({ data: squad });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getSuspensions = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { seasonId, teamId } = req.query;
+    const where: any = { isActive: true };
+    if (seasonId) where.seasonId = seasonId;
+    if (teamId) where.player = { teamId: teamId as string };
+    const suspensions = await prisma.suspension.findMany({
+      where,
+      include: {
+        player: { select: { id: true, firstName: true, lastName: true, photoUrl: true, jerseyNumber: true, team: { select: { id: true, name: true, shortName: true, logoUrl: true } } } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json({ data: suspensions });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getPlayerSuspensions = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const suspensions = await prisma.suspension.findMany({
+      where: { playerId: req.params.playerId, isActive: true },
+      include: { season: { select: { id: true, name: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json({ data: suspensions });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAwardLeaderboard = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { seasonId } = req.query;
+    const where: any = {};
+    if (seasonId) where.seasonId = seasonId;
+
+    const stats = await prisma.playerStat.findMany({
+      where,
+      include: {
+        player: { select: { id: true, firstName: true, lastName: true, photoUrl: true, jerseyNumber: true, position: true, team: { select: { id: true, name: true, shortName: true, logoUrl: true } } } },
+      },
+      orderBy: [{ goals: "desc" }, { assists: "desc" }],
+      take: 20,
+    });
+
+    res.json({ data: stats });
+  } catch (error) {
+    next(error);
+  }
+};

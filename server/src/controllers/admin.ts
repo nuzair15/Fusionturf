@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import prisma from "../config/database.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { paginate, paginatedResponse } from "../utils/helpers.js";
+import * as leagueSystem from "../services/league-system.js";
 
 // ─── Seasons Management ───
 
@@ -595,6 +596,89 @@ export const deleteTurf = async (req: Request, res: Response, next: NextFunction
   try {
     await prisma.turf.delete({ where: { id: req.params.id } });
     res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── League System Operations ───
+
+export const generateFixtures = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await leagueSystem.generateSeasonFixtures(req.params.id);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const generatePostSeason = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await leagueSystem.generatePostSeasonFixtures(req.params.id);
+    res.json({ message: "Post-season fixtures created" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const adminOpenTransferWindow = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const days = parseInt(req.query.days as string) || 7;
+    await leagueSystem.openTransferWindow(req.params.id, days);
+    res.json({ message: `Transfer window opened for ${days} days` });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const adminCloseTransferWindow = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await leagueSystem.closeTransferWindow(req.params.id);
+    res.json({ message: "Transfer window closed" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const adminCreateNextSeason = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { name, startDate, endDate } = req.body;
+    if (!name || !startDate || !endDate) throw new AppError("name, startDate, endDate required", 400);
+    const newSeasonId = await leagueSystem.createNextSeason(req.params.id, name, new Date(startDate), new Date(endDate));
+    res.status(201).json({ id: newSeasonId });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const adminSelectMatchdaySquad = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { teamId, playerIds } = req.body;
+    if (!teamId || !playerIds) throw new AppError("teamId and playerIds required", 400);
+    await leagueSystem.selectMatchdaySquad(req.params.id, teamId, playerIds);
+    res.json({ message: "Matchday squad selected" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const adminValidateSquad = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { seasonId } = req.query;
+    if (!seasonId) throw new AppError("seasonId query param required", 400);
+    const result = await leagueSystem.validateSquad(req.params.id, seasonId as string);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const adminProcessMatchResult = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { homeScore, awayScore } = req.body;
+    if (homeScore === undefined || awayScore === undefined) throw new AppError("homeScore and awayScore required", 400);
+    await leagueSystem.processMatchResult(req.params.id, homeScore, awayScore);
+    res.json({ message: "Match result processed" });
   } catch (error) {
     next(error);
   }

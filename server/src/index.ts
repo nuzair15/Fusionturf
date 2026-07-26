@@ -11,7 +11,18 @@ const app = express();
 
 // Security
 app.use(helmet());
-app.use(cors({ origin: config.corsOrigin, credentials: true }));
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    const allowed = config.corsOrigin;
+    if (!origin || allowed === "*" || (Array.isArray(allowed) ? allowed.includes(origin) : allowed === origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+};
+app.use(cors(corsOptions));
 
 // Rate limiting
 app.use(

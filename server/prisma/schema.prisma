@@ -41,9 +41,23 @@ enum PaymentStatus {
 enum MatchStatus {
   SCHEDULED
   LIVE
-  POSTPONED
-  CANCELLED
   COMPLETED
+  CANCELLED
+  POSTPONED
+}
+
+enum SquadType {
+  STARTER
+  SUBSTITUTE
+  RESERVE
+}
+
+enum SuspensionReason {
+  YELLOW_ACCUMULATION
+  STRAIGHT_RED
+  SECOND_YELLOW
+  VIOLENT_CONDUCT
+  SERIOUS_MISCONDUCT
 }
 
 enum AwardVotingType {
@@ -409,6 +423,11 @@ model Season {
   isActive    Boolean  @default(false)
   isCurrent   Boolean  @default(false)
   description String?
+  leagueWeeks Int      @default(7)
+  fixtureDays String   @default("Friday,Saturday,Sunday")
+  transferWindowOpen   Boolean @default(false)
+  transferWindowStartsAt DateTime?
+  transferWindowEndsAt   DateTime?
   managedById String?
   managedBy   User?    @relation("ManagedSeasons", fields: [managedById], references: [id])
   createdAt   DateTime @default(now())
@@ -418,6 +437,7 @@ model Season {
   players      Player[]
   fixtures     Fixture[]
   standings    Standing[]
+  suspensions  Suspension[]
   awards       Award[]
   competitions Competition[]
   previousWinners PreviousWinner[]
@@ -479,6 +499,7 @@ model Team {
   news            News[]
   homePlayerStats PlayerStat[] @relation("homePlayerStats")
   lineups         Lineup[]
+  matchdaySquads  MatchdaySquad[]
 
   @@unique([seasonId, slug])
   @@map("teams")
@@ -503,6 +524,7 @@ model Player {
   position      String?  // GK, CB, LB, RB, CM, CAM, CDM, LM, RM, LW, RW, ST, CF
   photoUrl      String?
   biography     String?
+  squadType     SquadType? // STARTER, SUBSTITUTE, RESERVE
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -511,11 +533,13 @@ model Player {
   goals             Goal[]
   assists           Assist[]
   cards             Card[]
+  suspensions       Suspension[]
   subsOff           Substitution[] @relation("PlayerOff")
   subsOn            Substitution[] @relation("PlayerOn")
   previousWinners   PreviousWinner[]
   matchPlayerRatings MatchPlayerRating[]
   lineups           Lineup[]
+  squadSelections   MatchdaySquadEntry[]
   awardsWon         Award[]
   awardNominations  AwardNomination[]
   votesReceived     Vote[]
@@ -560,6 +584,9 @@ model Fixture {
   matchDate      DateTime
   kickoffTime    String?
   round          Int?
+  leagueWeek     Int?
+  isGrandFinal   Boolean       @default(false)
+  isRelegationPlayoff Boolean  @default(false)
   status         MatchStatus   @default(SCHEDULED)
   homeScore      Int?
   awayScore      Int?
@@ -596,6 +623,7 @@ model Fixture {
   lineups         Lineup[]
   matchPlayerRatings MatchPlayerRating[]
   comments        MatchComment[]
+  matchdaySquads  MatchdaySquad[]
   galleries       Gallery[]
 
   @@index([seasonId])
@@ -707,6 +735,53 @@ model MatchComment {
   createdAt DateTime @default(now())
 
   @@map("match_comments")
+}
+
+model MatchdaySquad {
+  id        String   @id @default(uuid())
+  fixtureId String
+  fixture   Fixture  @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id])
+  createdAt DateTime @default(now())
+
+  entries MatchdaySquadEntry[]
+
+  @@unique([fixtureId, teamId])
+  @@map("matchday_squads")
+}
+
+model MatchdaySquadEntry {
+  id            String      @id @default(uuid())
+  squadId       String
+  squad         MatchdaySquad @relation(fields: [squadId], references: [id], onDelete: Cascade)
+  playerId      String
+  player        Player      @relation(fields: [playerId], references: [id])
+  isStarter     Boolean     @default(true)
+  jerseyNumber  Int?
+  createdAt     DateTime    @default(now())
+
+  @@unique([squadId, playerId])
+  @@map("matchday_squad_entries")
+}
+
+model Suspension {
+  id        String           @id @default(uuid())
+  seasonId  String
+  season    Season           @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  playerId  String
+  player    Player           @relation(fields: [playerId], references: [id])
+  reason    SuspensionReason
+  matchBan  Int              @default(1)
+  startDate DateTime         @default(now())
+  endDate   DateTime?
+  served   Int              @default(0)
+  isActive Boolean          @default(true)
+  notes    String?
+  createdAt DateTime         @default(now())
+
+  @@index([seasonId, playerId])
+  @@map("suspensions")
 }
 
 // ──────────────────────────────────────────────────────────────

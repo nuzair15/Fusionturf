@@ -4,6 +4,7 @@ import {
   getPlayers, getPlayerBySlug, getFixtures, getFixtureById,
   getStandings, getTopScorers, getTopAssists, getPlayerStats,
   getAwards, getAwardBySlug, voteForAward, getNews, getGallery, getSponsors,
+  getMatchdaySquad, getSuspensions, getPlayerSuspensions, getAwardLeaderboard,
 } from "../controllers/league.js";
 import { authenticate, optionalAuth } from "../middleware/auth.js";
 
@@ -46,5 +47,11 @@ router.get("/gallery", getGallery);
 
 // Sponsors
 router.get("/sponsors", getSponsors);
+
+// League System
+router.get("/fixtures/:id/squad", getMatchdaySquad);
+router.get("/suspensions", getSuspensions);
+router.get("/suspensions/player/:playerId", getPlayerSuspensions);
+router.get("/stats/awards", getAwardLeaderboard);
 
 export default router;
