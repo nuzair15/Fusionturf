@@ -24,14 +24,12 @@ export const createSeason = async (req: Request, res: Response, next: NextFuncti
     if (!name || !slug || !startDate || !endDate) {
       throw new AppError("name, slug, startDate, endDate are required", 400);
     }
-    const data = { name, slug, startDate: new Date(startDate), endDate: new Date(endDate), isActive: !!isActive, isCurrent: !!isCurrent };
-    console.log("createSeason data:", JSON.stringify(data));
-    const season = await prisma.season.create({ data });
+    const season = await prisma.season.create({
+      data: { name, slug, startDate: new Date(startDate), endDate: new Date(endDate), isActive: !!isActive, isCurrent: !!isCurrent },
+    });
     res.status(201).json(season);
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error("createSeason error:", msg, error instanceof Error ? error.stack : "");
-    return res.status(500).json({ error: msg });
+    next(error);
   }
 };
 
