@@ -80,9 +80,7 @@ export function AdminPage() {
     return (
       <div className="mx-auto flex min-h-[60vh] max-w-md items-center px-4 py-20">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full text-center">
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0a1838] to-[#00d66f]">
-            <Lock className="h-8 w-8 text-white" />
-          </div>
+          <img src="/logo.svg" alt="Fusion" className="mx-auto mb-6 h-16 w-auto" />
           <h1 className="text-2xl font-bold">Admin Access</h1>
           <p className="mt-2 text-muted-foreground">Enter the admin password to continue.</p>
           <form

@@ -29,9 +29,7 @@ export function Footer() {
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <Link to="/" className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#0a1838] to-[#00d66f]">
-                <span className="text-sm font-bold text-white">FL</span>
-              </div>
+              <img src="/logo.svg" alt="Fusion League" className="h-8 w-auto" />
               <span className="text-lg font-bold">Fusion League</span>
             </Link>
             <p className="mt-3 text-sm text-muted-foreground">

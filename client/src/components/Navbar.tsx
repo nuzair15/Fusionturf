@@ -25,9 +25,7 @@ export function Navbar() {
             <img src={siteLogoUrl} alt={siteName} className="h-9 w-auto max-w-[140px] object-contain md:h-10 md:max-w-[160px]" />
           ) : (
             <>
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-[#0a1838] to-[#00d66f] md:h-10 md:w-10">
-                <span className="text-sm font-bold text-white md:text-base">FL</span>
-              </div>
+              <img src="/logo.svg" alt={siteName} className="h-9 w-auto object-contain md:h-10" />
               <span className="text-lg font-bold md:text-xl">{siteName}</span>
             </>
           )}
