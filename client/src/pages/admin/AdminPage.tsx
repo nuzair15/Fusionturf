@@ -915,6 +915,30 @@ export function AdminPage() {
                       </div>
                     )}
                   </div>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Favicon</p>
+                    {settings?.site_favicon_url ? (
+                      <div className="flex items-center gap-3 border p-4">
+                        <img src={settings.site_favicon_url} alt="Favicon" className="h-8 w-8 object-contain" />
+                        <div className="flex-1 min-w-0">
+                          <p className="truncate text-xs text-muted-foreground">{settings.site_favicon_url}</p>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => openForm("editSetting", { key: "site_favicon_url", value: settings.site_favicon_url })}>Change</Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between border border-dashed p-4">
+                        <p className="text-sm text-muted-foreground">No favicon set</p>
+                        <Button variant="outline" size="sm" onClick={() => openForm("editSetting", { key: "site_favicon_url", value: "" })}>Add URL</Button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Site Name (Page Title)</p>
+                    <div className="flex items-center gap-2 border p-4">
+                      <p className="flex-1 text-sm font-medium truncate">{settings?.site_name || "Fusion League"}</p>
+                      <Button variant="outline" size="sm" onClick={() => openForm("editSetting", { key: "site_name", value: settings?.site_name || "" })}>Edit</Button>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
 
@@ -946,10 +970,11 @@ export function AdminPage() {
                 </CardContent>
               </Card>
             </div>
-            <Dialog open={showForm === "editSetting"} onClose={() => setShowForm(null)} title={`Edit Setting: ${formData.key}`}>
+            <Dialog open={showForm === "editSetting"} onClose={() => setShowForm(null)} title={`Edit Setting`}>
               <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label>Value for {formData.key}</Label>
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">Setting: <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{formData.key}</code></p>
+                  <Label>Value</Label>
                   <Input value={formData.value || ""} onChange={(e) => handleFormChange("value", e.target.value)} />
                 </div>
                 <Button className="w-full" onClick={async () => {
@@ -964,12 +989,13 @@ export function AdminPage() {
             <Dialog open={showForm === "addSetting"} onClose={() => setShowForm(null)} title="Add Setting">
               <div className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label>Key</Label>
-                  <Input value={formData.key || ""} onChange={(e) => handleFormChange("key", e.target.value)} placeholder="setting_key" />
+                  <Label>Setting Key</Label>
+                  <Input value={formData.key || ""} onChange={(e) => handleFormChange("key", e.target.value)} placeholder="e.g. site_favicon_url, site_name, contact_email" />
+                  <p className="text-xs text-muted-foreground">Use snake_case. Examples: <code className="rounded bg-muted px-1">site_name</code>, <code className="rounded bg-muted px-1">site_favicon_url</code>, <code className="rounded bg-muted px-1">contact_phone</code></p>
                 </div>
                 <div className="space-y-1.5">
                   <Label>Value</Label>
-                  <Input value={formData.value || ""} onChange={(e) => handleFormChange("value", e.target.value)} placeholder="Value" />
+                  <Input value={formData.value || ""} onChange={(e) => handleFormChange("value", e.target.value)} placeholder="Setting value" />
                 </div>
                 <Button className="w-full" onClick={async () => {
                   try {
