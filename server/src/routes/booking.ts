@@ -1,6 +1,6 @@
 import { Router } from "express";
 import {
-  getVenues, getVenueBySlug, getAvailableSlots, createBooking,
+  getVenues, getVenueBySlug, getAvailableSlots, getBookedSlotsForTurf, createBooking,
   getMyBookings, cancelBooking,
   adminGetAllBookings, adminBlockDate, adminRevenueAnalytics,
 } from "../controllers/booking.js";
@@ -12,6 +12,7 @@ const router = Router();
 router.get("/venues", getVenues);
 router.get("/venues/:slug", getVenueBySlug);
 router.get("/slots", getAvailableSlots);
+router.get("/booked-slots/:turfId", getBookedSlotsForTurf);
 router.post("/", createBooking);
 router.get("/my", authenticate, getMyBookings);
 router.patch("/:id/cancel", authenticate, cancelBooking);

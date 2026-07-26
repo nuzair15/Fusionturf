@@ -732,7 +732,7 @@ export function AdminPage() {
                             </div>
                             <div className="flex items-center gap-3">
                               <span className="font-medium">₹{(t.basePrice / 100).toFixed(0)}/hr</span>
-                              <Button variant="ghost" size="sm" onClick={() => openForm("turfEdit", { id: t.id, venueId: v.id, name: t.name, size: t.size || "5-a-side", surface: t.surface || "Artificial", basePrice: t.basePrice })}>
+                              <Button variant="ghost" size="sm" onClick={() => openForm("turfEdit", { id: t.id, venueId: v.id, name: t.name, size: t.size || "5-a-side", surface: t.surface || "Artificial", basePrice: t.basePrice, peakPrice: (t as any).peakPrice || 0, weekendPrice: (t as any).weekendPrice || 0 })}>
                                 <Edit2 className="h-4 w-4" />
                               </Button>
                               <Button variant="ghost" size="sm" onClick={() => {
@@ -745,7 +745,7 @@ export function AdminPage() {
                     ) : (
                       <p className="text-sm text-muted-foreground">No turfs yet</p>
                     )}
-                    <Button variant="outline" size="sm" className="mt-3" onClick={() => openForm("turf", { venueId: v.id, name: "", size: "5-a-side", surface: "Artificial", basePrice: 50000 })}>
+                    <Button variant="outline" size="sm" className="mt-3" onClick={() => openForm("turf", { venueId: v.id, name: "", size: "5-a-side", surface: "Artificial", basePrice: 50000, peakPrice: 0, weekendPrice: 0 })}>
                       <Plus className="mr-1 h-4 w-4" /> Add Turf
                     </Button>
                   </CardContent>
@@ -858,21 +858,29 @@ export function AdminPage() {
                     <option value="Natural">Natural Grass</option>
                   </Select>
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Base Price (in paise, ₹500 = 50000)</Label>
-                  <Input type="number" min={0} value={formData.basePrice || 50000} onChange={(e) => handleFormChange("basePrice", parseInt(e.target.value) || 50000)} />
-                </div>
-                {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
-                <Button className="w-full" onClick={async () => {
-                  try {
-                    await api.post("/admin/turfs", { name: formData.name, venueId: formData.venueId, size: formData.size, surface: formData.surface, basePrice: formData.basePrice });
+                  <div className="space-y-1.5">
+                    <Label>Base Price (₹ per hour)</Label>
+                    <Input type="number" min={0} value={formData.basePrice ? Math.round(formData.basePrice / 100) : ""} onChange={(e) => handleFormChange("basePrice", (parseInt(e.target.value) || 0) * 100)} placeholder="e.g. 500" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Peak Price (₹ per hour, optional)</Label>
+                    <Input type="number" min={0} value={formData.peakPrice ? Math.round(formData.peakPrice / 100) : ""} onChange={(e) => handleFormChange("peakPrice", (parseInt(e.target.value) || 0) * 100)} placeholder="e.g. 700" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Weekend Price (₹ per hour, optional)</Label>
+                    <Input type="number" min={0} value={formData.weekendPrice ? Math.round(formData.weekendPrice / 100) : ""} onChange={(e) => handleFormChange("weekendPrice", (parseInt(e.target.value) || 0) * 100)} placeholder="e.g. 600" />
+                  </div>
+                  {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
+                  <Button className="w-full" onClick={async () => {
+                    try {
+                      await api.post("/admin/turfs", { name: formData.name, venueId: formData.venueId, size: formData.size, surface: formData.surface, basePrice: formData.basePrice, peakPrice: formData.peakPrice, weekendPrice: formData.weekendPrice });
                     setShowForm(null);
                     queryClient.invalidateQueries({ queryKey: ["admin-venues"] });
                   } catch (err: any) { setFormErrors(err.message); }
                 }} disabled={!formData.name}>Create Turf</Button>
               </div>
             </Dialog>
-            <Dialog open={showForm === "turfEdit"} onClose={() => setShowForm(null)} title="Edit Turf">
+              <Dialog open={showForm === "turfEdit"} onClose={() => setShowForm(null)} title="Edit Turf">
               <div className="space-y-4">
                 <div className="space-y-1.5">
                   <Label>Name</Label>
@@ -894,12 +902,20 @@ export function AdminPage() {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Base Price (in paise)</Label>
-                  <Input type="number" min={0} value={formData.basePrice || 50000} onChange={(e) => handleFormChange("basePrice", parseInt(e.target.value) || 50000)} />
+                  <Label>Base Price (₹ per hour)</Label>
+                  <Input type="number" min={0} value={formData.basePrice ? Math.round(formData.basePrice / 100) : ""} onChange={(e) => handleFormChange("basePrice", (parseInt(e.target.value) || 0) * 100)} placeholder="e.g. 500" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Peak Price (₹ per hour, optional)</Label>
+                  <Input type="number" min={0} value={formData.peakPrice ? Math.round(formData.peakPrice / 100) : ""} onChange={(e) => handleFormChange("peakPrice", (parseInt(e.target.value) || 0) * 100)} placeholder="e.g. 700" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Weekend Price (₹ per hour, optional)</Label>
+                  <Input type="number" min={0} value={formData.weekendPrice ? Math.round(formData.weekendPrice / 100) : ""} onChange={(e) => handleFormChange("weekendPrice", (parseInt(e.target.value) || 0) * 100)} placeholder="e.g. 600" />
                 </div>
                 <Button className="w-full" onClick={async () => {
                   try {
-                    await api.patch(`/admin/turfs/${formData.id}`, { name: formData.name, size: formData.size, surface: formData.surface, basePrice: formData.basePrice });
+                    await api.patch(`/admin/turfs/${formData.id}`, { name: formData.name, size: formData.size, surface: formData.surface, basePrice: formData.basePrice, peakPrice: formData.peakPrice, weekendPrice: formData.weekendPrice });
                     setShowForm(null);
                     queryClient.invalidateQueries({ queryKey: ["admin-venues"] });
                   } catch (err: any) { setFormErrors(err.message); }

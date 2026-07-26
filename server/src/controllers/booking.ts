@@ -93,6 +93,27 @@ export const getAvailableSlots = async (req: Request, res: Response, next: NextF
   }
 };
 
+export const getBookedSlotsForTurf = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { turfId } = req.params;
+    const { date } = req.query;
+    if (!date) throw new AppError("date query param required", 400);
+    const matchDate = new Date(date as string);
+    const bookings = await prisma.booking.findMany({
+      where: {
+        turfId,
+        date: matchDate,
+        status: { not: "CANCELLED" },
+      },
+      select: { startTime: true, endTime: true },
+      orderBy: { startTime: "asc" },
+    });
+    res.json(bookings);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const createBooking = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = createBookingSchema.parse(req).body;
@@ -100,8 +121,20 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
     const turf = await prisma.turf.findUnique({ where: { id: data.turfId } });
     if (!turf) throw new AppError("Turf not found", 404);
 
-    let totalAmount = turf.basePrice;
+    // Check for duplicate/overlapping booking
     const matchDate = new Date(data.date);
+    const overlap = await prisma.booking.findFirst({
+      where: {
+        turfId: data.turfId,
+        date: matchDate,
+        status: { not: "CANCELLED" },
+        startTime: { lt: data.endTime },
+        endTime: { gt: data.startTime },
+      },
+    });
+    if (overlap) throw new AppError("This time slot is already booked. Please choose a different time.", 409);
+
+    let totalAmount = turf.basePrice;
     const dayOfWeek = matchDate.getDay();
 
     if (dayOfWeek === 0 || dayOfWeek === 6) {

@@ -8,9 +8,16 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
-import type { Venue } from "@/types";
-import { MapPin, Phone, Mail, Clock, ChevronLeft, CheckCircle } from "lucide-react";
+import type { Venue, Booking } from "@/types";
+import { MapPin, Phone, Mail, Clock, ChevronLeft, CheckCircle, Info } from "lucide-react";
 import confetti from "canvas-confetti";
+
+function formatAmPm(time: string): string {
+  const [h, m] = time.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const hour = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${hour}:${String(m).padStart(2, "0")} ${period}`;
+}
 
 function generateSlots(open: string, close: string): string[] {
   const [oh, om] = open.split(":").map(Number);
@@ -24,12 +31,6 @@ function generateSlots(open: string, close: string): string[] {
   return slots;
 }
 
-function addMinutes(time: string, mins: number): string {
-  const [h, m] = time.split(":").map(Number);
-  const total = h * 60 + m + mins;
-  return String(Math.floor(total / 60) % 24).padStart(2, "0") + ":" + String(total % 60).padStart(2, "0");
-}
-
 export function VenueDetailPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
@@ -37,7 +38,8 @@ export function VenueDetailPage() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
-  const [selectedSlot, setSelectedSlot] = useState("");
+  const [startSlot, setStartSlot] = useState("");
+  const [endSlot, setEndSlot] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
@@ -56,13 +58,47 @@ export function VenueDetailPage() {
 
   const turf = venue?.turfs?.[0];
 
+  const { data: bookedData } = useQuery({
+    queryKey: ["booked-slots", turf?.id, date],
+    queryFn: () => api.get<Booking[]>(`/bookings/booked-slots/${turf?.id}?date=${date}`),
+    enabled: !!turf?.id && !!date,
+  });
+
+  const bookedSlots = useMemo(() => {
+    if (!bookedData) return [];
+    const slots: string[] = [];
+    for (const b of bookedData) {
+      let t = b.startTime;
+      while (t < b.endTime) {
+        slots.push(t);
+        t = addMinutes(t, 30);
+      }
+    }
+    return slots;
+  }, [bookedData]);
+
   const timeSlots = useMemo(() => {
     return generateSlots(venue?.openingTime || "06:00", venue?.closingTime || "23:00");
   }, [venue?.openingTime, venue?.closingTime]);
 
+  const isSlotBooked = (slot: string) => bookedSlots.includes(slot);
+
+  const validEndSlots = useMemo(() => {
+    if (!startSlot) return [];
+    const idx = timeSlots.indexOf(startSlot);
+    if (idx === -1) return [];
+    return timeSlots.slice(idx + 1).filter((s) => !isSlotBooked(s));
+  }, [startSlot, timeSlots, bookedSlots]);
+
+  useEffect(() => {
+    if (endSlot && (!startSlot || timeSlots.indexOf(endSlot) <= timeSlots.indexOf(startSlot))) {
+      setEndSlot("");
+    }
+  }, [startSlot, endSlot, timeSlots]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !phone || !date || !selectedSlot || !turf) {
+    if (!name || !phone || !date || !startSlot || !endSlot || !turf) {
       setError("Please fill in all fields");
       return;
     }
@@ -72,8 +108,8 @@ export function VenueDetailPage() {
       await api.post("/bookings", {
         turfId: turf.id,
         date,
-        startTime: selectedSlot,
-        endTime: addMinutes(selectedSlot, 30),
+        startTime: startSlot,
+        endTime: endSlot,
         customerName: name,
         customerPhone: phone,
         customerEmail: email || undefined,
@@ -95,6 +131,7 @@ export function VenueDetailPage() {
         <CheckCircle className="mx-auto h-16 w-16 text-green-500" />
         <h1 className="mt-4 text-2xl font-bold">Booking Submitted!</h1>
         <p className="mt-2 text-muted-foreground">We'll contact {name} at {phone} to confirm your slot.</p>
+        <p className="mt-1 text-sm text-muted-foreground">You will receive a confirmation call or text once your booking is verified.</p>
         <Button className="mt-6" onClick={() => navigate("/")}>Back to Home</Button>
       </div>
     );
@@ -114,16 +151,16 @@ export function VenueDetailPage() {
               <div className="aspect-video w-full overflow-hidden rounded-t-xl bg-muted">
                 <img src={venue.coverImage || "/placeholder.svg"} alt={venue.name} className="h-full w-full object-cover" />
               </div>
-              <CardContent className="p-5 space-y-3">
+              <CardContent className="space-y-3 p-5">
                 <h1 className="text-xl font-bold">{venue.name}</h1>
                 <p className="flex items-center gap-2 text-sm text-muted-foreground"><MapPin className="h-4 w-4" /> {venue.address}, {venue.city}</p>
                 {venue.phone && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Phone className="h-4 w-4" /> {venue.phone}</p>}
                 {venue.email && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Mail className="h-4 w-4" /> {venue.email}</p>}
-                <p className="flex items-center gap-2 text-sm text-muted-foreground"><Clock className="h-4 w-4" /> {venue.openingTime} - {venue.closingTime}</p>
+                <p className="flex items-center gap-2 text-sm text-muted-foreground"><Clock className="h-4 w-4" /> {formatAmPm(venue.openingTime)} - {formatAmPm(venue.closingTime)}</p>
                 {turf && (
                   <div className="rounded-lg bg-primary/10 p-3 text-sm">
                     <p className="font-medium">{turf.name}</p>
-                    <p className="text-muted-foreground">{turf.size} • {turf.surface}</p>
+                    <p className="text-muted-foreground">{turf.size} &bull; {turf.surface}</p>
                     <p className="mt-1 font-bold text-primary">{formatCurrency(turf.basePrice)}<span className="text-xs font-normal">/hr</span></p>
                   </div>
                 )}
@@ -143,8 +180,9 @@ export function VenueDetailPage() {
                       <Input placeholder="Enter your name" value={name} onChange={(e) => setName(e.target.value)} required />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium">Phone *</label>
+                      <label className="text-sm font-medium">Phone Number *</label>
                       <Input type="tel" placeholder="Phone number" value={phone} onChange={(e) => setPhone(e.target.value)} required />
+                      <p className="text-xs text-muted-foreground"><Info className="mr-0.5 inline h-3 w-3" /> It is recommended to call the turf to confirm your booking.</p>
                     </div>
                   </div>
                   <div className="space-y-1.5">
@@ -153,31 +191,76 @@ export function VenueDetailPage() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium">Date *</label>
-                    <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} min={new Date().toISOString().split("T")[0]} required />
+                    <Input type="date" value={date} onChange={(e) => { setDate(e.target.value); setStartSlot(""); setEndSlot(""); }} min={new Date().toISOString().split("T")[0]} required />
                   </div>
+
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Time Slot *</label>
+                    <label className="text-sm font-medium">Start Time *</label>
                     <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8">
-                      {timeSlots.map((slot) => (
-                        <button
-                          key={slot}
-                          type="button"
-                          onClick={() => setSelectedSlot(slot)}
-                          className={`rounded-lg border py-3 text-sm font-medium transition-all ${
-                            selectedSlot === slot
-                              ? "border-primary bg-primary text-primary-foreground"
-                              : "hover:border-primary/50"
-                          }`}
-                        >
-                          {slot}
-                        </button>
-                      ))}
+                      {timeSlots.map((slot) => {
+                        const booked = isSlotBooked(slot);
+                        return (
+                          <button
+                            key={slot}
+                            type="button"
+                            disabled={booked}
+                            onClick={() => { setStartSlot(slot); setEndSlot(""); }}
+                            className={`rounded-lg border py-3 text-sm font-medium transition-all ${
+                              startSlot === slot
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : booked
+                                  ? "cursor-not-allowed border-destructive/30 bg-destructive/10 text-destructive/50 line-through"
+                                  : "hover:border-primary/50"
+                            }`}
+                          >
+                            {formatAmPm(slot)}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 
+                  {startSlot && (
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">End Time *</label>
+                      <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8">
+                        {timeSlots
+                          .filter((s) => timeSlots.indexOf(s) > timeSlots.indexOf(startSlot))
+                          .map((slot) => {
+                            const booked = isSlotBooked(slot);
+                            return (
+                              <button
+                                key={slot}
+                                type="button"
+                                disabled={booked}
+                                onClick={() => setEndSlot(slot)}
+                                className={`rounded-lg border py-3 text-sm font-medium transition-all ${
+                                  endSlot === slot
+                                    ? "border-primary bg-primary text-primary-foreground"
+                                    : booked
+                                      ? "cursor-not-allowed border-destructive/30 bg-destructive/10 text-destructive/50 line-through"
+                                      : "hover:border-primary/50"
+                                }`}
+                              >
+                                {formatAmPm(slot)}
+                              </button>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  )}
+
+                  {startSlot && endSlot && (
+                    <div className="rounded-lg bg-primary/5 p-3 text-sm">
+                      <p className="font-medium">Booking Summary</p>
+                      <p className="text-muted-foreground">{formatAmPm(startSlot)} - {formatAmPm(endSlot)} on {new Date(date).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">You will receive a confirmation call or text once your booking is verified.</p>
+                    </div>
+                  )}
+
                   {error && <p className="text-sm text-destructive">{error}</p>}
 
-                  <Button type="submit" className="w-full" size="lg" disabled={submitting}>
+                  <Button type="submit" className="w-full" size="lg" disabled={submitting || !startSlot || !endSlot}>
                     {submitting ? "Booking..." : `Confirm Booking${turf ? ` - ${formatCurrency(turf.basePrice)}` : ""}`}
                   </Button>
                 </form>
@@ -188,4 +271,10 @@ export function VenueDetailPage() {
       </motion.div>
     </div>
   );
+}
+
+function addMinutes(time: string, mins: number): string {
+  const [h, m] = time.split(":").map(Number);
+  const total = h * 60 + m + mins;
+  return String(Math.floor(total / 60) % 24).padStart(2, "0") + ":" + String(total % 60).padStart(2, "0");
 }

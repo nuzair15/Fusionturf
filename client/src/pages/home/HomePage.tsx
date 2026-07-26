@@ -160,15 +160,15 @@ export function HomePage() {
           <LeagueCard title="Premium venues" action={<SectionLink onClick={() => navigate("/booking")}>Book now</SectionLink>}>
             <div className="grid gap-4 p-4 sm:grid-cols-2">
               {venueList.slice(0, 4).map((venue) => (
-                <Card key={venue.id} className="overflow-hidden border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+                <Card key={venue.id} className="cursor-pointer overflow-hidden border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" onClick={() => navigate(`/booking/${venue.slug}`)}>
                   <div className="aspect-[4/3] bg-muted">
                     <img src={venue.coverImage || "/placeholder.svg"} alt={venue.name} className="h-full w-full object-cover" />
                   </div>
                   <CardContent className="space-y-2 p-4">
                     <p className="text-sm font-semibold">{venue.name}</p>
-                    <p className="text-xs text-muted-foreground">{venue.city}, {venue.state}</p>
+                    <p className="text-xs text-muted-foreground capitalize">{venue.address || venue.city}{venue.state ? `, ${venue.state}` : ""}</p>
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                      <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {venue.turfs?.length || 0} turfs</span>
+                      <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {venue.address || venue.city}</span>
                       {venue.avgRating != null && <span className="inline-flex items-center gap-1"><Star className="h-3.5 w-3.5 text-yellow-500" /> {venue.avgRating.toFixed(1)}</span>}
                     </div>
                   </CardContent>
