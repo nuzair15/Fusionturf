@@ -289,7 +289,7 @@ model Booking {
   user          User          @relation(fields: [userId], references: [id])
   turfId        String
   turf          Turf          @relation(fields: [turfId], references: [id])
-  slotId        String?
+  slotId        String?   @unique
   slot          SlotAvailability? @relation(fields: [slotId], references: [id])
   date          DateTime
   startTime     String
@@ -421,7 +421,8 @@ model Season {
   awards       Award[]
   competitions Competition[]
   previousWinners PreviousWinner[]
-  news         News[]
+  playerStats     PlayerStat[]
+  news            News[]
   galleries    Gallery[]
 
   @@map("seasons")
@@ -477,6 +478,7 @@ model Team {
   sponsors        Sponsor[]
   news            News[]
   homePlayerStats PlayerStat[] @relation("homePlayerStats")
+  lineups         Lineup[]
 
   @@unique([seasonId, slug])
   @@map("teams")
