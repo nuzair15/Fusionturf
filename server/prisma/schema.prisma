@@ -420,6 +420,7 @@ model Season {
   standings    Standing[]
   awards       Award[]
   competitions Competition[]
+  previousWinners PreviousWinner[]
   news         News[]
   galleries    Gallery[]
 
@@ -475,7 +476,7 @@ model Team {
   galleries       Gallery[]
   sponsors        Sponsor[]
   news            News[]
-  homePlayerStats PlayerStat[]
+  homePlayerStats PlayerStat[] @relation("homePlayerStats")
 
   @@unique([seasonId, slug])
   @@map("teams")
@@ -508,9 +509,15 @@ model Player {
   goals             Goal[]
   assists           Assist[]
   cards             Card[]
-  substitutions     Substitution[]
+  subsOff           Substitution[] @relation("PlayerOff")
+  subsOn            Substitution[] @relation("PlayerOn")
   previousWinners   PreviousWinner[]
   matchPlayerRatings MatchPlayerRating[]
+  lineups           Lineup[]
+  awardsWon         Award[]
+  awardNominations  AwardNomination[]
+  votesReceived     Vote[]
+  manOfTheMatch     Fixture[]
   galleries         Gallery[]
 
   @@unique([seasonId, slug])
@@ -799,7 +806,7 @@ model Award {
   rules              String?
   eligibilityCriteria String?
   managedById        String?
-  managedBy          User            @relation("ManagedAwards", fields: [managedById], references: [id])
+  managedBy          User?           @relation("ManagedAwards", fields: [managedById], references: [id])
   votingEnabled      Boolean         @default(false)
   votingType         AwardVotingType @default(REGISTERED_ONLY)
   voteFrequency      VoteFrequency   @default(ONCE)
