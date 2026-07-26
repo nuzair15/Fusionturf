@@ -146,11 +146,11 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
         couponCode: data.couponCode,
         notes: data.notes,
         status: "PENDING",
-        services: data.services
+        bookingServices: data.services
           ? { create: data.services.map((s) => ({ additionalServiceId: s.serviceId, quantity: s.quantity, price: 0 })) }
           : undefined,
       },
-      include: { turf: { include: { venue: true } }, services: { include: { additionalService: true } } },
+      include: { turf: { include: { venue: true } }, bookingServices: { include: { additionalService: true } } },
     });
 
     res.status(201).json(booking);

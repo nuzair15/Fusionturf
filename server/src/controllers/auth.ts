@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
+import jwt, { type SignOptions } from "jsonwebtoken";
 import { z } from "zod";
 import prisma from "../config/database.js";
 import { config } from "../config/index.js";
@@ -38,9 +38,8 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
       select: { id: true, email: true, firstName: true, lastName: true, role: true },
     });
 
-    const token = jwt.sign({ userId: user.id, role: user.role }, config.jwt.secret, {
-      expiresIn: config.jwt.expiresIn,
-    });
+    const signOptions: SignOptions = { expiresIn: config.jwt.expiresIn };
+    const token = jwt.sign({ userId: user.id, role: user.role }, config.jwt.secret, signOptions);
 
     res.status(201).json({ user, token });
   } catch (error) {
@@ -74,7 +73,7 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
     const token = jwt.sign(
       { userId: user.id, role: user.role },
       config.jwt.secret,
-      { expiresIn: config.jwt.expiresIn }
+      { expiresIn: config.jwt.expiresIn } as SignOptions
     );
 
     const { passwordHash, ...userWithoutPassword } = user;

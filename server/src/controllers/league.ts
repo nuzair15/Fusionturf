@@ -125,7 +125,7 @@ export const getPlayerBySlug = async (req: Request, res: Response, next: NextFun
       include: {
         team: true,
         homeStats: { include: { season: true } },
-        awards: { include: { award: true } },
+        awardsWon: { include: { award: true } },
         galleries: { take: 10, orderBy: { createdAt: "desc" } },
       },
     });
