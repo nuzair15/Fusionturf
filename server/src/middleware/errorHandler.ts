@@ -36,6 +36,9 @@ export const errorHandler = (err: Error, _req: Request, res: Response, _next: Ne
     if (err.code === "P2002") {
       return res.status(409).json({ error: "Resource already exists" });
     }
+    if (err.code === "P2003") {
+      return res.status(400).json({ error: "Invalid reference: related record does not exist" });
+    }
     if (err.code === "P2025") {
       return res.status(404).json({ error: "Resource not found" });
     }

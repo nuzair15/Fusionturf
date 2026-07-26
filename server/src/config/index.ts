@@ -6,7 +6,7 @@ if (!process.env.DATABASE_URL) {
   process.env.DATABASE_URL = fallbackDatabaseUrl;
 }
 
-const corsOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173,https://fusion-league-client.onrender.com")
+const corsOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173,http://localhost:3000,https://fusion-league-client.onrender.com")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);

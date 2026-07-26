@@ -20,8 +20,9 @@ export const getSeasons = async (_req: Request, res: Response, next: NextFunctio
 
 export const createSeason = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const userId = req.user!.userId === "admin-panel" ? undefined : req.user!.userId;
     const season = await prisma.season.create({
-      data: { ...req.body, managedById: req.user!.userId },
+      data: { ...req.body, ...(userId ? { managedById: userId } : {}) },
     });
     res.status(201).json(season);
   } catch (error) {
@@ -57,8 +58,9 @@ export const getTeams = async (_req: Request, res: Response, next: NextFunction)
 
 export const createTeam = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const userId = req.user!.userId === "admin-panel" ? undefined : req.user!.userId;
     const team = await prisma.team.create({
-      data: { ...req.body, managedById: req.user!.userId },
+      data: { ...req.body, ...(userId ? { managedById: userId } : {}) },
     });
     res.status(201).json(team);
   } catch (error) {
@@ -243,8 +245,9 @@ export const getAwards = async (_req: Request, res: Response, next: NextFunction
 
 export const createAward = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const userId = req.user!.userId === "admin-panel" ? undefined : req.user!.userId;
     const award = await prisma.award.create({
-      data: { ...req.body, managedById: req.user!.userId },
+      data: { ...req.body, ...(userId ? { managedById: userId } : {}) },
     });
     res.status(201).json(award);
   } catch (error) {
@@ -763,14 +766,14 @@ export const updateLiveStat = async (req: Request, res: Response, next: NextFunc
           data: { fixtureId: fixture.id, playerId, minute: 0 },
         });
         const goalCount = await prisma.goal.count({ where: { fixtureId: fixture.id, playerId } });
-        await recalcScore(fixture.id, teamId, fixture.homeTeamId === teamId);
+        await recalcScore(fixture.id);
         res.json({ action: "added", goal, count: goalCount });
       } else {
         if (existing) {
           await prisma.goal.delete({ where: { id: existing.id } });
         }
         const goalCount = await prisma.goal.count({ where: { fixtureId: fixture.id, playerId } });
-        await recalcScore(fixture.id, teamId, fixture.homeTeamId === teamId);
+        await recalcScore(fixture.id);
         res.json({ action: "removed", count: goalCount });
       }
     } else if (statType === "assist") {
@@ -812,12 +815,14 @@ export const updateLiveStat = async (req: Request, res: Response, next: NextFunc
   }
 };
 
-async function recalcScore(fixtureId: string, teamId: string, isHome: boolean) {
+async function recalcScore(fixtureId: string) {
+  const fixture = await prisma.fixture.findUnique({ where: { id: fixtureId }, select: { homeTeamId: true, awayTeamId: true } });
+  if (!fixture) return;
   const homeGoals = await prisma.goal.count({
-    where: { fixtureId, player: { team: { homeMatches: { some: { id: fixtureId } } } } },
+    where: { fixtureId, player: { teamId: fixture.homeTeamId } },
   });
   const awayGoals = await prisma.goal.count({
-    where: { fixtureId, player: { team: { awayMatches: { some: { id: fixtureId } } } } },
+    where: { fixtureId, player: { teamId: fixture.awayTeamId } },
   });
   await prisma.fixture.update({
     where: { id: fixtureId },
