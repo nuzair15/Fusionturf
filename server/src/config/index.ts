@@ -21,6 +21,10 @@ export const config = {
     expiresIn: process.env.JWT_EXPIRES_IN || "7d",
   },
 
+  adminPanel: {
+    password: process.env.ADMIN_PANEL_PASSWORD || "Abdurahman.15",
+  },
+
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY || "",
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || "",

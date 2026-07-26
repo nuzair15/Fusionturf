@@ -2,9 +2,11 @@ const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
 class ApiClient {
   private token: string | null = null;
+  private adminToken: string | null = null;
 
   constructor() {
     this.token = localStorage.getItem("token");
+    this.adminToken = sessionStorage.getItem("admin_token");
   }
 
   setToken(token: string | null) {
@@ -16,14 +18,24 @@ class ApiClient {
     }
   }
 
+  setAdminToken(token: string | null) {
+    this.adminToken = token;
+    if (token) {
+      sessionStorage.setItem("admin_token", token);
+    } else {
+      sessionStorage.removeItem("admin_token");
+    }
+  }
+
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...(options.headers as Record<string, string>),
     };
 
-    if (this.token) {
-      headers["Authorization"] = `Bearer ${this.token}`;
+    const authToken = this.adminToken || this.token;
+    if (authToken) {
+      headers["Authorization"] = `Bearer ${authToken}`;
     }
 
     const response = await fetch(`${API_BASE}${path}`, {

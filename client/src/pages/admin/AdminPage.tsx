@@ -15,7 +15,6 @@ import type { DashboardStats, User, Season, Team, Player, Fixture, Award, News, 
 import { LayoutDashboard, Users, Calendar, Trophy, Settings, BarChart3, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2 } from "lucide-react";
 
 const ADMIN_PASSWORD = "Abdurahman.15";
-const ADMIN_EMAIL = "admin@fusionturf.com";
 const STORAGE_KEY = "admin_unlocked";
 
 const adminTabs = [
@@ -40,8 +39,7 @@ export function AdminPage() {
   const [showForm, setShowForm] = useState<string | null>(null);
   const [passwordInput, setPasswordInput] = useState("");
   const [passwordError, setPasswordError] = useState(false);
-  const [unlocking, setUnlocking] = useState(false);
-  const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem(STORAGE_KEY) === "true" && api.isAuthenticated());
+  const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem(STORAGE_KEY) === "true");
 
   // Form state for modals
   const [formData, setFormData] = useState<Record<string, any>>({});
@@ -94,22 +92,16 @@ export function AdminPage() {
     }
   };
 
-  const handleUnlock = async () => {
-    if (passwordInput === ADMIN_PASSWORD) {
-      try {
-        setUnlocking(true);
-        await api.login(ADMIN_EMAIL, passwordInput);
-        sessionStorage.setItem(STORAGE_KEY, "true");
-        setUnlocked(true);
-        setPasswordError(false);
-      } catch {
-        setPasswordError(true);
-      } finally {
-        setUnlocking(false);
-      }
+  const handleUnlock = () => {
+    if (passwordInput !== ADMIN_PASSWORD) {
+      setPasswordError(true);
       return;
     }
-    setPasswordError(true);
+
+    sessionStorage.setItem(STORAGE_KEY, "true");
+    api.setAdminToken(ADMIN_PASSWORD);
+    setUnlocked(true);
+    setPasswordError(false);
   };
 
   const { data: dashboard } = useQuery({ queryKey: ["admin-dashboard"], queryFn: () => api.get<DashboardStats>("/admin/dashboard"), enabled: unlocked });
@@ -138,6 +130,7 @@ export function AdminPage() {
 
   const handleLogout = () => {
     sessionStorage.removeItem(STORAGE_KEY);
+    api.setAdminToken(null);
     api.logout();
     navigate("/");
   };
@@ -163,10 +156,10 @@ export function AdminPage() {
                 autoFocus
               />
               {passwordError && (
-                <p className="text-sm text-destructive">Could not unlock admin access. Check the password and seeded admin account.</p>
+                <p className="text-sm text-destructive">Wrong admin password.</p>
               )}
-              <Button type="submit" disabled={unlocking} className="w-full bg-gradient-to-r from-[#0f5f44] to-[#00d66f] text-white">
-                <Lock className="mr-2 h-4 w-4" /> {unlocking ? "Unlocking..." : "Unlock"}
+              <Button type="submit" className="w-full bg-gradient-to-r from-[#0f5f44] to-[#00d66f] text-white">
+                <Lock className="mr-2 h-4 w-4" /> Unlock
               </Button>
             </form>
             <Button variant="ghost" className="mt-4" onClick={() => navigate("/")}>Back to Home</Button>
