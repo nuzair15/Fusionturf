@@ -87,4 +87,8 @@ router.post("/fixtures/:id/squad", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STA
 router.get("/teams/:id/validate-squad", admin.adminValidateSquad);
 router.post("/process-match-result/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.adminProcessMatchResult);
 
+// Live Match Stats
+router.get("/fixtures/:id/live-stats", admin.getLiveStats);
+router.post("/fixtures/:id/live-stats/update", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.updateLiveStat);
+
 export default router;

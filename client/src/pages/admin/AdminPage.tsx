@@ -11,8 +11,9 @@ import { Select } from "@/components/ui/select";
 import { Dialog } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { formatDate, formatCurrency } from "@/lib/utils";
+import { LiveStatsPanel } from "@/components/admin/LiveStatsPanel";
 import type { DashboardStats, User, Season, Team, Player, Fixture, Award, News, Booking, PaginatedResponse, Venue, Turf, Sponsor } from "@/types";
-import { LayoutDashboard, Users, Calendar, Trophy, Settings, BarChart3, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2 } from "lucide-react";
+import { LayoutDashboard, Users, Calendar, Trophy, Settings, BarChart3, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2, ActivitySquare } from "lucide-react";
 
 const ADMIN_PASSWORD = "Abdurahman.15";
 const STORAGE_KEY = "admin_unlocked";
@@ -44,6 +45,7 @@ export function AdminPage() {
   // Form state for modals
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [formErrors, setFormErrors] = useState<string>("");
+  const [liveStatsFixtureId, setLiveStatsFixtureId] = useState<string | null>(null);
 
   const openForm = (type: string, initial: Record<string, any> = {}) => {
     setFormData(initial);
@@ -484,6 +486,9 @@ export function AdminPage() {
                         <td className="p-3 text-muted-foreground">{formatDate(f.matchDate)}</td>
                         <td className="p-3"><Badge variant="secondary">{f.status}</Badge></td>
                         <td className="p-3 text-right">
+                          <Button variant="ghost" size="sm" onClick={() => setLiveStatsFixtureId(f.id)} title="Live Stats">
+                            <ActivitySquare className="h-4 w-4" />
+                          </Button>
                           <Button variant="ghost" size="sm" onClick={() => openForm("score", { fixtureId: f.id, homeScore: f.homeScore ?? 0, awayScore: f.awayScore ?? 0 })}>
                             <Edit2 className="h-4 w-4" />
                           </Button>
@@ -1125,6 +1130,7 @@ export function AdminPage() {
           </Card>
         )}
       </motion.div>
+      {liveStatsFixtureId && <LiveStatsPanel fixtureId={liveStatsFixtureId} onClose={() => setLiveStatsFixtureId(null)} />}
     </div>
     </div>
   );
