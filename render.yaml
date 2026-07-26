@@ -4,8 +4,8 @@ services:
     env: node
     region: oregon
     plan: free
-    buildCommand: cd server && npm install && npx prisma generate && npm run build
-    startCommand: cd server && node dist/production.js
+    buildCommand: npm install --prefix server && npx --prefix server prisma generate && npm run --prefix server build
+    startCommand: node server/dist/production.js
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL
