@@ -20,9 +20,12 @@ export const getSeasons = async (_req: Request, res: Response, next: NextFunctio
 
 export const createSeason = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const userId = req.user!.userId === "admin-panel" ? undefined : req.user!.userId;
+    const { name, slug, startDate, endDate, isActive, isCurrent } = req.body;
+    if (!name || !slug || !startDate || !endDate) {
+      throw new AppError("name, slug, startDate, endDate are required", 400);
+    }
     const season = await prisma.season.create({
-      data: { ...req.body, ...(userId ? { managedById: userId } : {}) },
+      data: { name, slug, startDate: new Date(startDate), endDate: new Date(endDate), isActive: !!isActive, isCurrent: !!isCurrent },
     });
     res.status(201).json(season);
   } catch (error) {
