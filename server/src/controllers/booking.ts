@@ -114,7 +114,7 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
     }
 
     // Create or find guest user for walk-in bookings
-    const guestEmail = data.customerEmail || `guest-${Date.now()}@fusionleague.com`;
+    const guestEmail = data.customerEmail || `guest-${Date.now()}@fusionturf.com`;
     let guest = await prisma.user.findUnique({ where: { email: guestEmail } });
     if (!guest) {
       guest = await prisma.user.create({

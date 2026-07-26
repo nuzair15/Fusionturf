@@ -19,7 +19,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const autoLogin = async () => {
       try {
-        const res = await api.login("admin@fusionleague.com", "Abdurahman.15");
+        const res = await api.login("admin@fusionturf.com", "Abdurahman.15");
         setUser(res.user);
       } catch {
         try {

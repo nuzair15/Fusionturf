@@ -24,7 +24,7 @@ async function main() {
 
   const admin = await prisma.user.create({
     data: {
-      email: "admin@fusionleague.com",
+      email: "admin@fusionturf.com",
       passwordHash: adminPasswordHash,
       firstName: "Nuzair",
       lastName: "Admin",
@@ -47,7 +47,7 @@ async function main() {
 
   const bookingManager = await prisma.user.create({
     data: {
-      email: "manager@fusionleague.com",
+      email: "manager@fusionturf.com",
       passwordHash,
       firstName: "Booking",
       lastName: "Manager",
@@ -60,11 +60,11 @@ async function main() {
 
   // ─── Settings ───
   const settings = [
-    { key: "site_name", value: "Fusion League", group: "general" },
+    { key: "site_name", value: "Fusion Turf", group: "general" },
     { key: "site_description", value: "Premium Turf Booking & League Management", group: "general" },
     { key: "site_logo_url", value: "", group: "general" },
     { key: "site_hero_url", value: "https://images.unsplash.com/photo-1577223625816-6500cc85a8b5?w=1920", group: "general" },
-    { key: "contact_email", value: "info@fusionleague.com", group: "contact" },
+    { key: "contact_email", value: "info@fusionturf.com", group: "contact" },
     { key: "contact_phone", value: "+91-9876543210", group: "contact" },
     { key: "social_facebook", value: "https://facebook.com/fusionleague", group: "social" },
     { key: "social_instagram", value: "https://instagram.com/fusionleague", group: "social" },
@@ -118,7 +118,7 @@ async function main() {
       latitude: 19.0760,
       longitude: 72.8777,
       phone: "+91-9876543210",
-      email: "arena@fusionleague.com",
+      email: "arena@fusionturf.com",
       coverImage: "https://images.unsplash.com/photo-1577223625816-6500cc85a8b5?w=1200",
       logo: "https://images.unsplash.com/photo-1560272564-c83b4b0c1e5b?w=200",
       openingTime: "06:00",
@@ -529,7 +529,7 @@ async function main() {
   console.log("  ✅ Gallery created");
 
   console.log("\n🎉 Database seeded successfully!");
-  console.log("  Admin: admin@fusionleague.com / password123");
+  console.log("  Admin: admin@fusionturf.com / password123");
   console.log("  User:  user@example.com / password123");
 }
 

@@ -15,7 +15,7 @@ export function Navbar() {
   });
 
   const siteLogoUrl = settings?.site_logo_url;
-  const siteName = settings?.site_name || "Fusion League";
+  const siteName = settings?.site_name || "Fusion Turf";
 
   return (
     <nav className="sticky top-0 z-50 w-full border-b bg-background">
@@ -25,7 +25,7 @@ export function Navbar() {
             <img src={siteLogoUrl} alt={siteName} className="h-9 w-auto max-w-[140px] object-contain md:h-10 md:max-w-[160px]" />
           ) : (
             <>
-              <img src="/logo.svg" alt={siteName} className="h-9 w-auto object-contain md:h-10" />
+              <img src="/logo.png" alt={siteName} className="h-9 w-auto object-contain md:h-10" />
               <span className="text-lg font-bold md:text-xl">{siteName}</span>
             </>
           )}

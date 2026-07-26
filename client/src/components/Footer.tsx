@@ -29,8 +29,8 @@ export function Footer() {
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <Link to="/" className="flex items-center gap-2">
-              <img src="/logo.svg" alt="Fusion League" className="h-8 w-auto" />
-              <span className="text-lg font-bold">Fusion League</span>
+              <img src="/logo.png" alt="Fusion Turf" className="h-8 w-auto" />
+              <span className="text-lg font-bold">Fusion Turf</span>
             </Link>
             <p className="mt-3 text-sm text-muted-foreground">
               Premium turf booking and football league management platform. Play, compete, and conquer.
@@ -58,7 +58,7 @@ export function Footer() {
           >
             Admin Panel
           </Link>
-          &copy; {new Date().getFullYear()} Fusion League. All rights reserved.
+          &copy; {new Date().getFullYear()} Fusion Turf. All rights reserved.
         </div>
       </div>
     </footer>

@@ -80,7 +80,7 @@ export function AdminPage() {
     return (
       <div className="mx-auto flex min-h-[60vh] max-w-md items-center px-4 py-20">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full text-center">
-          <img src="/logo.svg" alt="Fusion" className="mx-auto mb-6 h-16 w-auto" />
+          <img src="/logo.png" alt="Fusion" className="mx-auto mb-6 h-16 w-auto" />
           <h1 className="text-2xl font-bold">Admin Access</h1>
           <p className="mt-2 text-muted-foreground">Enter the admin password to continue.</p>
           <form
@@ -144,7 +144,7 @@ export function AdminPage() {
           <div>
             <Button variant="ghost" onClick={() => navigate("/")} className="mb-2 gap-1"><ChevronLeft className="h-4 w-4" /> Back to Site</Button>
             <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-            <p className="text-muted-foreground">Manage Fusion League platform</p>
+            <p className="text-muted-foreground">Manage Fusion Turf platform</p>
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="secondary" className="text-xs">Admin</Badge>
@@ -933,7 +933,7 @@ export function AdminPage() {
                   <div className="space-y-2">
                     <p className="text-sm font-medium">Site Name (Page Title)</p>
                     <div className="flex items-center gap-2 border p-4">
-                      <p className="flex-1 text-sm font-medium truncate">{settings?.site_name || "Fusion League"}</p>
+                      <p className="flex-1 text-sm font-medium truncate">{settings?.site_name || "Fusion Turf"}</p>
                       <Button variant="outline" size="sm" onClick={() => openForm("editSetting", { key: "site_name", value: settings?.site_name || "" })}>Edit</Button>
                     </div>
                   </div>

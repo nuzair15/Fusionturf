@@ -10,11 +10,11 @@ export function SEOHead() {
     staleTime: 60000,
   });
 
-  const siteName = settings?.site_name || "Fusion League";
+  const siteName = settings?.site_name || "Fusion Turf";
   const faviconUrl = settings?.site_favicon_url || "";
 
   useEffect(() => {
-    document.title = siteName ? `${siteName} - Turf Booking & Football League in Bhramavar, Udupi` : "Fusion League - Turf Booking & Football League in Bhramavar, Udupi";
+    document.title = siteName ? `${siteName} - Turf Booking & Football League in Bhramavar, Udupi` : "Fusion Turf - Turf Booking & Football League in Bhramavar, Udupi";
   }, [siteName]);
 
   useEffect(() => {
