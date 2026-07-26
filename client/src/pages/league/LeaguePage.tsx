@@ -6,12 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { formatDate, getMatchStatusColor } from "@/lib/utils";
-import type { Fixture, Standing, Team } from "@/types";
+import type { Fixture, Standing, Team, Season } from "@/types";
 import { Trophy, Calendar, BarChart3, Medal, Newspaper, ChevronRight } from "lucide-react";
 
 export function LeaguePage() {
   const navigate = useNavigate();
 
+  const { data: currentSeason } = useQuery({ queryKey: ["current-season"], queryFn: () => api.get<Season>("/league/seasons/current"), retry: false });
   const { data: fixtures } = useQuery({ queryKey: ["fixtures"], queryFn: () => api.get<{ data: Fixture[] }>("/league/fixtures", { limit: "10" }) });
   const { data: standings } = useQuery({ queryKey: ["standings"], queryFn: () => api.get<Standing[]>("/league/standings") });
   const { data: teams } = useQuery({ queryKey: ["teams"], queryFn: () => api.get<Team[]>("/league/teams") });
@@ -24,7 +25,7 @@ export function LeaguePage() {
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="mb-2 text-3xl font-bold">Fusion League</h1>
-        <p className="mb-8 text-muted-foreground">Season 2025-2026</p>
+        <p className="mb-8 text-muted-foreground">{currentSeason?.name || "Season"}</p>
 
         {/* Quick Links */}
         <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">

@@ -235,7 +235,7 @@ export function AdminPage() {
               <div className="space-y-4">
                 <div className="space-y-1.5">
                   <Label>Season Name</Label>
-                  <Input value={formData.name || ""} onChange={(e) => handleFormChange("name", e.target.value)} placeholder="e.g. Season 2025-2026" />
+                  <Input value={formData.name || ""} onChange={(e) => handleFormChange("name", e.target.value)} placeholder="e.g. January - March 2026" />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Start Date</Label>

@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { Standing } from "@/types";
+import type { Standing, Season } from "@/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft } from "lucide-react";
@@ -10,6 +10,7 @@ import { ChevronLeft } from "lucide-react";
 export function StandingsPage() {
   const navigate = useNavigate();
 
+  const { data: currentSeason } = useQuery({ queryKey: ["current-season"], queryFn: () => api.get<Season>("/league/seasons/current"), retry: false });
   const { data: standings } = useQuery({
     queryKey: ["standings-full"],
     queryFn: () => api.get<Standing[]>("/league/standings"),
@@ -24,7 +25,7 @@ export function StandingsPage() {
           <ChevronLeft className="h-4 w-4" /> Back to League
         </Button>
         <h1 className="mb-2 text-3xl font-bold">League Standings</h1>
-        <p className="mb-8 text-muted-foreground">Season 2025-2026</p>
+        <p className="mb-8 text-muted-foreground">{currentSeason?.name || "Season"}</p>
 
           <Card>
             <div className="overflow-x-auto">

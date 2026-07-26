@@ -81,26 +81,26 @@ async function main() {
   // ─── Season ───
   const season = await prisma.season.create({
     data: {
-      name: "Season 2025-2026",
-      slug: "season-2025-2026",
-      startDate: new Date("2025-08-01"),
-      endDate: new Date("2026-05-31"),
+      name: "January - March 2026",
+      slug: "january-march-2026",
+      startDate: new Date("2026-01-01"),
+      endDate: new Date("2026-03-31"),
       isActive: true,
       isCurrent: true,
-      description: "The inaugural Fusion League season",
+      description: "Jan-Mar 2026 Fusion League season",
       managedById: admin.id,
     },
   });
 
   const prevSeason = await prisma.season.create({
     data: {
-      name: "Season 2024-2025",
-      slug: "season-2024-2025",
-      startDate: new Date("2024-08-01"),
-      endDate: new Date("2025-05-31"),
+      name: "October - December 2025",
+      slug: "october-december-2025",
+      startDate: new Date("2025-10-01"),
+      endDate: new Date("2025-12-31"),
       isActive: false,
       isCurrent: false,
-      description: "Pre-season friendlies and cup competition",
+      description: "Oct-Dec 2025 Fusion League season",
     },
   });
   console.log("  ✅ Seasons created");

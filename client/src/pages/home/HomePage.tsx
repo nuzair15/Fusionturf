@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { formatDate, formatTime, getMatchStatusColor, formatCurrency } from "@/lib/utils";
-import type { Fixture, Standing, Venue, News, Award, PaginatedResponse, Sponsor } from "@/types";
+import type { Fixture, Standing, Venue, News, Award, PaginatedResponse, Sponsor, Season } from "@/types";
 import { Calendar, Trophy, MapPin, Users, ArrowRight, Star, ChevronRight, Medal, Sparkles, Handshake } from "lucide-react";
 
 const stagger = {
@@ -36,6 +36,7 @@ export function HomePage() {
   const { data: news } = useQuery({ queryKey: ["news"], queryFn: () => api.get<PaginatedResponse<News>>("/league/news?limit=3") });
   const { data: awards } = useQuery({ queryKey: ["awards"], queryFn: () => api.get<Award[]>("/league/awards") });
   const { data: sponsors } = useQuery({ queryKey: ["sponsors"], queryFn: () => api.get<{ data: Sponsor[] }>("/league/sponsors") });
+  const { data: currentSeason } = useQuery({ queryKey: ["current-season"], queryFn: () => api.get<Season>("/league/seasons/current"), retry: false });
 
   const items = fixtures?.data || [];
   const standingsList = standings || [];
@@ -55,7 +56,7 @@ export function HomePage() {
         <div className="relative mx-auto max-w-7xl px-4 pb-20 pt-16 sm:px-6 sm:pb-28 sm:pt-24 lg:px-8">
           <motion.div initial="hidden" animate="show" variants={stagger} className="text-center">
             <motion.div variants={fadeUp} className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-white/80">
-              <Sparkles className="h-4 w-4 text-yellow-400" /> Season 2025-2026 is live
+              <Sparkles className="h-4 w-4 text-yellow-400" /> {currentSeason?.name || "Season"} is live
             </motion.div>
             <motion.h1 variants={fadeUp} className="text-4xl font-extrabold tracking-tight text-white sm:text-6xl lg:text-7xl">
               Where Champions
