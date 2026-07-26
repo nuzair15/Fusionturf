@@ -50,10 +50,10 @@ export function HomePage() {
       {/* ─── Hero Section ─── */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${heroImage})` }} />
-        <div className="absolute inset-0 bg-gradient-to-br from-[#060e20]/75 via-[#0a1838]/60 to-[#0d2247]/40" />
+        <div className="absolute inset-0 bg-gradient-to-br from-[#060e20]/60 via-[#0a1838]/40 to-[#0d2247]/20" />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/10 to-transparent" />
 
-        <div className="relative mx-auto max-w-7xl px-4 pb-20 pt-16 sm:px-6 sm:pb-28 sm:pt-24 lg:px-8">
+        <div className="relative mx-auto max-w-7xl px-4 pb-32 pt-24 sm:px-6 sm:pb-40 sm:pt-32 lg:px-8">
           <motion.div initial="hidden" animate="show" variants={stagger} className="text-center">
             <motion.div variants={fadeUp} className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-white/80">
               <Sparkles className="h-4 w-4 text-yellow-400" /> {currentSeason?.name || "Season"} is live
