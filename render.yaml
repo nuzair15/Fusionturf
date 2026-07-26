@@ -19,7 +19,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: CORS_ORIGIN
-        value: https://fusion-league-client.onrender.com
+        value: https://fusion-league-client.onrender.com,https://www.fusionturf.in,https://fusionturf.in
       - key: FRONTEND_URL
         value: https://fusion-league-client.onrender.com
       - key: PORT
