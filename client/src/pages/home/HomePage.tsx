@@ -28,7 +28,7 @@ export function HomePage() {
     retry: false,
   });
 
-  const heroImage = settings?.site_hero_url || "https://images.unsplash.com/photo-1577223625816-6500cc85a8b5?w=1920";
+  const heroImage = settings?.site_hero_url || "/hero.jpeg";
 
   const { data: fixtures } = useQuery({ queryKey: ["featured-fixtures"], queryFn: () => api.get<PaginatedResponse<Fixture>>("/league/fixtures?limit=3") });
   const { data: standings } = useQuery({ queryKey: ["standings"], queryFn: () => api.get<Standing[]>("/league/standings") });

@@ -51,7 +51,7 @@ export function Navbar() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent md:h-10 md:w-10"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent md:h-10 md:w-10"
           >
             {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </button>
