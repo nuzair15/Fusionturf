@@ -98,6 +98,7 @@ export interface PlayerStat {
   cleanSheets?: number;
   goalsConceded?: number;
   averageRating?: number;
+  distanceCovered?: number;
   season?: Season;
   player?: { firstName: string; lastName: string; photoUrl?: string; position?: string };
   team?: { name: string; slug: string; logoUrl?: string };
@@ -139,6 +140,8 @@ export interface Fixture {
   awayFouls?: number;
   homeOffsides?: number;
   awayOffsides?: number;
+  homeExpectedGoals?: number;
+  awayExpectedGoals?: number;
   referee?: string;
   stadium?: string;
   attendance?: number;

@@ -62,7 +62,7 @@ export function StatsPage() {
               ) : (
                 stats.map((s, i) => {
                   const cat = statCategories.find((c) => c.key === activeStat);
-                  const value = s[activeStat as keyof PlayerStat] ?? 0;
+                  const value = s[activeStat as keyof PlayerStat] as number | undefined ?? 0;
                   return (
                     <div key={s.id} className="flex items-center gap-4 rounded-lg border p-3">
                       <span className={`w-6 text-center text-lg font-bold ${i < 3 ? cat?.color : "text-muted-foreground"}`}>

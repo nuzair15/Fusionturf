@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { formatDate, formatTime, getMatchStatusColor } from "@/lib/utils";
 import type { Fixture } from "@/types";
-import { ChevronLeft, MapPin, Users, Clock, Shield, Swords } from "lucide-react";
+import { ChevronLeft, ChevronRight, MapPin, Users, Clock, Shield, Swords } from "lucide-react";
 
 export function FixtureDetailPage() {
   const { id } = useParams();
@@ -194,7 +194,7 @@ export function FixtureDetailPage() {
                   { label: "Offsides", home: fixture.homeOffsides, away: fixture.awayOffsides },
                   { label: "Expected Goals", home: fixture.homeExpectedGoals, away: fixture.awayExpectedGoals },
                 ].map((stat) => (
-                  stat.home !== null && stat.away !== null && (
+                  stat.home != null && stat.away != null && (
                     <div key={stat.label}>
                       <p className="mb-1 text-center text-xs text-muted-foreground">{stat.label}</p>
                       <div className="flex items-center gap-2">

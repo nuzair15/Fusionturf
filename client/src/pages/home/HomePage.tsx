@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { formatDate, formatTime, getMatchStatusColor, formatCurrency } from "@/lib/utils";
-import type { Fixture, Standing, Venue, News, Award } from "@/types";
+import type { Fixture, Standing, Venue, News, Award, PaginatedResponse } from "@/types";
 import { Calendar, Trophy, MapPin, Users, ArrowRight, Star, ChevronRight, Medal, Sparkles } from "lucide-react";
 
 const stagger = {
@@ -22,10 +22,10 @@ const fadeUp = {
 export function HomePage() {
   const navigate = useNavigate();
 
-  const { data: fixtures } = useQuery({ queryKey: ["featured-fixtures"], queryFn: () => api.get<Fixture[]>("/league/fixtures?limit=3") });
+  const { data: fixtures } = useQuery({ queryKey: ["featured-fixtures"], queryFn: () => api.get<PaginatedResponse<Fixture>>("/league/fixtures?limit=3") });
   const { data: standings } = useQuery({ queryKey: ["standings"], queryFn: () => api.get<Standing[]>("/league/standings") });
-  const { data: venues } = useQuery({ queryKey: ["venues"], queryFn: () => api.get<Venue[]>("/bookings/venues?limit=3") });
-  const { data: news } = useQuery({ queryKey: ["news"], queryFn: () => api.get<News[]>("/league/news?limit=3") });
+  const { data: venues } = useQuery({ queryKey: ["venues"], queryFn: () => api.get<PaginatedResponse<Venue>>("/bookings/venues?limit=3") });
+  const { data: news } = useQuery({ queryKey: ["news"], queryFn: () => api.get<PaginatedResponse<News>>("/league/news?limit=3") });
   const { data: awards } = useQuery({ queryKey: ["awards"], queryFn: () => api.get<Award[]>("/league/awards") });
 
   const items = fixtures?.data || [];
@@ -96,7 +96,7 @@ export function HomePage() {
             </Button>
           </div>
           <motion.div initial="hidden" whileInView="show" viewport={{ once: true }} variants={stagger} className="grid gap-6 md:grid-cols-3">
-            {items.map((fixture) => (
+            {items.map((fixture: Fixture) => (
               <motion.div key={fixture.id} variants={fadeUp}>
                 <Card className="cursor-pointer overflow-hidden transition-all hover:shadow-lg" onClick={() => navigate(`/league/fixtures/${fixture.id}`)}>
                   <div className="relative bg-gradient-to-r from-blue-600 to-purple-600 p-4 text-center text-white">
@@ -199,7 +199,7 @@ export function HomePage() {
             </Button>
           </div>
           <motion.div initial="hidden" whileInView="show" viewport={{ once: true }} variants={stagger} className="grid gap-6 md:grid-cols-3">
-            {venueList.map((venue) => (
+            {venueList.map((venue: Venue) => (
               <motion.div key={venue.id} variants={fadeUp}>
                 <Card className="cursor-pointer overflow-hidden transition-all hover:shadow-lg" onClick={() => navigate(`/booking/${venue.slug}`)}>
                   <div className="aspect-video w-full bg-muted">
@@ -263,7 +263,7 @@ export function HomePage() {
             </Button>
           </div>
           <motion.div initial="hidden" whileInView="show" viewport={{ once: true }} variants={stagger} className="grid gap-6 md:grid-cols-3">
-            {newsList.map((article) => (
+            {newsList.map((article: News) => (
               <motion.div key={article.id} variants={fadeUp}>
                 <Card className="overflow-hidden transition-all hover:shadow-lg">
                   <div className="aspect-video w-full bg-muted">
