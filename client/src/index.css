@@ -23,7 +23,7 @@
     --border: 222 25% 80%;
     --input: 222 30% 86%;
     --ring: 142 76% 46%;
-    --radius: 0px;
+    --radius: 8px;
   }
 
   .dark {
@@ -57,6 +57,13 @@
     @apply bg-background text-foreground;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+@layer components {
+  .admin-surface {
+    @apply border bg-card/90 shadow-sm backdrop-blur;
   }
 }
 

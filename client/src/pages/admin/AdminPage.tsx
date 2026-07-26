@@ -12,9 +12,10 @@ import { Dialog } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import type { DashboardStats, User, Season, Team, Player, Fixture, Award, News, Booking, PaginatedResponse, Venue, Turf, Sponsor } from "@/types";
-import { LayoutDashboard, Users, Calendar, Trophy, Settings, BarChart3, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake } from "lucide-react";
+import { LayoutDashboard, Users, Calendar, Trophy, Settings, BarChart3, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2 } from "lucide-react";
 
 const ADMIN_PASSWORD = "Abdurahman.15";
+const ADMIN_EMAIL = "admin@fusionturf.com";
 const STORAGE_KEY = "admin_unlocked";
 
 const adminTabs = [
@@ -39,7 +40,8 @@ export function AdminPage() {
   const [showForm, setShowForm] = useState<string | null>(null);
   const [passwordInput, setPasswordInput] = useState("");
   const [passwordError, setPasswordError] = useState(false);
-  const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem(STORAGE_KEY) === "true");
+  const [unlocking, setUnlocking] = useState(false);
+  const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem(STORAGE_KEY) === "true" && api.isAuthenticated());
 
   // Form state for modals
   const [formData, setFormData] = useState<Record<string, any>>({});
@@ -55,10 +57,36 @@ export function AdminPage() {
     setFormData((prev) => ({ ...prev, [key]: value }));
   };
 
+  const slugify = (value: string) =>
+    value
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+
+  const getSubmitPayload = (type: string) => {
+    const payload = { ...formData };
+
+    if (["season", "team", "player", "award", "venue"].includes(type) && !payload.slug) {
+      const source = type === "player"
+        ? `${payload.firstName || ""} ${payload.lastName || ""}`
+        : payload.name || payload.title || "";
+      payload.slug = slugify(source) || `${type}-${Date.now()}`;
+    }
+
+    if (type === "venue") {
+      payload.address = payload.address || "Address to be updated";
+      payload.city = payload.city || "City";
+      payload.state = payload.state || "State";
+    }
+
+    return payload;
+  };
+
   const submitForm = async (type: string, url: string, invalidateKey: string) => {
     try {
       setFormErrors("");
-      await api.post(url, formData);
+      await api.post(url, getSubmitPayload(type));
       setShowForm(null);
       queryClient.invalidateQueries({ queryKey: [invalidateKey] });
     } catch (err: any) {
@@ -66,96 +94,110 @@ export function AdminPage() {
     }
   };
 
-  const handleUnlock = () => {
+  const handleUnlock = async () => {
     if (passwordInput === ADMIN_PASSWORD) {
-      sessionStorage.setItem(STORAGE_KEY, "true");
-      setUnlocked(true);
-      setPasswordError(false);
-    } else {
-      setPasswordError(true);
+      try {
+        setUnlocking(true);
+        await api.login(ADMIN_EMAIL, passwordInput);
+        sessionStorage.setItem(STORAGE_KEY, "true");
+        setUnlocked(true);
+        setPasswordError(false);
+      } catch {
+        setPasswordError(true);
+      } finally {
+        setUnlocking(false);
+      }
+      return;
     }
+    setPasswordError(true);
   };
 
-  if (!unlocked) {
-    return (
-      <div className="mx-auto flex min-h-[60vh] max-w-md items-center px-4 py-20">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full text-center">
-          <img src="/logo.png" alt="Fusion" className="mx-auto mb-6 h-16 w-auto" />
-          <h1 className="text-2xl font-bold">Admin Access</h1>
-          <p className="mt-2 text-muted-foreground">Enter the admin password to continue.</p>
-          <form
-            onSubmit={(e) => { e.preventDefault(); handleUnlock(); }}
-            className="mt-6 space-y-4"
-          >
-            <Input
-              type="password"
-              placeholder="Enter password"
-              value={passwordInput}
-              onChange={(e) => { setPasswordInput(e.target.value); setPasswordError(false); }}
-              className={passwordError ? "border-destructive" : ""}
-              autoFocus
-            />
-            {passwordError && (
-              <p className="text-sm text-destructive">Incorrect password. Try again.</p>
-            )}
-            <Button type="submit" className="w-full bg-gradient-to-r from-[#0a1838] to-[#00d66f] text-white">
-              <Lock className="mr-2 h-4 w-4" /> Unlock
-            </Button>
-          </form>
-          <Button variant="ghost" className="mt-4" onClick={() => navigate("/")}>Back to Home</Button>
-        </motion.div>
-      </div>
-    );
-  }
+  const { data: dashboard } = useQuery({ queryKey: ["admin-dashboard"], queryFn: () => api.get<DashboardStats>("/admin/dashboard"), enabled: unlocked });
 
-  const { data: dashboard } = useQuery({ queryKey: ["admin-dashboard"], queryFn: () => api.get<DashboardStats>("/admin/dashboard") });
+  const { data: users } = useQuery({ queryKey: ["admin-users"], queryFn: () => api.get<{ data: User[] }>("/admin/users", { limit: "20" }), enabled: unlocked });
 
-  const { data: users } = useQuery({ queryKey: ["admin-users"], queryFn: () => api.get<{ data: User[] }>("/admin/users", { limit: "20" }) });
+  const { data: seasons } = useQuery({ queryKey: ["admin-seasons"], queryFn: () => api.get<Season[]>("/admin/seasons"), enabled: unlocked });
 
-  const { data: seasons } = useQuery({ queryKey: ["admin-seasons"], queryFn: () => api.get<Season[]>("/admin/seasons") });
+  const { data: teams } = useQuery({ queryKey: ["admin-teams"], queryFn: () => api.get<Team[]>("/admin/teams"), enabled: unlocked });
 
-  const { data: teams } = useQuery({ queryKey: ["admin-teams"], queryFn: () => api.get<Team[]>("/admin/teams") });
+  const { data: players } = useQuery({ queryKey: ["admin-players"], queryFn: () => api.get<PaginatedResponse<Player>>("/admin/players", { limit: "50" }), enabled: unlocked });
 
-  const { data: players } = useQuery({ queryKey: ["admin-players"], queryFn: () => api.get<PaginatedResponse<Player>>("/admin/players", { limit: "50" }) });
+  const { data: fixtures } = useQuery({ queryKey: ["admin-fixtures"], queryFn: () => api.get<PaginatedResponse<Fixture>>("/admin/fixtures", { limit: "50" }), enabled: unlocked });
 
-  const { data: fixtures } = useQuery({ queryKey: ["admin-fixtures"], queryFn: () => api.get<PaginatedResponse<Fixture>>("/admin/fixtures", { limit: "50" }) });
+  const { data: awards } = useQuery({ queryKey: ["admin-awards"], queryFn: () => api.get<Award[]>("/admin/awards"), enabled: unlocked });
 
-  const { data: awards } = useQuery({ queryKey: ["admin-awards"], queryFn: () => api.get<Award[]>("/admin/awards") });
+  const { data: bookings } = useQuery({ queryKey: ["admin-bookings"], queryFn: () => api.get<PaginatedResponse<Booking>>("/admin/bookings", { limit: "50" }), enabled: unlocked });
 
-  const { data: bookings } = useQuery({ queryKey: ["admin-bookings"], queryFn: () => api.get<PaginatedResponse<Booking>>("/admin/bookings", { limit: "50" }) });
+  const { data: news } = useQuery({ queryKey: ["admin-news"], queryFn: () => api.get<PaginatedResponse<News>>("/admin/news", { limit: "50" }), enabled: unlocked });
 
-  const { data: news } = useQuery({ queryKey: ["admin-news"], queryFn: () => api.get<PaginatedResponse<News>>("/admin/news", { limit: "50" }) });
+  const { data: venues } = useQuery({ queryKey: ["admin-venues"], queryFn: () => api.get<{ data: Venue[] }>("/admin/venues"), enabled: unlocked });
 
-  const { data: venues } = useQuery({ queryKey: ["admin-venues"], queryFn: () => api.get<{ data: Venue[] }>("/admin/venues") });
-
-  const { data: settings } = useQuery({ queryKey: ["admin-settings"], queryFn: () => api.get<Record<string, string>>("/admin/settings") });
+  const { data: settings } = useQuery({ queryKey: ["admin-settings"], queryFn: () => api.get<Record<string, string>>("/admin/settings"), enabled: unlocked });
 
   const stats = dashboard?.stats;
 
   const handleLogout = () => {
     sessionStorage.removeItem(STORAGE_KEY);
+    api.logout();
     navigate("/");
   };
 
+  if (!unlocked) {
+    return (
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.14),transparent_34%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--secondary)/0.45))]">
+        <div className="mx-auto flex min-h-[70vh] max-w-md items-center px-4 py-20">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full rounded-2xl border bg-card/95 p-6 text-center shadow-xl backdrop-blur">
+            <img src="/logo.png" alt="Fusion" className="mx-auto mb-6 h-16 w-auto" />
+            <h1 className="text-2xl font-bold">Admin Access</h1>
+            <p className="mt-2 text-muted-foreground">Enter the admin password to unlock dashboard actions.</p>
+            <form
+              onSubmit={(e) => { e.preventDefault(); handleUnlock(); }}
+              className="mt-6 space-y-4"
+            >
+              <Input
+                type="password"
+                placeholder="Enter password"
+                value={passwordInput}
+                onChange={(e) => { setPasswordInput(e.target.value); setPasswordError(false); }}
+                className={passwordError ? "border-destructive" : ""}
+                autoFocus
+              />
+              {passwordError && (
+                <p className="text-sm text-destructive">Could not unlock admin access. Check the password and seeded admin account.</p>
+              )}
+              <Button type="submit" disabled={unlocking} className="w-full bg-gradient-to-r from-[#0f5f44] to-[#00d66f] text-white">
+                <Lock className="mr-2 h-4 w-4" /> {unlocking ? "Unlocking..." : "Unlock"}
+              </Button>
+            </form>
+            <Button variant="ghost" className="mt-4" onClick={() => navigate("/")}>Back to Home</Button>
+          </motion.div>
+        </div>
+      </div>
+    );
+  }
+
   return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.12),transparent_34%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--secondary)/0.45))]">
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-        <div className="mb-8 flex items-center justify-between">
+        <div className="mb-8 overflow-hidden rounded-2xl border bg-card/90 p-5 shadow-sm backdrop-blur sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <Button variant="ghost" onClick={() => navigate("/")} className="mb-2 gap-1"><ChevronLeft className="h-4 w-4" /> Back to Site</Button>
-            <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-            <p className="text-muted-foreground">Manage Fusion Turf platform</p>
+            <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
+            <p className="text-muted-foreground">Manage venues, teams, content, and bookings from one tidy console.</p>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="text-xs">Admin</Badge>
+            <Badge variant="secondary" className="gap-1 text-xs"><CheckCircle2 className="h-3.5 w-3.5 text-primary" /> Admin</Badge>
             <Button variant="ghost" size="icon" onClick={handleLogout}><LogOut className="h-5 w-5" /></Button>
+          </div>
           </div>
         </div>
 
-        <div className="mb-6 flex flex-wrap gap-2">
+        <div className="mb-6 flex gap-2 overflow-x-auto rounded-2xl border bg-card/80 p-2 shadow-sm backdrop-blur">
           {adminTabs.map((tab) => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-all ${activeTab === tab.id ? "bg-primary text-primary-foreground" : "bg-secondary hover:bg-secondary/80"}`}>
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === tab.id ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-secondary hover:text-foreground"}`}>
               <tab.icon className="h-4 w-4" /> {tab.label}
             </button>
           ))}
@@ -253,7 +295,7 @@ export function AdminPage() {
                 </label>
                 {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                 <Button className="w-full" onClick={() => submitForm("season", "/admin/seasons", "admin-seasons")}
-                  disabled={!formData.name}>Create Season</Button>
+                  disabled={!formData.name || !formData.startDate || !formData.endDate}>Create Season</Button>
               </div>
             </Dialog>
           </>
@@ -299,10 +341,7 @@ export function AdminPage() {
                     ))}
                   </Select>
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Logo URL (optional)</Label>
-                  <Input value={formData.logoUrl || ""} onChange={(e) => handleFormChange("logoUrl", e.target.value)} placeholder="https://..." />
-                </div>
+                <ImageUploadField label="Logo" value={formData.logoUrl || ""} onChange={(value) => handleFormChange("logoUrl", value)} />
                 {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                 <Button className="w-full" onClick={() => submitForm("team", "/admin/teams", "admin-teams")}
                   disabled={!formData.name || !formData.seasonId}>Create Team</Button>
@@ -371,10 +410,7 @@ export function AdminPage() {
                     ))}
                   </Select>
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Photo URL (optional)</Label>
-                  <Input value={formData.photoUrl || ""} onChange={(e) => handleFormChange("photoUrl", e.target.value)} placeholder="https://..." />
-                </div>
+                <ImageUploadField label="Player Photo" value={formData.photoUrl || ""} onChange={(value) => handleFormChange("photoUrl", value)} />
                 {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                 <Button className="w-full" onClick={() => submitForm("player", "/admin/players", "admin-players")}
                   disabled={!formData.firstName || !formData.teamId}>Create Player</Button>
@@ -546,6 +582,7 @@ export function AdminPage() {
                     ))}
                   </Select>
                 </div>
+                {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                 <Button className="w-full" onClick={() => submitForm("award", "/admin/awards", "admin-awards")}
                   disabled={!formData.name}>Create Award</Button>
               </div>
@@ -654,10 +691,7 @@ export function AdminPage() {
                   <Label>Description</Label>
                   <Input value={formData.description || ""} onChange={(e) => handleFormChange("description", e.target.value)} placeholder="Description" />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Cover Image URL</Label>
-                  <Input value={formData.coverImage || ""} onChange={(e) => handleFormChange("coverImage", e.target.value)} placeholder="https://..." />
-                </div>
+                <ImageUploadField label="Cover Image" value={formData.coverImage || ""} onChange={(value) => handleFormChange("coverImage", value)} />
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label>Opening Time</Label>
@@ -668,6 +702,7 @@ export function AdminPage() {
                     <Input type="time" value={formData.closingTime || "23:00"} onChange={(e) => handleFormChange("closingTime", e.target.value)} />
                   </div>
                 </div>
+                {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                 <Button className="w-full" onClick={() => submitForm("venue", "/admin/venues", "admin-venues")}
                   disabled={!formData.name}>Create Venue</Button>
               </div>
@@ -696,10 +731,7 @@ export function AdminPage() {
                   <Label>Description</Label>
                   <Input value={formData.description || ""} onChange={(e) => handleFormChange("description", e.target.value)} placeholder="Description" />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Cover Image URL</Label>
-                  <Input value={formData.coverImage || ""} onChange={(e) => handleFormChange("coverImage", e.target.value)} placeholder="https://..." />
-                </div>
+                <ImageUploadField label="Cover Image" value={formData.coverImage || ""} onChange={(value) => handleFormChange("coverImage", value)} />
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label>Opening Time</Label>
@@ -710,6 +742,7 @@ export function AdminPage() {
                     <Input type="time" value={formData.closingTime || "23:00"} onChange={(e) => handleFormChange("closingTime", e.target.value)} />
                   </div>
                 </div>
+                {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                 <Button className="w-full" onClick={async () => {
                   try {
                     await api.patch(`/admin/venues/${formData.id}`, { name: formData.name, city: formData.city, state: formData.state, address: formData.address, description: formData.description, coverImage: formData.coverImage, openingTime: formData.openingTime, closingTime: formData.closingTime });
@@ -744,9 +777,10 @@ export function AdminPage() {
                   <Label>Base Price (in paise, ₹500 = 50000)</Label>
                   <Input type="number" min={0} value={formData.basePrice || 50000} onChange={(e) => handleFormChange("basePrice", parseInt(e.target.value) || 50000)} />
                 </div>
+                {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                 <Button className="w-full" onClick={async () => {
                   try {
-                    await api.post("/admin/turfs", { name: formData.name, venueId: formData.venueId, slug: formData.name.toLowerCase().replace(/\s+/g, "-"), size: formData.size, surface: formData.surface, basePrice: formData.basePrice });
+                    await api.post("/admin/turfs", { name: formData.name, venueId: formData.venueId, size: formData.size, surface: formData.surface, basePrice: formData.basePrice });
                     setShowForm(null);
                     queryClient.invalidateQueries({ queryKey: ["admin-venues"] });
                   } catch (err: any) { setFormErrors(err.message); }
@@ -857,13 +891,11 @@ export function AdminPage() {
                   <Label>Content (HTML)</Label>
                   <textarea className="flex min-h-[120px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" value={formData.content || ""} onChange={(e) => handleFormChange("content", e.target.value)} placeholder="HTML content" />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Image URL</Label>
-                  <Input value={formData.imageUrl || ""} onChange={(e) => handleFormChange("imageUrl", e.target.value)} placeholder="https://..." />
-                </div>
+                <ImageUploadField label="Article Image" value={formData.imageUrl || ""} onChange={(value) => handleFormChange("imageUrl", value)} />
+                {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                 <Button className="w-full" onClick={async () => {
                   try {
-                    const slug = formData.title.toLowerCase().replace(/\s+/g, "-");
+                    const slug = slugify(formData.title) || `article-${Date.now()}`;
                     await api.post("/admin/news", { title: formData.title, slug, excerpt: formData.excerpt, content: formData.content, imageUrl: formData.imageUrl, author: formData.author, isPublished: true });
                     setShowForm(null);
                     queryClient.invalidateQueries({ queryKey: ["admin-news"] });
@@ -886,13 +918,13 @@ export function AdminPage() {
                     {settings?.site_logo_url ? (
                       <div className="relative overflow-hidden border bg-muted p-4">
                         <img src={settings.site_logo_url} alt="Logo" className="mx-auto h-16 w-auto object-contain" />
-                        <Button variant="outline" size="sm" className="mt-2 w-full" onClick={() => openForm("editSetting", { key: "site_logo_url", value: settings.site_logo_url })}>Change URL</Button>
+                        <Button variant="outline" size="sm" className="mt-2 w-full" onClick={() => openForm("editSetting", { key: "site_logo_url", value: settings.site_logo_url })}>Change Image</Button>
                       </div>
                     ) : (
                       <div className="flex flex-col items-center gap-2 border border-dashed p-6">
                         <Image className="h-8 w-8 text-muted-foreground" />
                         <p className="text-sm text-muted-foreground">No logo set</p>
-                        <Button variant="outline" size="sm" onClick={() => openForm("editSetting", { key: "site_logo_url", value: "" })}>Add Logo URL</Button>
+                        <Button variant="outline" size="sm" onClick={() => openForm("editSetting", { key: "site_logo_url", value: "" })}>Upload Logo</Button>
                       </div>
                     )}
                   </div>
@@ -902,14 +934,14 @@ export function AdminPage() {
                       <div className="relative overflow-hidden border bg-muted">
                         <img src={settings.site_hero_url} alt="Hero" className="aspect-video w-full object-cover" />
                         <div className="p-2">
-                          <Button variant="outline" size="sm" className="w-full" onClick={() => openForm("editSetting", { key: "site_hero_url", value: settings.site_hero_url })}>Change URL</Button>
+                          <Button variant="outline" size="sm" className="w-full" onClick={() => openForm("editSetting", { key: "site_hero_url", value: settings.site_hero_url })}>Change Image</Button>
                         </div>
                       </div>
                     ) : (
                       <div className="flex flex-col items-center gap-2 border border-dashed p-6">
                         <Image className="h-8 w-8 text-muted-foreground" />
                         <p className="text-sm text-muted-foreground">No hero banner</p>
-                        <Button variant="outline" size="sm" onClick={() => openForm("editSetting", { key: "site_hero_url", value: "" })}>Add Hero URL</Button>
+                        <Button variant="outline" size="sm" onClick={() => openForm("editSetting", { key: "site_hero_url", value: "" })}>Upload Hero</Button>
                       </div>
                     )}
                   </div>
@@ -926,7 +958,7 @@ export function AdminPage() {
                     ) : (
                       <div className="flex items-center justify-between border border-dashed p-4">
                         <p className="text-sm text-muted-foreground">No favicon set</p>
-                        <Button variant="outline" size="sm" onClick={() => openForm("editSetting", { key: "site_favicon_url", value: "" })}>Add URL</Button>
+                        <Button variant="outline" size="sm" onClick={() => openForm("editSetting", { key: "site_favicon_url", value: "" })}>Upload</Button>
                       </div>
                     )}
                   </div>
@@ -972,9 +1004,16 @@ export function AdminPage() {
               <div className="space-y-4">
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">Setting: <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{formData.key}</code></p>
-                  <Label>Value</Label>
-                  <Input value={formData.value || ""} onChange={(e) => handleFormChange("value", e.target.value)} />
+                  {["site_logo_url", "site_hero_url", "site_favicon_url"].includes(formData.key) ? (
+                    <ImageUploadField label="Image" value={formData.value || ""} onChange={(value) => handleFormChange("value", value)} />
+                  ) : (
+                    <>
+                      <Label>Value</Label>
+                      <Input value={formData.value || ""} onChange={(e) => handleFormChange("value", e.target.value)} />
+                    </>
+                  )}
                 </div>
+                {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                 <Button className="w-full" onClick={async () => {
                   try {
                     await api.patch("/admin/settings", { [formData.key]: formData.value });
@@ -1040,6 +1079,65 @@ export function AdminPage() {
         )}
       </motion.div>
     </div>
+    </div>
+  );
+}
+
+function ImageUploadField({ label, value, onChange }: {
+  label: string;
+  value?: string;
+  onChange: (value: string) => void;
+}) {
+  const [error, setError] = useState("");
+
+  const handleFile = (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Choose an image file.");
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      setError("Image must be under 4MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setError("");
+      onChange(String(reader.result));
+    };
+    reader.onerror = () => setError("Could not read that image.");
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <div className="rounded-lg border border-dashed bg-secondary/40 p-3">
+        {value ? (
+          <div className="mb-3 overflow-hidden rounded-lg border bg-background">
+            <img src={value} alt="" className="h-36 w-full object-cover" />
+          </div>
+        ) : (
+          <div className="mb-3 flex h-28 items-center justify-center rounded-lg bg-background/70 text-muted-foreground">
+            <Image className="h-8 w-8" />
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90">
+            <Upload className="h-4 w-4" />
+            {value ? "Replace image" : "Upload image"}
+            <input type="file" accept="image/*" className="sr-only" onChange={(e) => handleFile(e.target.files?.[0])} />
+          </label>
+          {value && (
+            <Button type="button" variant="outline" size="sm" onClick={() => onChange("")}>
+              Remove
+            </Button>
+          )}
+        </div>
+        {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
+      </div>
+    </div>
   );
 }
 
@@ -1052,9 +1150,9 @@ function AdminTable<T extends { id: string }>({ title, columns, data, renderRow,
         <h2 className="text-xl font-bold">{title}</h2>
         {onAdd && <Button size="sm" onClick={onAdd}><Plus className="mr-1 h-4 w-4" /> Add {title.slice(0, -1)}</Button>}
       </div>
-      <div className="rounded-lg border overflow-x-auto">
+      <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
         <table className="w-full text-sm">
-          <thead className="bg-muted/50">
+          <thead className="bg-secondary/70">
             <tr>{columns.map((c) => <th key={c} className="p-3 text-left font-medium">{c}</th>)}</tr>
           </thead>
           <tbody>
