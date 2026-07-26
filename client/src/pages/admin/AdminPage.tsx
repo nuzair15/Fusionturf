@@ -7,10 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
-import { useAuth } from "@/providers/AuthProvider";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import type { DashboardStats, User, Season, Team, Player, Fixture, Award, News, Booking, PaginatedResponse } from "@/types";
-import { LayoutDashboard, Users, Calendar, Trophy, Settings, BarChart3, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image } from "lucide-react";
+import { LayoutDashboard, Users, Calendar, Trophy, Settings, BarChart3, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock } from "lucide-react";
+
+const ADMIN_PASSWORD = "Abdurahman.15";
+const STORAGE_KEY = "admin_unlocked";
 
 const adminTabs = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
@@ -26,12 +28,58 @@ const adminTabs = [
 ];
 
 export function AdminPage() {
-  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("overview");
   const [editingItem, setEditingItem] = useState<any>(null);
   const [showForm, setShowForm] = useState<string | null>(null);
+  const [passwordInput, setPasswordInput] = useState("");
+  const [passwordError, setPasswordError] = useState(false);
+  const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem(STORAGE_KEY) === "true");
+
+  const handleUnlock = () => {
+    if (passwordInput === ADMIN_PASSWORD) {
+      sessionStorage.setItem(STORAGE_KEY, "true");
+      setUnlocked(true);
+      setPasswordError(false);
+    } else {
+      setPasswordError(true);
+    }
+  };
+
+  if (!unlocked) {
+    return (
+      <div className="mx-auto flex min-h-[60vh] max-w-md items-center px-4 py-20">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full text-center">
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0a1838] to-[#00d66f]">
+            <Lock className="h-8 w-8 text-white" />
+          </div>
+          <h1 className="text-2xl font-bold">Admin Access</h1>
+          <p className="mt-2 text-muted-foreground">Enter the admin password to continue.</p>
+          <form
+            onSubmit={(e) => { e.preventDefault(); handleUnlock(); }}
+            className="mt-6 space-y-4"
+          >
+            <Input
+              type="password"
+              placeholder="Enter password"
+              value={passwordInput}
+              onChange={(e) => { setPasswordInput(e.target.value); setPasswordError(false); }}
+              className={passwordError ? "border-destructive" : ""}
+              autoFocus
+            />
+            {passwordError && (
+              <p className="text-sm text-destructive">Incorrect password. Try again.</p>
+            )}
+            <Button type="submit" className="w-full bg-gradient-to-r from-[#0a1838] to-[#00d66f] text-white">
+              <Lock className="mr-2 h-4 w-4" /> Unlock
+            </Button>
+          </form>
+          <Button variant="ghost" className="mt-4" onClick={() => navigate("/")}>Back to Home</Button>
+        </motion.div>
+      </div>
+    );
+  }
 
   const { data: dashboard } = useQuery({ queryKey: ["admin-dashboard"], queryFn: () => api.get<DashboardStats>("/admin/dashboard") });
 
@@ -53,17 +101,12 @@ export function AdminPage() {
 
   const { data: settings } = useQuery({ queryKey: ["admin-settings"], queryFn: () => api.get<Record<string, string>>("/admin/settings") });
 
-  if (!user || !["SUPER_ADMIN", "LEAGUE_ADMIN", "BOOKING_MANAGER"].includes(user.role)) {
-    return (
-      <div className="mx-auto max-w-md px-4 py-20 text-center">
-        <h1 className="text-2xl font-bold">Access Denied</h1>
-        <p className="mt-2 text-muted-foreground">You do not have permission to access this page.</p>
-        <Button className="mt-4" onClick={() => navigate("/")}>Go Home</Button>
-      </div>
-    );
-  }
-
   const stats = dashboard?.stats;
+
+  const handleLogout = () => {
+    sessionStorage.removeItem(STORAGE_KEY);
+    navigate("/");
+  };
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
@@ -75,8 +118,8 @@ export function AdminPage() {
             <p className="text-muted-foreground">Manage Fusion League platform</p>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="text-xs">{user.role.replace("_", " ")}</Badge>
-            <Button variant="ghost" size="icon" onClick={logout}><LogOut className="h-5 w-5" /></Button>
+            <Badge variant="secondary" className="text-xs">Admin</Badge>
+            <Button variant="ghost" size="icon" onClick={handleLogout}><LogOut className="h-5 w-5" /></Button>
           </div>
         </div>
 
