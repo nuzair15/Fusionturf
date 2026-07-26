@@ -53,7 +53,7 @@ export function LeaguePage() {
                   Full Table <ChevronRight className="h-4 w-4" />
                 </Button>
               </CardHeader>
-              <CardContent className="p-0">
+              <CardContent className="overflow-x-auto p-0">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50">
                     <tr>

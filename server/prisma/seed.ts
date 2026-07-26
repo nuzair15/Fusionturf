@@ -20,12 +20,13 @@ async function main() {
 
   // ─── Users ───
   const passwordHash = await bcrypt.hash("password123", 12);
+  const adminPasswordHash = await bcrypt.hash("Abdurahman.15", 12);
 
   const admin = await prisma.user.create({
     data: {
       email: "admin@fusionleague.com",
-      passwordHash,
-      firstName: "Super",
+      passwordHash: adminPasswordHash,
+      firstName: "Nuzair",
       lastName: "Admin",
       role: "SUPER_ADMIN",
       emailVerified: true,

@@ -24,7 +24,7 @@ export function HomePage() {
 
   const { data: settings } = useQuery({
     queryKey: ["site-settings"],
-    queryFn: () => api.get<Record<string, string>>("/admin/settings"),
+    queryFn: () => api.get<Record<string, string>>("/settings"),
     retry: false,
   });
 
@@ -304,7 +304,7 @@ export function HomePage() {
               <Button size="lg" variant="secondary" className="w-full sm:w-auto gap-2" onClick={() => navigate("/booking")}>
                 <Calendar className="h-5 w-5" /> Book a Turf
               </Button>
-              <Button size="lg" variant="outline" className="w-full border-white/20 text-white hover:bg-white/10 sm:w-auto gap-2" onClick={() => navigate("/register")}>
+              <Button size="lg" variant="outline" className="w-full border-white/20 text-white hover:bg-white/10 sm:w-auto gap-2" onClick={() => navigate("/league")}>
                 <Users className="h-5 w-5" /> Join the League
               </Button>
             </motion.div>

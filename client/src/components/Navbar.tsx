@@ -15,20 +15,19 @@ const navLinks = [
 ];
 
 export function Navbar() {
-  const { user, logout, isAuthenticated } = useAuth();
+  const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
 
   const { data: settings } = useQuery({
     queryKey: ["settings"],
-    queryFn: () => api.get<Record<string, string>>("/admin/settings"),
+    queryFn: () => api.get<Record<string, string>>("/settings"),
     retry: false,
   });
 
   const siteLogoUrl = settings?.site_logo_url;
   const siteName = settings?.site_name || "Fusion League";
-
   const isAdmin = user && ["SUPER_ADMIN", "LEAGUE_ADMIN", "BOOKING_MANAGER"].includes(user.role);
 
   return (
@@ -64,26 +63,21 @@ export function Navbar() {
             {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </Button>
 
-          {isAuthenticated ? (
-            <div className="hidden items-center gap-2 md:flex">
-              {isAdmin && (
-                <Button variant="ghost" size="sm" onClick={() => navigate("/admin")}>
-                  <Settings className="mr-2 h-4 w-4" /> Admin
-                </Button>
-              )}
+          <div className="hidden items-center gap-2 md:flex">
+            {isAdmin && (
+              <Button variant="ghost" size="sm" onClick={() => navigate("/admin")}>
+                <Settings className="mr-2 h-4 w-4" /> Admin
+              </Button>
+            )}
+            {user && (
               <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
-                <User className="mr-2 h-4 w-4" /> {user?.firstName}
+                <User className="mr-2 h-4 w-4" /> {user.firstName}
               </Button>
-              <Button variant="ghost" size="icon" onClick={logout}>
-                <LogOut className="h-5 w-5" />
-              </Button>
-            </div>
-          ) : (
-            <div className="hidden items-center gap-2 md:flex">
-              <Button variant="ghost" size="sm" onClick={() => navigate("/login")}>Sign In</Button>
-              <Button size="sm" onClick={() => navigate("/register")}>Get Started</Button>
-            </div>
-          )}
+            )}
+            <Button variant="ghost" size="icon" onClick={logout}>
+              <LogOut className="h-5 w-5" />
+            </Button>
+          </div>
 
           <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setOpen(!open)}>
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -111,26 +105,19 @@ export function Navbar() {
                 </Link>
               ))}
               <hr className="my-2" />
-              {isAuthenticated ? (
-                <>
-                  <Link to="/dashboard" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium hover:bg-accent">
-                    <User className="h-4 w-4" /> Dashboard
-                  </Link>
-                  {isAdmin && (
-                    <Link to="/admin" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium hover:bg-accent">
-                      <Settings className="h-4 w-4" /> Admin
-                    </Link>
-                  )}
-                  <button onClick={() => { logout(); setOpen(false); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-destructive hover:bg-accent">
-                    <LogOut className="h-4 w-4" /> Sign Out
-                  </button>
-                </>
-              ) : (
-                <>
-                  <Link to="/login" onClick={() => setOpen(false)} className="block rounded-lg px-3 py-2 text-sm font-medium hover:bg-accent">Sign In</Link>
-                  <Link to="/register" onClick={() => setOpen(false)} className="block rounded-lg px-3 py-2 text-sm font-medium text-primary hover:bg-accent">Get Started</Link>
-                </>
+              {isAdmin && (
+                <Link to="/admin" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium hover:bg-accent">
+                  <Settings className="h-4 w-4" /> Admin
+                </Link>
               )}
+              {user && (
+                <Link to="/dashboard" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium hover:bg-accent">
+                  <User className="h-4 w-4" /> Dashboard
+                </Link>
+              )}
+              <button onClick={() => { logout(); }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-destructive hover:bg-accent">
+                <LogOut className="h-4 w-4" /> Sign Out
+              </button>
             </div>
           </motion.div>
         )}

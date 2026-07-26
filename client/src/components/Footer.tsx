@@ -29,7 +29,7 @@ export function Footer() {
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <Link to="/" className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-purple-600">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#0a1838] to-[#00d66f]">
                 <span className="text-sm font-bold text-white">FL</span>
               </div>
               <span className="text-lg font-bold">Fusion League</span>
@@ -54,6 +54,12 @@ export function Footer() {
           ))}
         </div>
         <div className="mt-8 border-t pt-8 text-center text-sm text-muted-foreground">
+          <Link
+            to="/admin"
+            className="mx-auto mb-4 flex w-fit items-center gap-2 rounded-lg border border-[#00d66f]/30 bg-[#00d66f]/10 px-4 py-2 text-sm font-medium text-[#00d66f] transition-colors hover:bg-[#00d66f]/20"
+          >
+            Admin Panel
+          </Link>
           &copy; {new Date().getFullYear()} Fusion League. All rights reserved.
         </div>
       </div>

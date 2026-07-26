@@ -34,25 +34,25 @@ export function FixtureDetailPage() {
           <Badge className={`absolute right-4 top-4 ${getMatchStatusColor(fixture.status)}`}>
             {fixture.status}
           </Badge>
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col items-center gap-2">
-              <img src={fixture.homeTeam.logoUrl || "/placeholder.svg"} alt="" className="h-16 w-16 rounded-full bg-white/10 p-2" />
-              <h2 className="text-xl font-bold">{fixture.homeTeam.name}</h2>
+          <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
+            <div className="flex flex-col items-center gap-2 sm:flex-1">
+              <img src={fixture.homeTeam.logoUrl || "/placeholder.svg"} alt="" className="h-12 w-12 rounded-full bg-white/10 p-1.5 sm:h-16 sm:w-16 sm:p-2" />
+              <h2 className="text-base font-bold sm:text-xl">{fixture.homeTeam.shortName || fixture.homeTeam.name}</h2>
             </div>
             <div className="text-center">
               {fixture.status === "COMPLETED" ? (
-                <div className="text-5xl font-bold">{fixture.homeScore} - {fixture.awayScore}</div>
+                <div className="text-3xl font-bold sm:text-5xl">{fixture.homeScore} - {fixture.awayScore}</div>
               ) : (
-                <div className="text-3xl font-bold text-muted-foreground">VS</div>
+                <div className="text-2xl font-bold text-muted-foreground sm:text-3xl">VS</div>
               )}
-              <p className="mt-2 text-white/60 text-sm">
+              <p className="mt-1 text-white/60 text-xs sm:mt-2 sm:text-sm">
                 {formatDate(fixture.matchDate)} • {fixture.kickoffTime || "TBD"}
               </p>
               {fixture.stadium && <p className="text-white/40 text-xs">{fixture.stadium}</p>}
             </div>
-            <div className="flex flex-col items-center gap-2">
-              <img src={fixture.awayTeam.logoUrl || "/placeholder.svg"} alt="" className="h-16 w-16 rounded-full bg-white/10 p-2" />
-              <h2 className="text-xl font-bold">{fixture.awayTeam.name}</h2>
+            <div className="flex flex-col items-center gap-2 sm:flex-1">
+              <img src={fixture.awayTeam.logoUrl || "/placeholder.svg"} alt="" className="h-12 w-12 rounded-full bg-white/10 p-1.5 sm:h-16 sm:w-16 sm:p-2" />
+              <h2 className="text-base font-bold sm:text-xl">{fixture.awayTeam.shortName || fixture.awayTeam.name}</h2>
             </div>
           </div>
         </div>

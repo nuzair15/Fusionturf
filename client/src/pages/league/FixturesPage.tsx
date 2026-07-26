@@ -71,27 +71,27 @@ export function FixturesPage() {
 
           <div className="grid grid-cols-7">
             {calendarDays.map((cell, i) => (
-              <div key={i} className="min-h-[90px] border-b border-r p-1 text-sm last:border-r-0">
+              <div key={i} className="min-h-[60px] border-b border-r p-0.5 text-[10px] last:border-r-0 sm:min-h-[80px] sm:p-1 sm:text-sm">
                 {cell && (
                   <>
-                    <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs ${
+                    <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] sm:h-6 sm:w-6 sm:text-xs ${
                       cell.day === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear()
                         ? "bg-primary text-primary-foreground" : ""
                     }`}>
                       {cell.day}
                     </span>
-                    <div className="mt-1 space-y-0.5">
-                      {cell.fixtures.slice(0, 2).map((f) => (
+                    <div className="mt-0.5 space-y-0.5 sm:mt-1">
+                      {cell.fixtures.slice(0, viewMonth === today.getMonth() && viewYear === today.getFullYear() ? 1 : 2).map((f) => (
                         <div
                           key={f.id}
-                          className="cursor-pointer rounded bg-primary/10 px-1 py-0.5 text-[10px] leading-tight text-primary hover:bg-primary/20"
+                          className="cursor-pointer rounded bg-primary/10 px-0.5 py-0.5 text-[8px] leading-tight text-primary hover:bg-primary/20 sm:px-1 sm:text-[10px]"
                           onClick={() => navigate(`/league/fixtures/${f.id}`)}
                         >
                           {f.homeTeam.shortName || f.homeTeam.name?.substring(0, 3)} vs {f.awayTeam.shortName || f.awayTeam.name?.substring(0, 3)}
                         </div>
                       ))}
-                      {cell.fixtures.length > 2 && (
-                        <span className="text-[10px] text-muted-foreground">+{cell.fixtures.length - 2} more</span>
+                      {cell.fixtures.length > (viewMonth === today.getMonth() && viewYear === today.getFullYear() ? 1 : 2) && (
+                        <span className="text-[8px] text-muted-foreground sm:text-[10px]">+{cell.fixtures.length - (viewMonth === today.getMonth() && viewYear === today.getFullYear() ? 1 : 2)} more</span>
                       )}
                     </div>
                   </>
@@ -106,20 +106,20 @@ export function FixturesPage() {
             <h2 className="mb-4 text-lg font-bold">All Fixtures</h2>
             <div className="space-y-2">
               {fixtures.map((f) => (
-                <div key={f.id} className="flex cursor-pointer items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/20" onClick={() => navigate(`/league/fixtures/${f.id}`)}>
-                  <div className="flex items-center gap-3">
-                    <img src={f.homeTeam.logoUrl || "/placeholder.svg"} alt="" className="h-8 w-8 rounded-full bg-muted" />
-                    <span className="text-sm font-medium">{f.homeTeam.name}</span>
+                <div key={f.id} className="flex cursor-pointer items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/20 sm:px-3" onClick={() => navigate(`/league/fixtures/${f.id}`)}>
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <img src={f.homeTeam.logoUrl || "/placeholder.svg"} alt="" className="h-6 w-6 shrink-0 rounded-full bg-muted sm:h-8 sm:w-8" />
+                    <span className="truncate text-xs font-medium sm:text-sm">{f.homeTeam.shortName || f.homeTeam.name}</span>
                   </div>
-                  <div className="text-center">
-                    <span className="text-sm text-muted-foreground">{formatDate(f.matchDate)}</span>
-                    <span className="ml-3 rounded bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                  <div className="mx-2 shrink-0 text-center sm:mx-3">
+                    <div className="text-xs text-muted-foreground">{formatDate(f.matchDate)}</div>
+                    <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary sm:px-2 sm:text-xs">
                       {f.status === "COMPLETED" ? `${f.homeScore ?? 0} - ${f.awayScore ?? 0}` : f.status === "SCHEDULED" ? "vs" : f.status}
                     </span>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-medium">{f.awayTeam.name}</span>
-                    <img src={f.awayTeam.logoUrl || "/placeholder.svg"} alt="" className="h-8 w-8 rounded-full bg-muted" />
+                  <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
+                    <span className="truncate text-xs font-medium sm:text-sm">{f.awayTeam.shortName || f.awayTeam.name}</span>
+                    <img src={f.awayTeam.logoUrl || "/placeholder.svg"} alt="" className="h-6 w-6 shrink-0 rounded-full bg-muted sm:h-8 sm:w-8" />
                   </div>
                 </div>
               ))}

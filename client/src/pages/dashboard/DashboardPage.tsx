@@ -27,7 +27,7 @@ export function DashboardPage() {
       <div className="mx-auto max-w-md px-4 py-20 text-center">
         <h1 className="text-2xl font-bold">Sign in required</h1>
         <p className="mt-2 text-muted-foreground">Please sign in to view your dashboard.</p>
-        <Button className="mt-4" onClick={() => navigate("/login")}>Sign In</Button>
+        <Button className="mt-4" onClick={() => navigate("/")}>Go Home</Button>
       </div>
     );
   }

@@ -4,9 +4,8 @@ import { AuthProvider } from "@/providers/AuthProvider";
 import { ThemeProvider } from "@/providers/ThemeProvider";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
+import { ScrollToTop } from "@/components/ScrollToTop";
 import { HomePage } from "@/pages/home/HomePage";
-import { LoginPage } from "@/pages/auth/LoginPage";
-import { RegisterPage } from "@/pages/auth/RegisterPage";
 import { BookingPage } from "@/pages/booking/BookingPage";
 import { VenueDetailPage } from "@/pages/booking/VenueDetailPage";
 import { LeaguePage } from "@/pages/league/LeaguePage";
@@ -33,13 +32,12 @@ export default function App() {
       <ThemeProvider>
         <AuthProvider>
           <BrowserRouter>
+            <ScrollToTop />
             <div className="flex min-h-screen flex-col">
               <Navbar />
               <main className="flex-1">
                 <Routes>
                   <Route path="/" element={<HomePage />} />
-                  <Route path="/login" element={<LoginPage />} />
-                  <Route path="/register" element={<RegisterPage />} />
                   <Route path="/booking" element={<BookingPage />} />
                   <Route path="/booking/:slug" element={<VenueDetailPage />} />
                   <Route path="/league" element={<LeaguePage />} />

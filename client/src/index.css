@@ -55,6 +55,8 @@
   }
   body {
     @apply bg-background text-foreground;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
 }
 
@@ -83,6 +85,16 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* Smooth touch scrolling on iOS */
+.overflow-x-auto, .overflow-y-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent pull-to-refresh on mobile */
+html {
+  overscroll-behavior: none;
 }
 
 /* FullCalendar overrides */

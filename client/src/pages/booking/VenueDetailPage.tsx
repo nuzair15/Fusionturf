@@ -7,14 +7,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { formatDate, formatTime, formatCurrency } from "@/lib/utils";
-import { useAuth } from "@/providers/AuthProvider";
 import type { Venue, Turf, SlotAvailability } from "@/types";
 import { MapPin, Phone, Mail, Clock, Calendar, Users, Star, ChevronLeft } from "lucide-react";
 
 export function VenueDetailPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
   const [selectedTurf, setSelectedTurf] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [selectedSlot, setSelectedSlot] = useState<SlotAvailability | null>(null);
@@ -207,11 +205,10 @@ export function VenueDetailPage() {
                   className="w-full"
                   disabled={!selectedSlot}
                   onClick={() => {
-                    if (!isAuthenticated) return navigate("/login");
                     navigate("/dashboard");
                   }}
                 >
-                  {isAuthenticated ? "Proceed to Book" : "Sign In to Book"}
+                  Proceed to Book
                 </Button>
               </CardContent>
             </Card>
