@@ -12,8 +12,8 @@ import { Dialog } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { LiveStatsPanel } from "@/components/admin/LiveStatsPanel";
-import type { DashboardStats, User, Season, Team, Player, Fixture, Award, News, Booking, PaginatedResponse, Venue, Turf, Sponsor } from "@/types";
-import { LayoutDashboard, Users, Calendar, Trophy, Settings, BarChart3, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2, ActivitySquare } from "lucide-react";
+import type { DashboardStats, User, Season, Team, Player, Fixture, Award, News, Booking, PaginatedResponse, Venue, Turf, Sponsor, Suspension, ActivityLog } from "@/types";
+import { LayoutDashboard, Users, Calendar, Trophy, Settings, BarChart3, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2, ActivitySquare, ListChecks, AlertTriangle } from "lucide-react";
 
 const ADMIN_PASSWORD = "Abdurahman.15";
 const STORAGE_KEY = "admin_unlocked";
@@ -28,6 +28,9 @@ const adminTabs = [
   { id: "venues", label: "Venues", icon: MapPin },
   { id: "bookings", label: "Bookings", icon: Calendar },
   { id: "news", label: "News", icon: Newspaper },
+  { id: "sponsors", label: "Sponsors", icon: Handshake },
+  { id: "suspensions", label: "Suspensions", icon: AlertTriangle },
+  { id: "activity", label: "Activity Logs", icon: ListChecks },
   { id: "settings", label: "Settings", icon: Settings },
   { id: "users", label: "Users", icon: Users },
 ];
@@ -132,6 +135,12 @@ export function AdminPage() {
   const { data: venues } = useQuery({ queryKey: ["admin-venues"], queryFn: () => api.get<{ data: Venue[] }>("/admin/venues"), enabled: unlocked });
 
   const { data: settings } = useQuery({ queryKey: ["admin-settings"], queryFn: () => api.get<Record<string, string>>("/admin/settings"), enabled: unlocked });
+
+  const { data: sponsors } = useQuery({ queryKey: ["admin-sponsors"], queryFn: () => api.get<{ data: Sponsor[] }>("/admin/sponsors"), enabled: unlocked });
+
+  const { data: activityLogs } = useQuery({ queryKey: ["admin-activity"], queryFn: () => api.get<PaginatedResponse<ActivityLog>>("/admin/activity-logs", { limit: "50" }), enabled: unlocked });
+
+  const { data: suspensions } = useQuery({ queryKey: ["admin-suspensions"], queryFn: () => api.get<PaginatedResponse<Suspension>>("/admin/suspensions", { limit: "50" }), enabled: unlocked });
 
   const stats = dashboard?.stats;
 
@@ -495,6 +504,9 @@ export function AdminPage() {
                         <td className="p-3 text-muted-foreground">{formatDate(f.matchDate)}</td>
                         <td className="p-3"><Badge variant="secondary">{f.status}</Badge></td>
                         <td className="p-3 text-right">
+                          <Button variant="ghost" size="sm" onClick={() => openForm("squad", { fixtureId: f.id, homeTeamId: f.homeTeamId, awayTeamId: f.awayTeamId, seasonId: f.seasonId, homeTeamName: f.homeTeam?.name, awayTeamName: f.awayTeam?.name })} title="Select Squad">
+                            <Users className="h-4 w-4" />
+                          </Button>
                           <Button variant="ghost" size="sm" onClick={() => setLiveStatsFixtureId(f.id)} title="Live Stats">
                             <ActivitySquare className="h-4 w-4" />
                           </Button>
@@ -591,6 +603,18 @@ export function AdminPage() {
                   }}>Process Full Result</Button>
                 </div>
               </div>
+            </Dialog>
+            <Dialog open={showForm === "squad"} onClose={() => setShowForm(null)} title={`Squad Selection: ${formData.homeTeamName || "?"} vs ${formData.awayTeamName || "?"}`}>
+              {(formData.fixtureId && formData.seasonId) ? <SquadSelector
+                fixtureId={formData.fixtureId}
+                homeTeamId={formData.homeTeamId}
+                awayTeamId={formData.awayTeamId}
+                seasonId={formData.seasonId}
+                api={api}
+                queryClient={queryClient}
+                onClose={() => setShowForm(null)}
+                teams={teams || []}
+              /> : <p className="p-4 text-muted-foreground">Loading...</p>}
             </Dialog>
           </>
         )}
@@ -967,6 +991,132 @@ export function AdminPage() {
           </>
         )}
 
+        {activeTab === "sponsors" && (
+          <>
+            <AdminTable
+              title="Sponsors"
+              columns={["Logo", "Name", "Website", "Tier", "Status"]}
+              data={sponsors?.data || []}
+              renderRow={(s: Sponsor) => [
+                <img src={s.logoUrl || "/placeholder.svg"} alt="" className="h-8 w-8 rounded-full bg-muted" />,
+                <span className="font-medium">{s.name}</span>,
+                s.website ? <a href={s.website} target="_blank" className="text-primary hover:underline">{s.website}</a> : "-",
+                s.tier || "-",
+                s.isActive !== false ? <Badge>Active</Badge> : <Badge variant="destructive">Inactive</Badge>,
+              ]}
+              onAdd={() => { setEditingItem(null); openForm("sponsor", { name: "", website: "", tier: "platinum", logoUrl: "", isActive: true }); }}
+              onEdit={(s) => { setEditingItem(s); openForm("sponsor", { name: s.name, website: s.website || "", tier: s.tier || "platinum", logoUrl: s.logoUrl || "", isActive: s.isActive !== false }); }}
+            />
+            <Dialog open={showForm === "sponsor"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Sponsor" : "Add Sponsor"}>
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label>Sponsor Name *</Label>
+                  <Input value={formData.name || ""} onChange={(e) => handleFormChange("name", e.target.value)} placeholder="e.g. Red Bull" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Website</Label>
+                  <Input value={formData.website || ""} onChange={(e) => handleFormChange("website", e.target.value)} placeholder="https://example.com" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Tier</Label>
+                  <Select value={formData.tier || "platinum"} onChange={(e) => handleFormChange("tier", e.target.value)}>
+                    <option value="platinum">Platinum</option>
+                    <option value="gold">Gold</option>
+                    <option value="silver">Silver</option>
+                    <option value="bronze">Bronze</option>
+                  </Select>
+                </div>
+                <ImageUploadField label="Logo" value={formData.logoUrl || ""} onChange={(value) => handleFormChange("logoUrl", value)} />
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={formData.isActive ?? true} onChange={(e) => handleFormChange("isActive", e.target.checked)} className="rounded" />
+                  Active
+                </label>
+                {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
+                <Button className="w-full" onClick={() => submitForm("sponsor", "/admin/sponsors", "admin-sponsors")}
+                  disabled={!formData.name}>{editingItem ? "Update Sponsor" : "Create Sponsor"}</Button>
+              </div>
+            </Dialog>
+          </>
+        )}
+
+        {activeTab === "suspensions" && (
+          <>
+            <AdminTable
+              title="Suspensions"
+              columns={["Player", "Team", "Reason", "Bans", "Status", "Dates"]}
+              data={suspensions?.data || []}
+              renderRow={(s: Suspension) => [
+                <span className="font-medium">{s.player?.firstName || "?"} {s.player?.lastName || ""}</span>,
+                s.player?.team?.name || "-",
+                <Badge variant="secondary">{s.reason?.replace(/_/g, " ")}</Badge>,
+                `${s.matchBan} match${s.matchBan !== 1 ? "es" : ""} (${s.served} served)`,
+                s.isActive ? <Badge>Active</Badge> : <Badge variant="destructive">Served</Badge>,
+                <span className="text-xs text-muted-foreground">{formatDate(s.startDate)} - {formatDate(s.endDate)}</span>,
+              ]}
+              onAdd={() => { setEditingItem(null); openForm("suspension", { playerId: "", seasonId: seasons?.[0]?.id || "", reason: "YELLOW_ACCUMULATION", matchBan: 1, notes: "" }); }}
+              onEdit={(s) => { setEditingItem(s); openForm("suspension", { playerId: s.playerId, seasonId: s.seasonId, reason: s.reason, matchBan: s.matchBan, notes: s.notes || "", isActive: s.isActive }); }}
+            />
+            <Dialog open={showForm === "suspension"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Suspension" : "Add Suspension"}>
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label>Player ID *</Label>
+                  <Input value={formData.playerId || ""} onChange={(e) => handleFormChange("playerId", e.target.value)} placeholder="Enter player ID" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Season</Label>
+                  <Select value={formData.seasonId || ""} onChange={(e) => handleFormChange("seasonId", e.target.value)}>
+                    {(seasons || []).map((s: Season) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Reason *</Label>
+                  <Select value={formData.reason || "YELLOW_ACCUMULATION"} onChange={(e) => handleFormChange("reason", e.target.value)}>
+                    <option value="YELLOW_ACCUMULATION">Yellow Card Accumulation</option>
+                    <option value="STRAIGHT_RED">Straight Red Card</option>
+                    <option value="SECOND_YELLOW">Second Yellow Card</option>
+                    <option value="VIOLENT_CONDUCT">Violent Conduct</option>
+                    <option value="SERIOUS_MISCONDUCT">Serious Misconduct</option>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Match Ban</Label>
+                  <Input type="number" min={1} value={formData.matchBan || 1} onChange={(e) => handleFormChange("matchBan", parseInt(e.target.value) || 1)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Notes</Label>
+                  <Input value={formData.notes || ""} onChange={(e) => handleFormChange("notes", e.target.value)} placeholder="Optional notes" />
+                </div>
+                {editingItem && (
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={formData.isActive ?? true} onChange={(e) => handleFormChange("isActive", e.target.checked)} className="rounded" />
+                    Active (uncheck to mark as served)
+                  </label>
+                )}
+                {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
+                <Button className="w-full" onClick={() => submitForm("suspension", "/admin/suspensions", "admin-suspensions")}
+                  disabled={!formData.playerId || !formData.reason}>{editingItem ? "Update Suspension" : "Create Suspension"}</Button>
+              </div>
+            </Dialog>
+          </>
+        )}
+
+        {activeTab === "activity" && (
+          <AdminTable
+            title="Activity Logs"
+            columns={["Time", "User", "Action", "Entity", "Details"]}
+            data={activityLogs?.data || []}
+            renderRow={(l: ActivityLog) => [
+              <span className="text-xs text-muted-foreground">{formatDate(l.createdAt)}</span>,
+              l.user ? `${l.user.firstName} ${l.user.lastName}` : "-",
+              <Badge variant="secondary">{l.action}</Badge>,
+              <span className="text-xs">{l.entity} {l.entityId ? `#${l.entityId.slice(0, 8)}` : ""}</span>,
+              l.metadata ? <span className="text-xs text-muted-foreground">{JSON.stringify(l.metadata).slice(0, 60)}</span> : "-",
+            ]}
+          />
+        )}
+
         {activeTab === "settings" && (
           <>
             <div className="space-y-6">
@@ -1231,6 +1381,77 @@ function AdminTable<T extends { id: string }>({ title, columns, data, renderRow,
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function SquadSelector({ fixtureId, homeTeamId, awayTeamId, seasonId, api, queryClient, onClose, teams }: {
+  fixtureId: string; homeTeamId: string; awayTeamId: string; seasonId: string; api: any; queryClient: any; onClose: () => void; teams: Team[];
+}) {
+  const [homeSelected, setHomeSelected] = useState<string[]>([]);
+  const [awaySelected, setAwaySelected] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const { data: homePlayers } = useQuery({
+    queryKey: ["admin-squad-home", homeTeamId, seasonId],
+    queryFn: async () => { const r = await api.get(`/admin/players`, { teamId: homeTeamId, seasonId, limit: "100" }); return r as { data: Player[] }; },
+    enabled: !!homeTeamId && !!seasonId,
+  });
+  const { data: awayPlayers } = useQuery({
+    queryKey: ["admin-squad-away", awayTeamId, seasonId],
+    queryFn: async () => { const r = await api.get(`/admin/players`, { teamId: awayTeamId, seasonId, limit: "100" }); return r as { data: Player[] }; },
+    enabled: !!awayTeamId && !!seasonId,
+  });
+
+  const togglePlayer = (id: string, side: "home" | "away") => {
+    const setter = side === "home" ? setHomeSelected : setAwaySelected;
+    setter((prev) => prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError("");
+    try {
+      await api.post(`/admin/fixtures/${fixtureId}/squad`, { teamId: homeTeamId, playerIds: homeSelected });
+      await api.post(`/admin/fixtures/${fixtureId}/squad`, { teamId: awayTeamId, playerIds: awaySelected });
+      queryClient.invalidateQueries({ queryKey: ["admin-fixtures"] });
+      onClose();
+    } catch (err: any) {
+      setError(err.message || "Failed to save squad");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="grid grid-cols-2 gap-4 p-4">
+      <div>
+        <h3 className="mb-2 text-sm font-semibold">{teams.find(t => t.id === homeTeamId)?.name || "Home"}</h3>
+        <div className="max-h-64 space-y-1 overflow-y-auto">
+          {(homePlayers?.data || []).map((p: Player) => (
+            <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded border p-2 text-sm hover:bg-muted/50">
+              <input type="checkbox" checked={homeSelected.includes(p.id)} onChange={() => togglePlayer(p.id, "home")} className="rounded" />
+              <span>{p.firstName} {p.lastName} {p.jerseyNumber ? `(#${p.jerseyNumber})` : ""} - {p.position || ""}</span>
+            </label>
+          ))}
+          {(!homePlayers?.data || homePlayers.data.length === 0) && <p className="text-xs text-muted-foreground">No players found</p>}
+        </div>
+      </div>
+      <div>
+        <h3 className="mb-2 text-sm font-semibold">{teams.find(t => t.id === awayTeamId)?.name || "Away"}</h3>
+        <div className="max-h-64 space-y-1 overflow-y-auto">
+          {(awayPlayers?.data || []).map((p: Player) => (
+            <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded border p-2 text-sm hover:bg-muted/50">
+              <input type="checkbox" checked={awaySelected.includes(p.id)} onChange={() => togglePlayer(p.id, "away")} className="rounded" />
+              <span>{p.firstName} {p.lastName} {p.jerseyNumber ? `(#${p.jerseyNumber})` : ""} - {p.position || ""}</span>
+            </label>
+          ))}
+          {(!awayPlayers?.data || awayPlayers.data.length === 0) && <p className="text-xs text-muted-foreground">No players found</p>}
+        </div>
+      </div>
+      {error && <p className="col-span-2 text-sm text-destructive">{error}</p>}
+      <Button className="col-span-2" onClick={handleSave} disabled={saving}>{saving ? "Saving..." : "Save Squad"}</Button>
     </div>
   );
 }

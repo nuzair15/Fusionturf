@@ -420,6 +420,9 @@ export interface Sponsor {
   logoUrl: string;
   website?: string;
   tier?: string;
+  isActive?: boolean;
+  teamId?: string;
+  team?: Team;
 }
 
 export interface Coupon {
@@ -440,6 +443,21 @@ export interface Notification {
   isRead: boolean;
   linkUrl?: string;
   createdAt: string;
+}
+
+export interface Suspension {
+  id: string;
+  playerId: string;
+  seasonId: string;
+  reason: string;
+  matchBan: number;
+  startDate: string;
+  endDate: string;
+  served: number;
+  isActive: boolean;
+  notes?: string;
+  player?: { id: string; firstName: string; lastName: string; photoUrl?: string; jerseyNumber?: number; team?: { id: string; name: string; shortName?: string; logoUrl?: string } };
+  season?: { id: string; name: string };
 }
 
 export interface ActivityLog {

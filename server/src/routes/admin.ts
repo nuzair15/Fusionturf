@@ -91,4 +91,10 @@ router.post("/process-match-result/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"
 router.get("/fixtures/:id/live-stats", admin.getLiveStats);
 router.post("/fixtures/:id/live-stats/update", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.updateLiveStat);
 
+// Suspensions
+router.get("/suspensions", admin.adminGetSuspensions);
+router.post("/suspensions", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.adminCreateSuspension);
+router.patch("/suspensions/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.adminUpdateSuspension);
+router.delete("/suspensions/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.adminDeleteSuspension);
+
 export default router;
