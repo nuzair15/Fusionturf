@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { v4 as uuidv4 } from "uuid";
 import prisma from "../config/database.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { paginate, paginatedResponse } from "../utils/helpers.js";
@@ -24,9 +25,13 @@ export const createSeason = async (req: Request, res: Response, next: NextFuncti
     if (!name || !slug || !startDate || !endDate) {
       throw new AppError("name, slug, startDate, endDate are required", 400);
     }
-    const season = await prisma.season.create({
-      data: { name, slug, startDate: new Date(startDate), endDate: new Date(endDate), isActive: !!isActive, isCurrent: !!isCurrent },
-    });
+    const id = uuidv4();
+    const now = new Date();
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO "seasons" ("id","name","slug","startDate","endDate","isActive","isCurrent","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      id, name, slug, new Date(startDate), new Date(endDate), !!isActive, !!isCurrent, now, now
+    );
+    const [season] = await prisma.$queryRawUnsafe(`SELECT * FROM "seasons" WHERE "id" = $1`, id) as any[];
     res.status(201).json(season);
   } catch (error) {
     next(error);
