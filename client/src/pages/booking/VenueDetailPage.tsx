@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
@@ -12,7 +12,23 @@ import type { Venue } from "@/types";
 import { MapPin, Phone, Mail, Clock, ChevronLeft, CheckCircle } from "lucide-react";
 import confetti from "canvas-confetti";
 
-const TIME_SLOTS = ["06:00","07:00","08:00","09:00","10:00","11:00"];
+function generateSlots(open: string, close: string): string[] {
+  const [oh, om] = open.split(":").map(Number);
+  const [ch, cm] = close.split(":").map(Number);
+  const start = oh * 60 + om;
+  const end = ch * 60 + cm;
+  const slots: string[] = [];
+  for (let t = start; t < end; t += 30) {
+    slots.push(String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(t % 60).padStart(2, "0"));
+  }
+  return slots;
+}
+
+function addMinutes(time: string, mins: number): string {
+  const [h, m] = time.split(":").map(Number);
+  const total = h * 60 + m + mins;
+  return String(Math.floor(total / 60) % 24).padStart(2, "0") + ":" + String(total % 60).padStart(2, "0");
+}
 
 export function VenueDetailPage() {
   const { slug } = useParams();
@@ -40,6 +56,10 @@ export function VenueDetailPage() {
 
   const turf = venue?.turfs?.[0];
 
+  const timeSlots = useMemo(() => {
+    return generateSlots(venue?.openingTime || "06:00", venue?.closingTime || "23:00");
+  }, [venue?.openingTime, venue?.closingTime]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !phone || !date || !selectedSlot || !turf) {
@@ -53,7 +73,7 @@ export function VenueDetailPage() {
         turfId: turf.id,
         date,
         startTime: selectedSlot,
-        endTime: String(parseInt(selectedSlot.split(":")[0]) + 1).padStart(2, "0") + ":00",
+        endTime: addMinutes(selectedSlot, 30),
         customerName: name,
         customerPhone: phone,
         customerEmail: email || undefined,
@@ -137,8 +157,8 @@ export function VenueDetailPage() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium">Time Slot *</label>
-                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-                      {TIME_SLOTS.map((slot) => (
+                    <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8">
+                      {timeSlots.map((slot) => (
                         <button
                           key={slot}
                           type="button"
