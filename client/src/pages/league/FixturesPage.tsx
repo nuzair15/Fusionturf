@@ -1,132 +1,237 @@
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { api } from "@/lib/api";
-import type { Fixture, PaginatedResponse } from "@/types";
-import { ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
-import { useState, useMemo } from "react";
-import { formatDate } from "@/lib/utils";
+import type { Fixture, PaginatedResponse, Season } from "@/types";
+import { ChevronLeft, ChevronRight, CalendarDays, Clock3, Flame, Trophy } from "lucide-react";
+import { formatDate, formatTime, getMatchStatusColor } from "@/lib/utils";
+import { LeagueHero, LeagueCard, LeagueEmptyState, LeaguePills, TrendBadge } from "@/components/league/LeagueUI";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 export function FixturesPage() {
   const navigate = useNavigate();
   const today = new Date();
+  const [view, setView] = useState("list");
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const [viewYear, setViewYear] = useState(today.getFullYear());
 
-  const { data } = useQuery({
-    queryKey: ["fixtures-calendar"],
-    queryFn: () => api.get<PaginatedResponse<Fixture>>("/league/fixtures", { limit: "100" }),
-  });
+  const { data: currentSeason } = useQuery({ queryKey: ["current-season"], queryFn: () => api.get<Season>("/league/seasons/current"), retry: false });
+  const { data } = useQuery({ queryKey: ["fixtures-calendar"], queryFn: () => api.get<PaginatedResponse<Fixture>>("/league/fixtures", { limit: "120" }) });
 
   const fixtures = data?.data || [];
-
-  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-  const firstDay = new Date(viewYear, viewMonth, 1).getDay();
+  const todayKey = today.toISOString().split("T")[0];
 
   const fixturesByDate = useMemo(() => {
     const map: Record<string, Fixture[]> = {};
-    fixtures.forEach((f) => {
-      const d = f.matchDate.split("T")[0];
-      if (!map[d]) map[d] = [];
-      map[d].push(f);
+    fixtures.forEach((fixture) => {
+      const dateKey = fixture.matchDate.split("T")[0];
+      if (!map[dateKey]) map[dateKey] = [];
+      map[dateKey].push(fixture);
     });
     return map;
   }, [fixtures]);
 
-  const prevMonth = () => { if (viewMonth === 0) { setViewMonth(11); setViewYear(viewYear - 1); } else setViewMonth(viewMonth - 1); };
-  const nextMonth = () => { if (viewMonth === 11) { setViewMonth(0); setViewYear(viewYear + 1); } else setViewMonth(viewMonth + 1); };
+  const groupedFixtures = useMemo(() => {
+    const keys = Object.keys(fixturesByDate).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+    return keys.map((key) => ({ date: key, fixtures: fixturesByDate[key] }));
+  }, [fixturesByDate]);
 
-  const calendarDays = [];
+  const liveFixtures = useMemo(() => fixtures.filter((f) => f.status === "LIVE"), [fixtures]);
+  const upcomingFixtures = useMemo(() => fixtures.filter((f) => f.status === "SCHEDULED"), [fixtures]);
+  const completedFixtures = useMemo(() => fixtures.filter((f) => f.status === "COMPLETED"), [fixtures]);
+
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const firstDay = new Date(viewYear, viewMonth, 1).getDay();
+
+  const calendarDays: Array<{ day: number; dateStr: string; fixtures: Fixture[] } | null> = [];
   for (let i = 0; i < firstDay; i++) calendarDays.push(null);
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     calendarDays.push({ day: d, dateStr, fixtures: fixturesByDate[dateStr] || [] });
   }
 
+  const prevMonth = () => {
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear(viewYear - 1);
+    } else {
+      setViewMonth(viewMonth - 1);
+    }
+  };
+
+  const nextMonth = () => {
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear(viewYear + 1);
+    } else {
+      setViewMonth(viewMonth + 1);
+    }
+  };
+
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-        <Button variant="ghost" onClick={() => navigate("/league")} className="mb-4 gap-1">
-          <ChevronLeft className="h-4 w-4" /> Back to League
-        </Button>
-        <h1 className="mb-2 text-3xl font-bold">Fixtures Calendar</h1>
-        <p className="mb-8 text-muted-foreground">Browse upcoming and past matches</p>
+    <div className="space-y-8 pb-8">
+      <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
+        <LeagueHero
+          eyebrow={<><Flame className="h-3.5 w-3.5" /> Fixtures</>}
+          title="Match calendar and results"
+          subtitle={currentSeason?.name || "Browse live, upcoming, and completed fixtures across the league."}
+          stats={[
+            { label: "Live", value: liveFixtures.length },
+            { label: "Upcoming", value: upcomingFixtures.length },
+            { label: "Completed", value: completedFixtures.length },
+            { label: "Month", value: MONTHS[viewMonth] },
+          ]}
+        />
+      </div>
 
-        <Card className="overflow-hidden">
-          <div className="flex items-center justify-between border-b bg-muted/30 p-4">
-            <Button variant="ghost" size="sm" onClick={prevMonth}><ChevronLeft className="h-5 w-5" /></Button>
-            <h2 className="text-lg font-bold">{MONTHS[viewMonth]} {viewYear}</h2>
-            <Button variant="ghost" size="sm" onClick={nextMonth}><ChevronRight className="h-5 w-5" /></Button>
-          </div>
+      <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        <LeaguePills
+          active={view}
+          onChange={setView}
+          items={[
+            { key: "list", label: "List view", icon: <CalendarDays className="h-4 w-4" /> },
+            { key: "calendar", label: "Calendar", icon: <Clock3 className="h-4 w-4" /> },
+          ]}
+        />
+      </div>
 
-          <div className="grid grid-cols-7 text-center text-xs font-medium text-muted-foreground border-b">
-            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-              <div key={d} className="py-2">{d}</div>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-7">
-            {calendarDays.map((cell, i) => (
-              <div key={i} className="min-h-[60px] border-b border-r p-0.5 text-[10px] last:border-r-0 sm:min-h-[80px] sm:p-1 sm:text-sm">
-                {cell && (
-                  <>
-                    <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] sm:h-6 sm:w-6 sm:text-xs ${
-                      cell.day === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear()
-                        ? "bg-primary text-primary-foreground" : ""
-                    }`}>
-                      {cell.day}
-                    </span>
-                    <div className="mt-0.5 space-y-0.5 sm:mt-1">
-                      {cell.fixtures.slice(0, viewMonth === today.getMonth() && viewYear === today.getFullYear() ? 1 : 2).map((f) => (
-                        <div
-                          key={f.id}
-                          className="cursor-pointer rounded bg-primary/10 px-0.5 py-0.5 text-[8px] leading-tight text-primary hover:bg-primary/20 sm:px-1 sm:text-[10px]"
-                          onClick={() => navigate(`/league/fixtures/${f.id}`)}
-                        >
-                          {f.homeTeam.shortName || f.homeTeam.name?.substring(0, 3)} vs {f.awayTeam.shortName || f.awayTeam.name?.substring(0, 3)}
-                        </div>
-                      ))}
-                      {cell.fixtures.length > (viewMonth === today.getMonth() && viewYear === today.getFullYear() ? 1 : 2) && (
-                        <span className="text-[8px] text-muted-foreground sm:text-[10px]">+{cell.fixtures.length - (viewMonth === today.getMonth() && viewYear === today.getFullYear() ? 1 : 2)} more</span>
-                      )}
-                    </div>
-                  </>
-                )}
+      {view === "calendar" && (
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+          <LeagueCard
+            title={`${MONTHS[viewMonth]} ${viewYear}`}
+            action={(
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="icon" onClick={prevMonth}><ChevronLeft className="h-5 w-5" /></Button>
+                <Button variant="ghost" size="icon" onClick={nextMonth}><ChevronRight className="h-5 w-5" /></Button>
               </div>
-            ))}
-          </div>
-        </Card>
-
-        {fixtures.length > 0 && (
-          <div className="mt-8">
-            <h2 className="mb-4 text-lg font-bold">All Fixtures</h2>
-            <div className="space-y-2">
-              {fixtures.map((f) => (
-                <div key={f.id} className="flex cursor-pointer items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/20 sm:px-3" onClick={() => navigate(`/league/fixtures/${f.id}`)}>
-                  <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <img src={f.homeTeam.logoUrl || "/placeholder.svg"} alt="" className="h-6 w-6 shrink-0 rounded-full bg-muted sm:h-8 sm:w-8" />
-                    <span className="truncate text-xs font-medium sm:text-sm">{f.homeTeam.shortName || f.homeTeam.name}</span>
-                  </div>
-                  <div className="mx-2 shrink-0 text-center sm:mx-3">
-                    <div className="text-xs text-muted-foreground">{formatDate(f.matchDate)}</div>
-                    <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary sm:px-2 sm:text-xs">
-                      {f.status === "COMPLETED" ? `${f.homeScore ?? 0} - ${f.awayScore ?? 0}` : f.status === "SCHEDULED" ? "vs" : f.status}
-                    </span>
-                  </div>
-                  <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
-                    <span className="truncate text-xs font-medium sm:text-sm">{f.awayTeam.shortName || f.awayTeam.name}</span>
-                    <img src={f.awayTeam.logoUrl || "/placeholder.svg"} alt="" className="h-6 w-6 shrink-0 rounded-full bg-muted sm:h-8 sm:w-8" />
-                  </div>
+            )}
+          >
+            <div className="border-b bg-secondary/40 px-4 py-2 text-center text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Sun Mon Tue Wed Thu Fri Sat
+            </div>
+            <div className="grid grid-cols-7">
+              {calendarDays.map((cell, index) => (
+                <div key={index} className="min-h-[95px] border-b border-r p-2 last:border-r-0">
+                  {cell && (
+                    <>
+                      <div className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
+                        cell.dateStr === todayKey ? "bg-primary text-primary-foreground" : "bg-secondary/60"
+                      }`}>
+                        {cell.day}
+                      </div>
+                      <div className="mt-2 space-y-1">
+                        {cell.fixtures.slice(0, 2).map((fixture) => (
+                          <button
+                            key={fixture.id}
+                            onClick={() => navigate(`/league/fixtures/${fixture.id}`)}
+                            className="block w-full rounded-lg bg-primary/10 px-2 py-1 text-left text-[10px] font-medium text-primary transition hover:bg-primary/20"
+                          >
+                            {fixture.homeTeam.shortName || fixture.homeTeam.name} vs {fixture.awayTeam.shortName || fixture.awayTeam.name}
+                          </button>
+                        ))}
+                        {cell.fixtures.length > 2 && <p className="text-[10px] text-muted-foreground">+{cell.fixtures.length - 2} more</p>}
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
+          </LeagueCard>
+        </div>
+      )}
+
+      {view === "list" && (
+        <div className="mx-auto grid max-w-7xl gap-6 px-4 sm:px-6 xl:grid-cols-[0.95fr_1.05fr]">
+          <LeagueCard title="Matchday blocks" action={<Badge variant="secondary" className="rounded-full">{fixtures.length} fixtures</Badge>}>
+            <div className="space-y-4 p-4">
+              {groupedFixtures.length > 0 ? groupedFixtures.map((group) => (
+                <div key={group.date} className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{formatDate(group.date)}</p>
+                  <div className="space-y-2">
+                    {group.fixtures.map((fixture) => (
+                      <button
+                        key={fixture.id}
+                        onClick={() => navigate(`/league/fixtures/${fixture.id}`)}
+                        className="grid gap-3 rounded-2xl border px-4 py-4 text-left transition hover:bg-secondary/50 sm:grid-cols-[1fr_auto_1fr] sm:items-center"
+                      >
+                        <div className="flex items-center gap-3">
+                          <img src={fixture.homeTeam.logoUrl || "/placeholder.svg"} alt="" className="h-10 w-10 rounded-full bg-muted object-cover" />
+                          <div>
+                            <p className="font-semibold">{fixture.homeTeam.shortName || fixture.homeTeam.name}</p>
+                            <p className="text-xs text-muted-foreground">{fixture.homeTeam.city || "Home"}</p>
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <TrendBadge>{fixture.status}</TrendBadge>
+                          <p className="mt-2 text-xl font-bold tabular-nums">
+                            {fixture.status === "COMPLETED" ? `${fixture.homeScore ?? 0}-${fixture.awayScore ?? 0}` : fixture.status === "LIVE" ? "LIVE" : "VS"}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">{fixture.kickoffTime ? formatTime(fixture.kickoffTime) : "TBD"}</p>
+                        </div>
+                        <div className="flex items-center justify-end gap-3">
+                          <div className="text-right">
+                            <p className="font-semibold">{fixture.awayTeam.shortName || fixture.awayTeam.name}</p>
+                            <p className="text-xs text-muted-foreground">{fixture.stadium || fixture.venue?.name || "Venue TBD"}</p>
+                          </div>
+                          <img src={fixture.awayTeam.logoUrl || "/placeholder.svg"} alt="" className="h-10 w-10 rounded-full bg-muted object-cover" />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )) : (
+                <LeagueEmptyState title="No fixtures yet" description="Fixture blocks will appear here once matches are scheduled." />
+              )}
+            </div>
+          </LeagueCard>
+
+          <div className="space-y-6">
+            <LeagueCard title="Live now">
+              <div className="p-4">
+                {liveFixtures.length > 0 ? (
+                  <div className="space-y-3">
+                    {liveFixtures.map((fixture) => (
+                      <button key={fixture.id} onClick={() => navigate(`/league/fixtures/${fixture.id}`)} className="w-full rounded-2xl border border-rose-500/30 bg-rose-500/5 px-4 py-4 text-left transition hover:bg-rose-500/10">
+                        <div className="flex items-center justify-between">
+                          <TrendBadge><span className={`inline-block h-2 w-2 rounded-full ${getMatchStatusColor("LIVE")}`} /> Live</TrendBadge>
+                          <span className="text-xs text-muted-foreground">{fixture.stadium || fixture.venue?.name || "Live venue"}</span>
+                        </div>
+                        <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                          <p className="truncate font-semibold">{fixture.homeTeam.shortName || fixture.homeTeam.name}</p>
+                          <p className="text-2xl font-bold tabular-nums text-rose-600">{fixture.homeScore ?? 0}-{fixture.awayScore ?? 0}</p>
+                          <p className="truncate text-right font-semibold">{fixture.awayTeam.shortName || fixture.awayTeam.name}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <LeagueEmptyState title="No live matches" description="When a match goes live, it will jump here automatically." />
+                )}
+              </div>
+            </LeagueCard>
+
+            <LeagueCard title="Quick stats">
+              <div className="grid gap-3 p-4 sm:grid-cols-2">
+                {[
+                  ["Upcoming", upcomingFixtures.length],
+                  ["Completed", completedFixtures.length],
+                  ["This month", fixtures.filter((f) => f.matchDate.startsWith(`${viewYear}-${String(viewMonth + 1).padStart(2, "0")}`)).length],
+                  ["Today", fixtures.filter((f) => f.matchDate.startsWith(todayKey)).length],
+                ].map(([label, value]) => (
+                  <div key={label as string} className="rounded-2xl border bg-secondary/30 p-4">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+                    <p className="mt-1 text-2xl font-bold">{value as number}</p>
+                  </div>
+                ))}
+              </div>
+            </LeagueCard>
           </div>
-        )}
-      </motion.div>
+        </div>
+      )}
     </div>
   );
 }

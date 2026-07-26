@@ -1,17 +1,20 @@
+import { useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
-import { formatDate, getMatchStatusColor } from "@/lib/utils";
 import type { Team } from "@/types";
-import { MapPin, Users, ChevronLeft, Trophy, Calendar } from "lucide-react";
+import { ChevronLeft, MapPin, CalendarDays, Trophy, Users, GalleryVertical, BadgeIcon } from "lucide-react";
+import { LeagueHero, LeagueCard, LeaguePills, LeagueEmptyState } from "@/components/league/LeagueUI";
+import { formatDate } from "@/lib/utils";
 
 export function TeamDetailPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
+  const [tab, setTab] = useState("overview");
 
   const { data: team, isLoading } = useQuery({
     queryKey: ["team", slug],
@@ -19,165 +22,211 @@ export function TeamDetailPage() {
     enabled: !!slug,
   });
 
+  const allMatches = useMemo(() => [...(team?.homeMatches || []), ...(team?.awayMatches || [])].sort((a, b) => new Date(b.matchDate).getTime() - new Date(a.matchDate).getTime()), [team]);
+  const standing = team?.standings?.[0];
+
   if (isLoading) return <div className="mx-auto max-w-7xl px-4 py-8"><div className="h-96 animate-pulse rounded-xl bg-muted" /></div>;
   if (!team) return null;
 
-  const allMatches = [...(team.homeMatches || []), ...(team.awayMatches || [])].sort(
-    (a, b) => new Date(b.matchDate).getTime() - new Date(a.matchDate).getTime()
-  );
-
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+    <div className="space-y-8 pb-8">
+      <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
         <Button variant="ghost" onClick={() => navigate("/league")} className="mb-4 gap-1">
           <ChevronLeft className="h-4 w-4" /> Back to League
         </Button>
+        <LeagueHero
+          image={team.coverUrl || team.logoUrl || "/hero.jpeg"}
+          eyebrow={<><BadgeIcon className="h-3.5 w-3.5" /> Club profile</>}
+          title={team.name}
+          subtitle={`${team.city || "City unknown"} • ${team.homeStadium || "Home venue pending"}${team.description ? ` • ${team.description}` : ""}`}
+          actions={(
+            <>
+              <Badge variant="secondary" className="rounded-full px-3 py-1">{team.players?.length || 0} players</Badge>
+              <Badge variant="secondary" className="rounded-full px-3 py-1">{standing ? `#${standing.position} • ${standing.points} pts` : "No standing yet"}</Badge>
+            </>
+          )}
+          stats={[
+            { label: "Founded", value: team.foundedYear || "—" },
+            { label: "Matches", value: allMatches.length },
+            { label: "Sponsors", value: team.sponsors?.length || 0 },
+            { label: "Gallery", value: team.galleries?.length || 0 },
+          ]}
+        />
+      </div>
 
-        <div className="relative mb-8 overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-purple-700 p-8 text-white">
-          <div className="flex items-center gap-6">
-            {team.logoUrl && <img src={team.logoUrl} alt="" className="h-24 w-24 rounded-2xl bg-white p-2" />}
-            <div>
-              <h1 className="text-3xl font-bold">{team.name}</h1>
-              <p className="mt-1 text-white/80">{team.city} • Founded {team.foundedYear}</p>
-              <p className="text-white/60">{team.homeStadium}</p>
-            </div>
-          </div>
-        </div>
+      <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        <LeaguePills
+          active={tab}
+          onChange={setTab}
+          items={[
+            { key: "overview", label: "Overview", icon: <Trophy className="h-4 w-4" /> },
+            { key: "squad", label: "Squad", icon: <Users className="h-4 w-4" /> },
+            { key: "fixtures", label: "Fixtures", icon: <CalendarDays className="h-4 w-4" /> },
+            { key: "stats", label: "Stats", icon: <BadgeIcon className="h-4 w-4" /> },
+            { key: "gallery", label: "Gallery", icon: <GalleryVertical className="h-4 w-4" /> },
+          ]}
+        />
+      </div>
 
-        <div className="grid gap-8 lg:grid-cols-3">
-          <div className="space-y-6 lg:col-span-2">
-            {/* Description */}
-            {team.description && (
-              <Card>
-                <CardHeader><CardTitle>About</CardTitle></CardHeader>
-                <CardContent><p className="text-muted-foreground">{team.description}</p></CardContent>
-              </Card>
-            )}
-
-            {/* Squad */}
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Squad</CardTitle>
-                <Badge variant="secondary">{team.players?.length || 0} players</Badge>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {team.players?.map((player) => (
-                    <div
-                      key={player.id}
-                      className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/20"
-                      onClick={() => navigate(`/league/players/${player.slug}`)}
-                    >
-                      <img src={player.photoUrl || "/placeholder.svg"} alt="" className="h-10 w-10 rounded-full bg-muted" />
-                      <div>
-                        <p className="text-sm font-medium">{player.firstName} {player.lastName}</p>
-                        <p className="text-xs text-muted-foreground">{player.position} • #{player.jerseyNumber}</p>
-                      </div>
-                    </div>
-                  ))}
+      {tab === "overview" && (
+        <div className="mx-auto grid max-w-7xl gap-6 px-4 sm:px-6 lg:grid-cols-[1.15fr_0.85fr]">
+          <LeagueCard title="About the club">
+            <div className="space-y-4 p-4">
+              <p className="text-sm text-muted-foreground">{team.description || "No club description added yet."}</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border bg-secondary/30 p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Home stadium</p>
+                  <p className="mt-1 font-semibold">{team.homeStadium || "TBD"}</p>
                 </div>
-              </CardContent>
-            </Card>
+                <div className="rounded-2xl border bg-secondary/30 p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Location</p>
+                  <p className="mt-1 font-semibold">{team.city || "TBD"}</p>
+                </div>
+              </div>
+            </div>
+          </LeagueCard>
 
-            {/* Recent Matches */}
-            <Card>
-              <CardHeader><CardTitle>Recent Matches</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
-                {allMatches.slice(0, 5).map((m) => (
-                  <div key={m.id} className="flex cursor-pointer items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/20"
-                    onClick={() => navigate(`/league/fixtures/${m.id}`)}>
-                    <div className="flex items-center gap-2">
-                      <img src={m.homeTeam.logoUrl || "/placeholder.svg"} alt="" className="h-6 w-6 rounded-full bg-muted" />
-                      <span className="text-sm">{m.homeTeam.shortName}</span>
+          <LeagueCard title="Season snapshot">
+            <div className="space-y-3 p-4">
+              {standing ? (
+                <>
+                  <div className="rounded-2xl border bg-primary/5 p-4">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Current position</p>
+                    <p className="mt-1 text-3xl font-bold">#{standing.position}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      ["Played", standing.played],
+                      ["Wins", standing.wins],
+                      ["Draws", standing.draws],
+                      ["Losses", standing.losses],
+                      ["Goals For", standing.goalsFor],
+                      ["Goals Against", standing.goalsAgainst],
+                    ].map(([label, value]) => (
+                      <div key={label as string} className="rounded-2xl border bg-secondary/30 p-3">
+                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
+                        <p className="mt-1 text-lg font-semibold">{value as number}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="rounded-2xl border bg-secondary/30 p-4">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Points</p>
+                    <p className="mt-1 text-3xl font-bold">{standing.points}</p>
+                  </div>
+                </>
+              ) : (
+                <LeagueEmptyState title="No season table yet" description="This club will show its ranking once standings exist." />
+              )}
+            </div>
+          </LeagueCard>
+        </div>
+      )}
+
+      {tab === "squad" && (
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+          <LeagueCard title="Squad">
+            {team.players && team.players.length > 0 ? (
+              <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {team.players.map((player) => (
+                  <button key={player.id} onClick={() => navigate(`/league/players/${player.slug}`)} className="rounded-2xl border p-4 text-left transition hover:bg-secondary/50">
+                    <img src={player.photoUrl || "/placeholder.svg"} alt="" className="h-14 w-14 rounded-2xl bg-muted object-cover" />
+                    <p className="mt-3 font-semibold">{player.firstName} {player.lastName}</p>
+                    <p className="text-xs text-muted-foreground">{player.position || "Player"} • #{player.jerseyNumber || "—"}</p>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="p-4"><LeagueEmptyState title="No squad uploaded" description="Add players to surface the squad view." /></div>
+            )}
+          </LeagueCard>
+        </div>
+      )}
+
+      {tab === "fixtures" && (
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+          <LeagueCard title="Recent fixtures">
+            {allMatches.length > 0 ? (
+              <div className="space-y-2 p-4">
+                {allMatches.slice(0, 8).map((match) => (
+                  <button key={match.id} onClick={() => navigate(`/league/fixtures/${match.id}`)} className="flex w-full items-center justify-between rounded-2xl border px-4 py-4 text-left transition hover:bg-secondary/50">
+                    <div className="flex items-center gap-3">
+                      <img src={match.homeTeam.logoUrl || "/placeholder.svg"} alt="" className="h-9 w-9 rounded-full bg-muted object-cover" />
+                      <div>
+                        <p className="font-semibold">{match.homeTeam.shortName || match.homeTeam.name} vs {match.awayTeam.shortName || match.awayTeam.name}</p>
+                        <p className="text-xs text-muted-foreground">{formatDate(match.matchDate)} • {match.kickoffTime || "TBD"}</p>
+                      </div>
                     </div>
-                    <Badge variant={m.status === "COMPLETED" ? "default" : "secondary"}>
-                      {m.status === "COMPLETED" ? `${m.homeScore} - ${m.awayScore}` : m.status}
+                    <Badge variant={match.status === "COMPLETED" ? "default" : "secondary"}>
+                      {match.status === "COMPLETED" ? `${match.homeScore ?? 0}-${match.awayScore ?? 0}` : match.status}
                     </Badge>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm">{m.awayTeam.shortName}</span>
-                      <img src={m.awayTeam.logoUrl || "/placeholder.svg"} alt="" className="h-6 w-6 rounded-full bg-muted" />
-                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="p-4"><LeagueEmptyState title="No fixtures yet" description="Fixtures will show here once they’re scheduled." /></div>
+            )}
+          </LeagueCard>
+        </div>
+      )}
+
+      {tab === "stats" && (
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="grid gap-6 lg:grid-cols-3">
+            <LeagueCard title="Team stats">
+              <div className="p-4 text-sm">
+                {standing ? (
+                  <div className="space-y-3">
+                    <div className="flex justify-between"><span className="text-muted-foreground">Position</span><span className="font-semibold">#{standing.position}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Points</span><span className="font-semibold">{standing.points}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Goal difference</span><span className="font-semibold">{standing.goalDifference >= 0 ? `+${standing.goalDifference}` : standing.goalDifference}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Form</span><span className="font-semibold">{standing.form || "—"}</span></div>
+                  </div>
+                ) : <LeagueEmptyState title="No stats yet" description="Season data will appear here after the first round." />}
+              </div>
+            </LeagueCard>
+
+            <LeagueCard title="Performance">
+              <div className="grid gap-3 p-4">
+                {[
+                  ["Wins", standing?.wins || 0],
+                  ["Draws", standing?.draws || 0],
+                  ["Losses", standing?.losses || 0],
+                ].map(([label, value]) => (
+                  <div key={label as string} className="rounded-2xl border bg-secondary/30 p-4">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+                    <p className="mt-1 text-2xl font-bold">{value as number}</p>
                   </div>
                 ))}
-              </CardContent>
-            </Card>
+              </div>
+            </LeagueCard>
 
-            {/* Staff */}
-            {team.staff && team.staff.length > 0 && (
-              <Card>
-                <CardHeader><CardTitle>Management & Staff</CardTitle></CardHeader>
-                <CardContent>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {team.staff.map((staff) => (
-                      <div key={staff.id} className="flex items-center gap-3 rounded-lg border p-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-sm font-medium">
-                          {staff.firstName[0]}{staff.lastName[0]}
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium">{staff.firstName} {staff.lastName}</p>
-                          <p className="text-xs text-muted-foreground">{staff.role}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Sponsors */}
-            {team.sponsors && team.sponsors.length > 0 && (
-              <Card>
-                <CardHeader><CardTitle>Sponsors</CardTitle></CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-4">
-                    {team.sponsors.map((s) => (
-                      <div key={s.id} className="flex items-center gap-2 rounded-lg border p-3">
-                        <img src={s.logoUrl} alt={s.name} className="h-8 rounded" />
-                        <span className="text-sm font-medium">{s.name}</span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-
-          {/* Sidebar Stats */}
-          <div>
-            <Card>
-              <CardHeader><CardTitle>Season Stats</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                {team.standings?.slice(0, 1).map((s) => (
-                  <div key={s.id} className="space-y-2 text-sm">
-                    <div className="flex justify-between"><span>Position</span><span className="font-bold">#{s.position}</span></div>
-                    <div className="flex justify-between"><span>Played</span><span>{s.played}</span></div>
-                    <div className="flex justify-between"><span>Wins</span><span className="text-green-500">{s.wins}</span></div>
-                    <div className="flex justify-between"><span>Draws</span><span className="text-yellow-500">{s.draws}</span></div>
-                    <div className="flex justify-between"><span>Losses</span><span className="text-red-500">{s.losses}</span></div>
-                    <div className="flex justify-between"><span>Goals For</span><span>{s.goalsFor}</span></div>
-                    <div className="flex justify-between"><span>Goals Against</span><span>{s.goalsAgainst}</span></div>
-                    <div className="flex justify-between border-t pt-2"><span>Points</span><span className="text-lg font-bold">{s.points}</span></div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            {/* Gallery */}
-            {team.galleries && team.galleries.length > 0 && (
-              <Card className="mt-6">
-                <CardHeader><CardTitle>Gallery</CardTitle></CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 gap-2">
-                    {team.galleries.slice(0, 4).map((g) => (
-                      <img key={g.id} src={g.imageUrl} alt="" className="aspect-square rounded-lg object-cover" />
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            <LeagueCard title="Roster size">
+              <div className="p-4">
+                <div className="rounded-2xl border bg-secondary/30 p-4 text-center">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Players</p>
+                  <p className="mt-1 text-4xl font-bold">{team.players?.length || 0}</p>
+                </div>
+              </div>
+            </LeagueCard>
           </div>
         </div>
-      </motion.div>
+      )}
+
+      {tab === "gallery" && (
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+          <LeagueCard title="Gallery">
+            {team.galleries && team.galleries.length > 0 ? (
+              <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
+                {team.galleries.slice(0, 8).map((gallery) => (
+                  <img key={gallery.id} src={gallery.imageUrl} alt="" className="aspect-square rounded-2xl object-cover" />
+                ))}
+              </div>
+            ) : (
+              <div className="p-4"><LeagueEmptyState title="No gallery yet" description="Add club media to show matchday and behind-the-scenes moments." /></div>
+            )}
+          </LeagueCard>
+        </div>
+      )}
     </div>
   );
 }
