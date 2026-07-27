@@ -479,7 +479,7 @@ export function AdminPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold">Fixtures</h2>
-                <Button size="sm" onClick={() => openForm("fixture", { homeTeamId: "", awayTeamId: "", matchDate: "", kickoffTime: "", seasonId: seasons?.[0]?.id || "" })}>
+                <Button size="sm" onClick={() => { setEditingItem(null); openForm("fixture", { homeTeamId: "", awayTeamId: "", matchDate: "", kickoffTime: "", seasonId: seasons?.[0]?.id || "" }); }}>
                   <Plus className="mr-1 h-4 w-4" /> Add Fixture
                 </Button>
               </div>
@@ -507,6 +507,9 @@ export function AdminPage() {
                           <Button variant="ghost" size="sm" onClick={() => openForm("squad", { fixtureId: f.id, homeTeamId: f.homeTeamId, awayTeamId: f.awayTeamId, seasonId: f.seasonId, homeTeamName: f.homeTeam?.name, awayTeamName: f.awayTeam?.name })} title="Select Squad">
                             <Users className="h-4 w-4" />
                           </Button>
+                          <Button variant="ghost" size="sm" onClick={() => { setEditingItem(f); openForm("fixture", { homeTeamId: f.homeTeamId, awayTeamId: f.awayTeamId, matchDate: f.matchDate, kickoffTime: f.kickoffTime || "", seasonId: f.seasonId, stadium: f.stadium || "", referee: (f as any).referee || "", referee2: (f as any).referee2 || "", matchReport: (f as any).matchReport || "" }); }} title="Edit Fixture">
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
                           <Button variant="ghost" size="sm" onClick={() => setLiveStatsFixtureId(f.id)} title="Live Stats">
                             <ActivitySquare className="h-4 w-4" />
                           </Button>
@@ -520,7 +523,7 @@ export function AdminPage() {
                 </table>
               </div>
             </div>
-            <Dialog open={showForm === "fixture"} onClose={() => setShowForm(null)} title="Add Fixture">
+            <Dialog open={showForm === "fixture"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Fixture" : "Add Fixture"}>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
@@ -564,12 +567,26 @@ export function AdminPage() {
                   <Label>Stadium / Venue</Label>
                   <Input value={formData.stadium || ""} onChange={(e) => handleFormChange("stadium", e.target.value)} placeholder="e.g. Fusion Arena" />
                 </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label>Referee</Label>
+                    <Input value={formData.referee || ""} onChange={(e) => handleFormChange("referee", e.target.value)} placeholder="Referee name" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Assistant Referee</Label>
+                    <Input value={formData.referee2 || ""} onChange={(e) => handleFormChange("referee2", e.target.value)} placeholder="Assistant name" />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Match Report</Label>
+                  <textarea className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" value={formData.matchReport || ""} onChange={(e) => handleFormChange("matchReport", e.target.value)} placeholder="Match summary / report" />
+                </div>
                 {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                 <Button className="w-full" onClick={() => submitForm("fixture", "/admin/fixtures", "admin-fixtures")}
                   disabled={!formData.homeTeamId || !formData.awayTeamId || !formData.matchDate}>Create Fixture</Button>
               </div>
             </Dialog>
-            <Dialog open={showForm === "score"} onClose={() => setShowForm(null)} title="Update Score">
+            <Dialog open={showForm === "score"} onClose={() => { setShowForm(null); setEditingItem(null); }} title="Update Score">
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
@@ -585,6 +602,7 @@ export function AdminPage() {
                   <Button className="flex-1" variant="outline" onClick={async () => {
                     try {
                       await api.patch(`/admin/fixtures/${formData.fixtureId}/score`, { homeScore: formData.homeScore, awayScore: formData.awayScore });
+                      setEditingItem(null);
                       setShowForm(null);
                       queryClient.invalidateQueries({ queryKey: ["admin-fixtures"] });
                     } catch (err: any) {
@@ -594,6 +612,7 @@ export function AdminPage() {
                   <Button className="flex-1" onClick={async () => {
                     try {
                       await api.post(`/admin/process-match-result/${formData.fixtureId}`, { homeScore: formData.homeScore, awayScore: formData.awayScore });
+                      setEditingItem(null);
                       setShowForm(null);
                       queryClient.invalidateQueries({ queryKey: ["admin-fixtures"] });
                       queryClient.invalidateQueries({ queryKey: ["admin-standings"] });
@@ -604,7 +623,7 @@ export function AdminPage() {
                 </div>
               </div>
             </Dialog>
-            <Dialog open={showForm === "squad"} onClose={() => setShowForm(null)} title={`Squad Selection: ${formData.homeTeamName || "?"} vs ${formData.awayTeamName || "?"}`}>
+            <Dialog open={showForm === "squad"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={`Squad Selection: ${formData.homeTeamName || "?"} vs ${formData.awayTeamName || "?"}`}>
               {(formData.fixtureId && formData.seasonId) ? <SquadSelector
                 fixtureId={formData.fixtureId}
                 homeTeamId={formData.homeTeamId}
@@ -945,12 +964,26 @@ export function AdminPage() {
                   {(bookings?.data || []).map((b: Booking) => (
                     <tr key={b.id} className="border-t">
                       <td className="p-3 font-medium">{b.bookingNumber}</td>
-                      <td className="p-3">{b.user?.firstName || "?"} {b.user?.lastName || ""}</td>
-                      <td className="p-3">{b.turf?.venue?.name || "?"}</td>
+                      <td className="p-3">{b.user?.firstName || "?"} {b.user?.lastName || ""}<br /><span className="text-xs text-muted-foreground">{b.user?.phone || ""}</span></td>
+                      <td className="p-3">{b.turf?.venue?.name || "?"}<br /><span className="text-xs text-muted-foreground">{b.turf?.name || ""}</span></td>
                       <td className="p-3 text-muted-foreground">{formatDate(b.date)}</td>
                       <td className="p-3">{b.startTime} - {b.endTime}</td>
                       <td className="p-3">₹{(b.totalAmount / 100).toFixed(2)}</td>
-                      <td className="p-3"><Badge variant={b.status === "CONFIRMED" ? "default" : b.status === "CANCELLED" ? "destructive" : "secondary"}>{b.status}</Badge></td>
+                      <td className="p-3">
+                        <Badge variant={b.status === "CONFIRMED" ? "default" : b.status === "CANCELLED" ? "destructive" : "secondary"}>{b.status}</Badge>
+                      </td>
+                      <td className="p-3 text-right">
+                        {b.status === "PENDING" && (
+                          <>
+                            <Button variant="ghost" size="sm" className="text-green-500" onClick={async () => {
+                              try { await api.patch(`/admin/bookings/${b.id}/status`, { status: "CONFIRMED" }); queryClient.invalidateQueries({ queryKey: ["admin-bookings"] }); } catch (e: any) { setFormErrors(e.message); }
+                            }}>Confirm</Button>
+                            <Button variant="ghost" size="sm" className="text-destructive" onClick={async () => {
+                              try { await api.patch(`/admin/bookings/${b.id}/status`, { status: "CANCELLED" }); queryClient.invalidateQueries({ queryKey: ["admin-bookings"] }); } catch (e: any) { setFormErrors(e.message); }
+                            }}>Cancel</Button>
+                          </>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -972,9 +1005,11 @@ export function AdminPage() {
                 n.publishedAt ? formatDate(n.publishedAt) : "-",
                 n.isFeatured ? <Badge>Featured</Badge> : "-",
               ]}
-              onAdd={() => openForm("news", { title: "", excerpt: "", content: "", imageUrl: "", author: "" })}
+              onAdd={() => { setEditingItem(null); openForm("news", { title: "", excerpt: "", content: "", imageUrl: "", author: "" }); }}
+              onEdit={(n) => { setEditingItem(n); openForm("news", { title: n.title, slug: n.slug, excerpt: n.excerpt || "", content: n.content || "", imageUrl: n.imageUrl || "", author: n.author || "" }); }}
+              onDelete={(n) => { if (confirm("Delete this article?")) api.delete(`/admin/news/${n.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-news"] })); }}
             />
-            <Dialog open={showForm === "news"} onClose={() => setShowForm(null)} title="Add News Article">
+            <Dialog open={showForm === "news"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Article" : "Add News Article"}>
               <div className="space-y-4">
                 <div className="space-y-1.5">
                   <Label>Title *</Label>
@@ -996,12 +1031,17 @@ export function AdminPage() {
                 {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                 <Button className="w-full" onClick={async () => {
                   try {
-                    const slug = slugify(formData.title) || `article-${Date.now()}`;
-                    await api.post("/admin/news", { title: formData.title, slug, excerpt: formData.excerpt, content: formData.content, imageUrl: formData.imageUrl, author: formData.author, isPublished: true });
+                    if (editingItem) {
+                      await api.patch(`/admin/news/${editingItem.id}`, { title: formData.title, excerpt: formData.excerpt, content: formData.content, imageUrl: formData.imageUrl, author: formData.author });
+                    } else {
+                      const slug = slugify(formData.title) || `article-${Date.now()}`;
+                      await api.post("/admin/news", { title: formData.title, slug, excerpt: formData.excerpt, content: formData.content, imageUrl: formData.imageUrl, author: formData.author, isPublished: true });
+                    }
+                    setEditingItem(null);
                     setShowForm(null);
                     queryClient.invalidateQueries({ queryKey: ["admin-news"] });
                   } catch (err: any) { setFormErrors(err.message); }
-                }} disabled={!formData.title}>Create Article</Button>
+                }} disabled={!formData.title}>{editingItem ? "Update Article" : "Create Article"}</Button>
               </div>
             </Dialog>
           </>
@@ -1022,6 +1062,7 @@ export function AdminPage() {
               ]}
               onAdd={() => { setEditingItem(null); openForm("sponsor", { name: "", website: "", tier: "platinum", logoUrl: "", isActive: true }); }}
               onEdit={(s) => { setEditingItem(s); openForm("sponsor", { name: s.name, website: s.website || "", tier: s.tier || "platinum", logoUrl: s.logoUrl || "", isActive: s.isActive !== false }); }}
+              onDelete={(s) => { if (confirm("Delete this sponsor?")) api.delete(`/admin/sponsors/${s.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-sponsors"] })); }}
             />
             <Dialog open={showForm === "sponsor"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Sponsor" : "Add Sponsor"}>
               <div className="space-y-4">
@@ -1369,9 +1410,10 @@ function ImageUploadField({ label, value, onChange }: {
   );
 }
 
-function AdminTable<T extends { id: string }>({ title, columns, data, renderRow, onAdd, onEdit }: {
-  title: string; columns: string[]; data: T[]; renderRow: (item: T) => React.ReactNode[]; onAdd?: () => void; onEdit?: (item: T) => void;
+function AdminTable<T extends { id: string }>({ title, columns, data, renderRow, onAdd, onEdit, onDelete }: {
+  title: string; columns: string[]; data: T[]; renderRow: (item: T) => React.ReactNode[]; onAdd?: () => void; onEdit?: (item: T) => void; onDelete?: (item: T) => void;
 }) {
+  const hasActions = !!(onEdit || onDelete);
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -1381,16 +1423,19 @@ function AdminTable<T extends { id: string }>({ title, columns, data, renderRow,
       <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
         <table className="w-full text-sm">
           <thead className="bg-secondary/70">
-            <tr>{columns.map((c) => <th key={c} className="p-3 text-left font-medium">{c}</th>)}</tr>
+            <tr>{columns.map((c) => <th key={c} className="p-3 text-left font-medium">{c}</th>)}{hasActions && <th className="p-3 text-right">Actions</th>}</tr>
           </thead>
           <tbody>
             {data.length === 0 ? (
-              <tr><td colSpan={columns.length + (onEdit ? 1 : 0)} className="p-8 text-center text-muted-foreground">No {title.toLowerCase()} yet</td></tr>
+              <tr><td colSpan={columns.length + (hasActions ? 1 : 0)} className="p-8 text-center text-muted-foreground">No {title.toLowerCase()} yet</td></tr>
             ) : (
               data.map((item) => (
                 <tr key={item.id} className="border-t hover:bg-muted/20">
                   {renderRow(item).map((cell, i) => <td key={i} className="p-3">{cell}</td>)}
-                  {onEdit && <td className="p-3"><Button variant="ghost" size="sm" onClick={() => onEdit(item)}><Edit2 className="h-4 w-4" /></Button></td>}
+                  {hasActions && <td className="p-3 text-right">
+                    {onEdit && <Button variant="ghost" size="sm" onClick={() => onEdit(item)}><Edit2 className="h-4 w-4" /></Button>}
+                    {onDelete && <Button variant="ghost" size="sm" onClick={() => onDelete(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button>}
+                  </td>}
                 </tr>
               ))
             )}
@@ -1466,8 +1511,12 @@ function SquadSelector({ fixtureId, homeTeamId, awayTeamId, seasonId, api, query
           {(!awayPlayers?.data || awayPlayers.data.length === 0) && <p className="text-xs text-muted-foreground">No players found</p>}
         </div>
       </div>
+      <div className="col-span-2 flex items-center justify-between text-xs text-muted-foreground">
+        <span>{teams.find(t => t.id === homeTeamId)?.name || "Home"}: {homeSelected.length}/8</span>
+        <span>{teams.find(t => t.id === awayTeamId)?.name || "Away"}: {awaySelected.length}/8</span>
+      </div>
       {error && <p className="col-span-2 text-sm text-destructive">{error}</p>}
-      <Button className="col-span-2" onClick={handleSave} disabled={saving}>{saving ? "Saving..." : "Save Squad"}</Button>
+      <Button className="col-span-2" onClick={handleSave} disabled={saving || homeSelected.length !== 8 || awaySelected.length !== 8}>{saving ? "Saving..." : "Save Squad"}</Button>
     </div>
   );
 }

@@ -65,6 +65,7 @@ router.patch("/users/:id/role", authorize("SUPER_ADMIN"), admin.updateUserRole);
 // Booking Admin
 router.get("/bookings", bookingAdmin.adminGetAllBookings);
 router.post("/bookings/block-date", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), bookingAdmin.adminBlockDate);
+router.patch("/bookings/:id/status", authorize("SUPER_ADMIN", "BOOKING_MANAGER", "LEAGUE_ADMIN"), bookingAdmin.adminUpdateBookingStatus);
 
 // Venue Management
 router.get("/venues", admin.getVenues);

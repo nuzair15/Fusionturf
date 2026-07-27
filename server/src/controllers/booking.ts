@@ -3,6 +3,7 @@ import { z } from "zod";
 import prisma from "../config/database.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { paginate, paginatedResponse, generateBookingNumber } from "../utils/helpers.js";
+import bcrypt from "bcryptjs";
 
 const createBookingSchema = z.object({
   body: z.object({
@@ -118,11 +119,20 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
   try {
     const data = createBookingSchema.parse(req).body;
 
-    const turf = await prisma.turf.findUnique({ where: { id: data.turfId } });
+    const turf = await prisma.turf.findUnique({ where: { id: data.turfId }, include: { venue: true } });
     if (!turf) throw new AppError("Turf not found", 404);
 
-    // Check for duplicate/overlapping booking
     const matchDate = new Date(data.date);
+
+    // Check if date is blocked
+    if (turf.venue) {
+      const blocked = await prisma.blockedDate.findFirst({
+        where: { venueId: turf.venue.id, date: matchDate },
+      });
+      if (blocked) throw new AppError(`This date is blocked: ${blocked.reason || "No reason given"}`, 400);
+    }
+
+    // Check for duplicate/overlapping booking
     const overlap = await prisma.booking.findFirst({
       where: {
         turfId: data.turfId,
@@ -150,10 +160,11 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
     const guestEmail = data.customerEmail || `guest-${Date.now()}@fusionturf.com`;
     let guest = await prisma.user.findUnique({ where: { email: guestEmail } });
     if (!guest) {
+      const hashed = await bcrypt.hash("guest", 10);
       guest = await prisma.user.create({
         data: {
           email: guestEmail,
-          passwordHash: "guest",
+          passwordHash: hashed,
           firstName: data.customerName.split(" ")[0] || "Guest",
           lastName: data.customerName.split(" ").slice(1).join(" ") || "User",
           role: "CUSTOMER",
@@ -179,8 +190,17 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
         totalAmount,
         notes: bookingNotes,
         status: "PENDING",
+        payments: {
+          create: {
+            userId: guest.id,
+            amount: totalAmount,
+            currency: "INR",
+            status: "PENDING",
+            method: "CASH",
+          },
+        },
       },
-      include: { turf: { include: { venue: true } }, user: { select: { firstName: true, lastName: true, email: true, phone: true } } },
+      include: { turf: { include: { venue: true } }, user: { select: { firstName: true, lastName: true, email: true, phone: true } }, payments: true },
     });
 
     res.status(201).json(booking);
@@ -236,6 +256,24 @@ export const cancelBooking = async (req: Request, res: Response, next: NextFunct
 };
 
 // ─── Admin ───
+
+export const adminUpdateBookingStatus = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { status } = req.body;
+    if (!["PENDING", "CONFIRMED", "CANCELLED", "COMPLETED"].includes(status)) {
+      throw new AppError("Invalid status", 400);
+    }
+    const booking = await prisma.booking.findUnique({ where: { id: req.params.id }, select: { status: true } });
+    if (!booking) throw new AppError("Booking not found", 404);
+    const updated = await prisma.booking.update({
+      where: { id: req.params.id },
+      data: { status },
+    });
+    res.json(updated);
+  } catch (error) {
+    next(error);
+  }
+};
 
 export const adminGetAllBookings = async (req: Request, res: Response, next: NextFunction) => {
   try {
