@@ -48,6 +48,7 @@ export function AdminPage() {
   // Form state for modals
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [formErrors, setFormErrors] = useState<string>("");
+  const [actionError, setActionError] = useState<string>("");
   const [liveStatsFixtureId, setLiveStatsFixtureId] = useState<string | null>(null);
 
   const openForm = (type: string, initial: Record<string, any> = {}) => {
@@ -281,38 +282,38 @@ export function AdminPage() {
               onAdd={() => { setEditingItem(null); openForm("season", { name: "", isActive: true, isCurrent: false }); }}
               onEdit={(s) => { setEditingItem(s); openForm("season", { name: s.name, slug: s.slug, startDate: s.startDate, endDate: s.endDate, isActive: s.isActive, isCurrent: s.isCurrent }); }}
             />
-            <div className="mb-4 rounded-2xl border bg-card p-4 shadow-sm">
+              <div className="mb-4 rounded-2xl border bg-card p-4 shadow-sm">
               <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">League System Actions</h3>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" onClick={async () => {
                   const s = (seasons || []).find((s: Season) => s.isCurrent);
-                  if (!s) return setFormErrors("No current season selected");
-                  try { setFormErrors(""); await api.post(`/admin/seasons/${s.id}/generate-fixtures`, {}); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); } catch (e: any) { setFormErrors(e.message); }
+                  if (!s) return setActionError("No current season selected");
+                  try { setActionError(""); await api.post(`/admin/seasons/${s.id}/generate-fixtures`, {}); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); } catch (e: any) { setActionError(e.message); }
                 }}>Generate Fixtures (30)</Button>
                 <Button size="sm" variant="outline" onClick={async () => {
                   const s = (seasons || []).find((s: Season) => s.isCurrent);
-                  if (!s) return setFormErrors("No current season selected");
-                  try { setFormErrors(""); await api.post(`/admin/seasons/${s.id}/postseason`, {}); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); } catch (e: any) { setFormErrors(e.message); }
+                  if (!s) return setActionError("No current season selected");
+                  try { setActionError(""); await api.post(`/admin/seasons/${s.id}/postseason`, {}); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); } catch (e: any) { setActionError(e.message); }
                 }}>Generate Post-Season</Button>
                 <Button size="sm" variant="outline" onClick={async () => {
                   const s = (seasons || []).find((s: Season) => s.isCurrent);
-                  if (!s) return setFormErrors("No current season selected");
-                  try { setFormErrors(""); await api.post(`/admin/seasons/${s.id}/transfer-window/open`, {}); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); } catch (e: any) { setFormErrors(e.message); }
+                  if (!s) return setActionError("No current season selected");
+                  try { setActionError(""); await api.post(`/admin/seasons/${s.id}/transfer-window/open`, {}); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); } catch (e: any) { setActionError(e.message); }
                 }}>Open Transfer Window</Button>
                 <Button size="sm" variant="outline" onClick={async () => {
                   const s = (seasons || []).find((s: Season) => s.isCurrent);
-                  if (!s) return setFormErrors("No current season selected");
-                  try { setFormErrors(""); await api.post(`/admin/seasons/${s.id}/transfer-window/close`, {}); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); } catch (e: any) { setFormErrors(e.message); }
+                  if (!s) return setActionError("No current season selected");
+                  try { setActionError(""); await api.post(`/admin/seasons/${s.id}/transfer-window/close`, {}); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); } catch (e: any) { setActionError(e.message); }
                 }}>Close Transfer Window</Button>
                 <Button size="sm" variant="default" onClick={async () => {
                   const s = (seasons || []).find((s: Season) => s.isCurrent);
-                  if (!s) return setFormErrors("No current season selected");
+                  if (!s) return setActionError("No current season selected");
                   const name = prompt("New season name (e.g. April – June 2026):");
                   if (!name) return;
-                  try { setFormErrors(""); await api.post(`/admin/seasons/${s.id}/create-next`, { name, startDate: new Date().toISOString(), endDate: new Date(Date.now() + 120 * 86400000).toISOString() }); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); } catch (e: any) { setFormErrors(e.message); }
+                  try { setActionError(""); await api.post(`/admin/seasons/${s.id}/create-next`, { name, startDate: new Date().toISOString(), endDate: new Date(Date.now() + 120 * 86400000).toISOString() }); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); } catch (e: any) { setActionError(e.message); }
                 }}>Create Next Season</Button>
               </div>
-              {formErrors && <p className="mt-2 text-sm text-destructive">{formErrors}</p>}
+              {actionError && <p className="mt-2 text-sm text-destructive">{actionError}</p>}
             </div>
             <Dialog open={showForm === "season"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Season" : "Add Season"}>
               <div className="space-y-4">

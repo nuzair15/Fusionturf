@@ -4,6 +4,7 @@ import prisma from "../config/database.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { paginate, paginatedResponse, generateBookingNumber } from "../utils/helpers.js";
 import bcrypt from "bcryptjs";
+import { sendBookingConfirmation } from "../services/email.js";
 
 const createBookingSchema = z.object({
   body: z.object({
@@ -204,6 +205,9 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
     });
 
     res.status(201).json(booking);
+
+    // Send confirmation email (non-blocking)
+    if (guest.email) sendBookingConfirmation(guest.email, booking).catch(() => {});
   } catch (error) {
     next(error);
   }
