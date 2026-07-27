@@ -12,8 +12,8 @@ import { Dialog } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { LiveStatsPanel } from "@/components/admin/LiveStatsPanel";
-import type { DashboardStats, User, Season, Team, Player, Fixture, Award, News, Booking, PaginatedResponse, Venue, Turf, Sponsor, Suspension, ActivityLog, Gallery, Competition } from "@/types";
-import { LayoutDashboard, Users, Calendar, Trophy, Settings, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2, ActivitySquare, ListChecks, AlertTriangle } from "lucide-react";
+import type { DashboardStats, User, Season, Team, Player, Fixture, Award, News, Booking, PaginatedResponse, Venue, Turf, Sponsor, Suspension, ActivityLog, Gallery, Competition, Coupon, Advertisement, Faq, ReviewAdmin } from "@/types";
+import { LayoutDashboard, Users, Calendar, Trophy, Settings, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2, ActivitySquare, ListChecks, AlertTriangle, MessageSquare, HelpCircle, Tag, Monitor } from "lucide-react";
 
 const ADMIN_PASSWORD = "Abdurahman.15";
 const STORAGE_KEY = "admin_unlocked";
@@ -31,6 +31,10 @@ const adminTabs = [
   { id: "bookings", label: "Bookings", icon: Calendar },
   { id: "news", label: "News", icon: Newspaper },
   { id: "sponsors", label: "Sponsors", icon: Handshake },
+  { id: "coupons", label: "Coupons", icon: Tag },
+  { id: "ads", label: "Ads", icon: Monitor },
+  { id: "faqs", label: "FAQs", icon: HelpCircle },
+  { id: "reviews", label: "Reviews", icon: MessageSquare },
   { id: "suspensions", label: "Suspensions", icon: AlertTriangle },
   { id: "activity", label: "Activity Logs", icon: ListChecks },
   { id: "settings", label: "Settings", icon: Settings },
@@ -149,6 +153,14 @@ export function AdminPage() {
 
   const { data: galleryItems } = useQuery({ queryKey: ["admin-gallery"], queryFn: () => api.get<{ data: Gallery[] }>("/admin/gallery"), enabled: unlocked });
 
+  const { data: coupons } = useQuery({ queryKey: ["admin-coupons"], queryFn: () => api.get<{ data: Coupon[] }>("/admin/coupons"), enabled: unlocked });
+
+  const { data: ads } = useQuery({ queryKey: ["admin-ads"], queryFn: () => api.get<{ data: Advertisement[] }>("/admin/ads"), enabled: unlocked });
+
+  const { data: faqs } = useQuery({ queryKey: ["admin-faqs"], queryFn: () => api.get<{ data: Faq[] }>("/admin/faqs"), enabled: unlocked });
+
+  const { data: reviews } = useQuery({ queryKey: ["admin-reviews"], queryFn: () => api.get<{ data: ReviewAdmin[] }>("/admin/reviews"), enabled: unlocked });
+
   const stats = dashboard?.stats;
 
   const handleLogout = () => {
@@ -220,7 +232,10 @@ export function AdminPage() {
         </div>
 
         {activeTab === "overview" && (
-          <div className="space-y-6">
+          <>
+            {!dashboard && <TabSkeleton />}
+            {dashboard && (
+            <div className="space-y-6">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {[
                 { label: "Total Users", value: stats?.totalUsers || 0, icon: Users, color: "text-blue-500" },
@@ -264,11 +279,14 @@ export function AdminPage() {
                 </CardContent>
               </Card>
             </div>
-          </div>
+            </div>
+            )}
+          </>
         )}
 
         {activeTab === "seasons" && (
           <>
+          {!seasons ? <TabSkeleton /> : (<>
             <AdminTable
               title="Seasons"
               columns={["Name", "Start Date", "End Date", "Status", "Teams", "Players", "Fixtures"]}
@@ -348,6 +366,8 @@ export function AdminPage() {
                   disabled={!formData.name || !formData.startDate || !formData.endDate}>{editingItem ? "Update Season" : "Create Season"}</Button>
               </div>
             </Dialog>
+              </>
+            )}
           </>
         )}
 
@@ -1194,6 +1214,209 @@ export function AdminPage() {
           </>
         )}
 
+        {activeTab === "coupons" && (
+          <>
+            <AdminTable
+              title="Coupons"
+              columns={["Code", "Discount", "Uses", "Expires", "Active"]}
+              data={coupons?.data || []}
+              renderRow={(c: Coupon) => [
+                <span className="font-mono font-bold">{c.code}</span>,
+                c.discountType === "PERCENTAGE" ? `${c.discountValue}%` : `₹${c.discountValue}`,
+                <span className="text-sm">{c.usedCount || 0}/{c.maxUses || "∞"}</span>,
+                c.expiresAt ? formatDate(c.expiresAt) : "Never",
+                c.isActive !== false ? <Badge className="bg-primary">Active</Badge> : <Badge variant="destructive">Inactive</Badge>,
+              ]}
+              onAdd={() => { setEditingItem(null); openForm("coupon", { code: "", discountType: "PERCENTAGE", discountValue: 10, maxUses: 100, minAmount: 0, isActive: true }); }}
+              onEdit={(c) => { setEditingItem(c); openForm("coupon", c); }}
+              onDelete={(c) => { if (confirm(`Delete coupon "${c.code}"?`)) api.delete(`/admin/coupons/${c.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-coupons"] })); }}
+            />
+            <Dialog open={showForm === "coupon"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Coupon" : "Add Coupon"}>
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label>Code</Label>
+                  <Input value={formData.code || ""} onChange={(e) => handleFormChange("code", e.target.value.toUpperCase())} placeholder="SUMMER25" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label>Type</Label>
+                    <Select value={formData.discountType || "PERCENTAGE"} onChange={(e) => handleFormChange("discountType", e.target.value)}>
+                      <option value="PERCENTAGE">Percentage</option>
+                      <option value="FIXED">Fixed</option>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Value</Label>
+                    <Input type="number" value={formData.discountValue || 0} onChange={(e) => handleFormChange("discountValue", Number(e.target.value))} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label>Max Uses</Label>
+                    <Input type="number" value={formData.maxUses ?? ""} onChange={(e) => handleFormChange("maxUses", e.target.value ? Number(e.target.value) : null)} placeholder="Unlimited" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Min Amount</Label>
+                    <Input type="number" value={formData.minAmount ?? 0} onChange={(e) => handleFormChange("minAmount", Number(e.target.value))} />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Expires At (optional)</Label>
+                  <Input type="date" value={formData.expiresAt?.split("T")[0] || ""} onChange={(e) => handleFormChange("expiresAt", e.target.value ? new Date(e.target.value).toISOString() : null)} />
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={formData.isActive !== false} onChange={(e) => handleFormChange("isActive", e.target.checked)} className="rounded" />
+                  Active
+                </label>
+                {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
+                <Button className="w-full" onClick={() => submitForm("coupon", "/admin/coupons", "admin-coupons")}
+                  disabled={!formData.code}>{editingItem ? "Update Coupon" : "Create Coupon"}</Button>
+              </div>
+            </Dialog>
+          </>
+        )}
+
+        {activeTab === "ads" && (
+          <>
+            <AdminTable
+              title="Advertisements"
+              columns={["Image", "Title", "Position", "Active", "Period"]}
+              data={ads?.data || []}
+              renderRow={(a: Advertisement) => [
+                <img src={a.imageUrl || "/placeholder.svg"} alt={a.title} className="h-10 w-16 rounded bg-muted object-cover" />,
+                <span className="font-medium">{a.title}</span>,
+                <Badge variant="outline">{a.position || "—"}</Badge>,
+                a.isActive !== false ? <Badge className="bg-primary">Active</Badge> : <Badge variant="destructive">Inactive</Badge>,
+                <span className="text-xs text-muted-foreground">{a.startsAt ? formatDate(a.startsAt) : "—"} – {a.endsAt ? formatDate(a.endsAt) : "—"}</span>,
+              ]}
+              onAdd={() => { setEditingItem(null); openForm("ad", { title: "", imageUrl: "", linkUrl: "", position: "banner", isActive: true }); }}
+              onEdit={(a) => { setEditingItem(a); openForm("ad", a); }}
+              onDelete={(a) => { if (confirm(`Delete ad "${a.title}"?`)) api.delete(`/admin/ads/${a.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-ads"] })); }}
+            />
+            <Dialog open={showForm === "ad"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Advertisement" : "Add Advertisement"}>
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label>Title</Label>
+                  <Input value={formData.title || ""} onChange={(e) => handleFormChange("title", e.target.value)} placeholder="Ad title" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Image URL</Label>
+                  <Input value={formData.imageUrl || ""} onChange={(e) => handleFormChange("imageUrl", e.target.value)} placeholder="https://..." />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Link URL (optional)</Label>
+                  <Input value={formData.linkUrl || ""} onChange={(e) => handleFormChange("linkUrl", e.target.value)} placeholder="https://..." />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Position</Label>
+                  <Select value={formData.position || "banner"} onChange={(e) => handleFormChange("position", e.target.value)}>
+                    <option value="hero">Hero</option>
+                    <option value="banner">Banner</option>
+                    <option value="sidebar">Sidebar</option>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label>Start Date</Label>
+                    <Input type="date" value={formData.startsAt?.split("T")[0] || ""} onChange={(e) => handleFormChange("startsAt", e.target.value ? new Date(e.target.value).toISOString() : null)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>End Date</Label>
+                    <Input type="date" value={formData.endsAt?.split("T")[0] || ""} onChange={(e) => handleFormChange("endsAt", e.target.value ? new Date(e.target.value).toISOString() : null)} />
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={formData.isActive !== false} onChange={(e) => handleFormChange("isActive", e.target.checked)} className="rounded" />
+                  Active
+                </label>
+                {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
+                <Button className="w-full" onClick={() => submitForm("ad", "/admin/ads", "admin-ads")}
+                  disabled={!formData.title || !formData.imageUrl}>{editingItem ? "Update Ad" : "Create Ad"}</Button>
+              </div>
+            </Dialog>
+          </>
+        )}
+
+        {activeTab === "faqs" && (
+          <>
+            <AdminTable
+              title="FAQs"
+              columns={["Question", "Category", "Order", "Active"]}
+              data={faqs?.data || []}
+              renderRow={(f: Faq) => [
+                <span className="font-medium line-clamp-1">{f.question}</span>,
+                <Badge variant="outline">{f.category || "—"}</Badge>,
+                f.order ?? 0,
+                f.isActive !== false ? <Badge className="bg-primary">Active</Badge> : <Badge variant="destructive">Inactive</Badge>,
+              ]}
+              onAdd={() => { setEditingItem(null); openForm("faq", { question: "", answer: "", category: "general", order: 0, isActive: true }); }}
+              onEdit={(f) => { setEditingItem(f); openForm("faq", f); }}
+              onDelete={(f) => { if (confirm(`Delete FAQ "${f.question}"?`)) api.delete(`/admin/faqs/${f.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-faqs"] })); }}
+            />
+            <Dialog open={showForm === "faq"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit FAQ" : "Add FAQ"}>
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label>Question</Label>
+                  <Input value={formData.question || ""} onChange={(e) => handleFormChange("question", e.target.value)} placeholder="Frequently asked question" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Answer</Label>
+                  <textarea value={formData.answer || ""} onChange={(e) => handleFormChange("answer", e.target.value)} rows={4} className="w-full rounded-lg border bg-background px-3 py-2 text-sm" placeholder="Answer..." />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label>Category</Label>
+                    <Select value={formData.category || "general"} onChange={(e) => handleFormChange("category", e.target.value)}>
+                      <option value="general">General</option>
+                      <option value="booking">Booking</option>
+                      <option value="league">League</option>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Order</Label>
+                    <Input type="number" value={formData.order ?? 0} onChange={(e) => handleFormChange("order", Number(e.target.value))} />
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={formData.isActive !== false} onChange={(e) => handleFormChange("isActive", e.target.checked)} className="rounded" />
+                  Active
+                </label>
+                {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
+                <Button className="w-full" onClick={() => submitForm("faq", "/admin/faqs", "admin-faqs")}
+                  disabled={!formData.question || !formData.answer}>{editingItem ? "Update FAQ" : "Create FAQ"}</Button>
+              </div>
+            </Dialog>
+          </>
+        )}
+
+        {activeTab === "reviews" && (
+          <>
+            <AdminTable
+              title="Reviews"
+              columns={["User", "Venue", "Rating", "Comment", "Status"]}
+              data={reviews?.data || []}
+              renderRow={(r: ReviewAdmin) => [
+                <span className="font-medium">{r.user?.firstName} {r.user?.lastName}</span>,
+                r.venue?.name || "-",
+                <span className="text-yellow-500">{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</span>,
+                <span className="max-w-[200px] truncate text-sm text-muted-foreground">{r.comment || "—"}</span>,
+                r.isApproved ? <Badge className="bg-primary">Approved</Badge> : <Badge variant="secondary">Pending</Badge>,
+              ]}
+              onDelete={(r) => { if (confirm("Delete this review?")) api.delete(`/admin/reviews/${r.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-reviews"] })); }}
+            />
+            <div className="mt-2 flex gap-2">
+              <Button size="sm" variant="outline" onClick={async () => {
+                const pending = (reviews?.data || []).filter((r) => !r.isApproved);
+                if (pending.length === 0) return alert("No pending reviews to approve");
+                for (const r of pending) {
+                  await api.patch(`/admin/reviews/${r.id}/approve`);
+                }
+                queryClient.invalidateQueries({ queryKey: ["admin-reviews"] });
+              }}>Approve All Pending</Button>
+            </div>
+          </>
+        )}
+
         {activeTab === "suspensions" && (
           <>
             <AdminTable
@@ -1503,6 +1726,21 @@ function ImageUploadField({ label, value, onChange }: {
           )}
         </div>
         {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
+      </div>
+    </div>
+  );
+}
+
+function TabSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="h-7 w-40 animate-pulse rounded bg-muted" />
+        <div className="h-9 w-28 animate-pulse rounded bg-muted" />
+      </div>
+      <div className="overflow-hidden rounded-xl border">
+        <div className="h-10 animate-pulse bg-secondary/70" />
+        {[1,2,3,4,5].map((i) => <div key={i} className="h-12 animate-pulse border-t bg-card" />)}
       </div>
     </div>
   );

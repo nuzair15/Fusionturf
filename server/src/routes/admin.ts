@@ -49,7 +49,31 @@ router.patch("/news/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "CONTENT_EDIT
 router.delete("/news/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "CONTENT_EDITOR"), admin.deleteNews);
 router.post("/gallery", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "CONTENT_EDITOR"), admin.manageGallery);
 router.get("/gallery", admin.getGalleryItems);
+router.patch("/gallery/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "CONTENT_EDITOR"), admin.updateGalleryItem);
 router.delete("/gallery/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "CONTENT_EDITOR"), admin.deleteGalleryItem);
+
+// Coupons
+router.get("/coupons", admin.getCoupons);
+router.post("/coupons", authorize("SUPER_ADMIN"), admin.createCoupon);
+router.patch("/coupons/:id", authorize("SUPER_ADMIN"), admin.updateCoupon);
+router.delete("/coupons/:id", authorize("SUPER_ADMIN"), admin.deleteCoupon);
+
+// Advertisements
+router.get("/ads", admin.getAdvertisements);
+router.post("/ads", authorize("SUPER_ADMIN", "CONTENT_EDITOR"), admin.createAdvertisement);
+router.patch("/ads/:id", authorize("SUPER_ADMIN", "CONTENT_EDITOR"), admin.updateAdvertisement);
+router.delete("/ads/:id", authorize("SUPER_ADMIN", "CONTENT_EDITOR"), admin.deleteAdvertisement);
+
+// FAQs
+router.get("/faqs", admin.getFaqs);
+router.post("/faqs", authorize("SUPER_ADMIN", "CONTENT_EDITOR"), admin.createFaq);
+router.patch("/faqs/:id", authorize("SUPER_ADMIN", "CONTENT_EDITOR"), admin.updateFaq);
+router.delete("/faqs/:id", authorize("SUPER_ADMIN", "CONTENT_EDITOR"), admin.deleteFaq);
+
+// Reviews
+router.get("/reviews", admin.getReviews);
+router.patch("/reviews/:id/approve", authorize("SUPER_ADMIN"), admin.approveReview);
+router.delete("/reviews/:id", authorize("SUPER_ADMIN"), admin.deleteReview);
 
 // Competitions
 router.get("/competitions", admin.getCompetitions);

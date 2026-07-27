@@ -1005,6 +1005,153 @@ export const adminDeleteSuspension = async (req: Request, res: Response, next: N
   }
 };
 
+export const updateGalleryItem = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const item = await prisma.gallery.update({ where: { id: req.params.id }, data: req.body });
+    res.json(item);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getCoupons = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const items = await prisma.coupon.findMany({ orderBy: { createdAt: "desc" } });
+    res.json({ data: items });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createCoupon = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const item = await prisma.coupon.create({ data: req.body });
+    res.status(201).json(item);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateCoupon = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const item = await prisma.coupon.update({ where: { id: req.params.id }, data: req.body });
+    res.json(item);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteCoupon = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await prisma.coupon.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAdvertisements = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const items = await prisma.advertisement.findMany({ orderBy: { createdAt: "desc" } });
+    res.json({ data: items });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createAdvertisement = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const item = await prisma.advertisement.create({ data: req.body });
+    res.status(201).json(item);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateAdvertisement = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const item = await prisma.advertisement.update({ where: { id: req.params.id }, data: req.body });
+    res.json(item);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteAdvertisement = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await prisma.advertisement.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getFaqs = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const items = await prisma.faq.findMany({ orderBy: { order: "asc" } });
+    res.json({ data: items });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createFaq = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const item = await prisma.faq.create({ data: req.body });
+    res.status(201).json(item);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateFaq = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const item = await prisma.faq.update({ where: { id: req.params.id }, data: req.body });
+    res.json(item);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteFaq = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await prisma.faq.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getReviews = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const items = await prisma.review.findMany({
+      orderBy: { createdAt: "desc" },
+      include: { user: { select: { firstName: true, lastName: true, avatarUrl: true } }, venue: { select: { name: true } } },
+    });
+    res.json({ data: items });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const approveReview = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const item = await prisma.review.update({ where: { id: req.params.id }, data: { isApproved: true } });
+    res.json(item);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteReview = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await prisma.review.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+};
+
 async function recalcScore(fixtureId: string) {
   const fixture = await prisma.fixture.findUnique({ where: { id: fixtureId }, select: { homeTeamId: true, awayTeamId: true } });
   if (!fixture) return;

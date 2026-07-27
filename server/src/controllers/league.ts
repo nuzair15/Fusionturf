@@ -324,6 +324,22 @@ export const getPlayerStats = async (req: Request, res: Response, next: NextFunc
   }
 };
 
+export const getTeamStats = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const where: any = {};
+    if (req.query.seasonId) where.seasonId = req.query.seasonId;
+    const stats = await prisma.teamStat.findMany({
+      where,
+      include: { team: { select: { name: true, slug: true, logoUrl: true, shortName: true } } },
+      orderBy: { totalGoals: "desc" },
+      take: 50,
+    });
+    res.json(stats);
+  } catch (error) {
+    next(error);
+  }
+};
+
 // ─── Awards ───
 
 export const getAwards = async (req: Request, res: Response, next: NextFunction) => {

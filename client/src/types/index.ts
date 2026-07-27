@@ -445,8 +445,38 @@ export interface Coupon {
   discountType: "PERCENTAGE" | "FIXED";
   discountValue: number;
   maxUses?: number;
+  usedCount?: number;
   minAmount?: number;
   expiresAt?: string;
+  isActive?: boolean;
+  createdAt?: string;
+}
+
+export interface Advertisement {
+  id: string;
+  title: string;
+  imageUrl: string;
+  linkUrl?: string;
+  position?: string;
+  isActive?: boolean;
+  startsAt?: string;
+  endsAt?: string;
+  createdAt?: string;
+}
+
+export interface Faq {
+  id: string;
+  question: string;
+  answer: string;
+  category?: string;
+  order?: number;
+  isActive?: boolean;
+  createdAt?: string;
+}
+
+export interface ReviewAdmin extends Review {
+  isApproved: boolean;
+  venue?: { name: string };
 }
 
 export interface Notification {
@@ -494,6 +524,21 @@ export interface PaginatedResponse<T> {
     hasNext: boolean;
     hasPrev: boolean;
   };
+}
+
+export interface TeamStat {
+  id: string;
+  seasonId: string;
+  teamId: string;
+  team: { name: string; slug: string; logoUrl?: string; shortName?: string };
+  totalGoals: number;
+  totalAssists: number;
+  totalShots: number;
+  totalCorners: number;
+  totalFouls: number;
+  totalOffsides: number;
+  avgPossession?: number;
+  cleanSheets: number;
 }
 
 export interface DashboardStats {

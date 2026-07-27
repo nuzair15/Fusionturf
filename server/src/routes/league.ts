@@ -2,7 +2,7 @@ import { Router } from "express";
 import {
   getSeasons, getCurrentSeason, getTeams, getTeamBySlug,
   getPlayers, getPlayerBySlug, getFixtures, getFixtureById,
-  getStandings, getTopScorers, getTopAssists, getPlayerStats,
+  getStandings, getTopScorers, getTopAssists, getPlayerStats, getTeamStats,
   getAwards, getAwardBySlug, voteForAward, getNews, getGallery, getSponsors,
   getMatchdaySquad, getSuspensions, getPlayerSuspensions, getAwardLeaderboard,
 } from "../controllers/league.js";
@@ -33,6 +33,7 @@ router.get("/standings", getStandings);
 router.get("/stats/top-scorers", getTopScorers);
 router.get("/stats/top-assists", getTopAssists);
 router.get("/stats/players", getPlayerStats);
+router.get("/stats/teams", getTeamStats);
 
 // Awards
 router.get("/awards", getAwards);
