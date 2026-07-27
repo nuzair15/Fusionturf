@@ -64,6 +64,24 @@ export function VenueDetailPage() {
 
   const turf = venue?.turfs?.find((t) => t.id === selectedTurfId);
 
+  const computedPrice = useMemo(() => {
+    if (!turf) return 0;
+    let price = turf.basePrice;
+    if (date) {
+      const day = new Date(date).getDay();
+      if (day === 0 || day === 6) {
+        price = turf.weekendPrice || turf.basePrice;
+      }
+    }
+    if (startSlot) {
+      const hour = parseInt(startSlot.split(":")[0], 10);
+      if (hour >= 17 && hour <= 21) {
+        price = turf.peakPrice || price;
+      }
+    }
+    return price;
+  }, [turf, date, startSlot]);
+
   const { data: bookedData } = useQuery({
     queryKey: ["booked-slots", selectedTurfId, date],
     queryFn: () => api.get<Booking[]>(`/bookings/booked-slots/${selectedTurfId}?date=${date}`),
@@ -179,7 +197,9 @@ export function VenueDetailPage() {
                       >
                         <p className="font-medium">{t.name}</p>
                         <p className="text-xs text-muted-foreground">{t.size} &bull; {t.surface}</p>
-                        <p className="mt-0.5 font-bold text-primary">{formatCurrency(t.basePrice)}<span className="text-xs font-normal">/hr</span></p>
+                        <p className="mt-0.5 font-bold text-primary">{formatCurrency(t.basePrice)}<span className="text-xs font-normal">/hr</span>
+                          {(t.weekendPrice || t.peakPrice) && <span className="ml-2 text-[10px] font-normal text-muted-foreground">(weekend/peak rates apply)</span>}
+                        </p>
                       </button>
                     ))}
                   </div>
@@ -274,6 +294,10 @@ export function VenueDetailPage() {
                     <div className="rounded-lg bg-primary/5 p-3 text-sm">
                       <p className="font-medium">Booking Summary</p>
                       <p className="text-muted-foreground">{formatAmPm(startSlot)} - {formatAmPm(endSlot)} on {new Date(date).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}</p>
+                      <p className="mt-1 font-semibold">{formatCurrency(computedPrice)}<span className="text-xs font-normal text-muted-foreground">/hr</span></p>
+                      {computedPrice !== turf?.basePrice && (
+                        <p className="mt-0.5 text-[11px] text-amber-600">Weekend or peak hour pricing applied</p>
+                      )}
                       <p className="mt-1 text-xs text-muted-foreground">You will receive a confirmation call or text once your booking is verified.</p>
                     </div>
                   )}
@@ -281,7 +305,7 @@ export function VenueDetailPage() {
                   {error && <p className="text-sm text-destructive">{error}</p>}
 
                   <Button type="submit" className="w-full" size="lg" disabled={submitting || !startSlot || !endSlot}>
-                    {submitting ? "Booking..." : `Confirm Booking${turf ? ` - ${formatCurrency(turf.basePrice)}` : ""}`}
+                    {submitting ? "Booking..." : `Confirm Booking${turf ? ` - ${formatCurrency(computedPrice)}` : ""}`}
                   </Button>
                 </form>
               </CardContent>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -121,7 +121,14 @@ export function AdminPage() {
     setPasswordError(false);
   };
 
-  const { data: dashboard } = useQuery({ queryKey: ["admin-dashboard"], queryFn: () => api.get<DashboardStats>("/admin/dashboard"), enabled: unlocked });
+  // Restore admin token on mount when already unlocked (e.g., page refresh)
+  useEffect(() => {
+    if (unlocked) {
+      api.setAdminToken(ADMIN_PASSWORD);
+    }
+  }, [unlocked]);
+
+  const { data: dashboard, isLoading: dashboardLoading } = useQuery({ queryKey: ["admin-dashboard"], queryFn: () => api.get<DashboardStats>("/admin/dashboard"), enabled: unlocked, retry: 1, staleTime: 30000 });
 
   const { data: users } = useQuery({ queryKey: ["admin-users"], queryFn: () => api.get<{ data: User[] }>("/admin/users", { limit: "20" }), enabled: unlocked });
 

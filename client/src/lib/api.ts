@@ -33,7 +33,7 @@ class ApiClient {
       ...(options.headers as Record<string, string>),
     };
 
-    const authToken = this.adminToken || this.token;
+    const authToken = this.adminToken || this.token || sessionStorage.getItem("admin_token") || localStorage.getItem("token");
     if (authToken) {
       headers["Authorization"] = `Bearer ${authToken}`;
     }
