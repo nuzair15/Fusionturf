@@ -12,7 +12,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { LiveStatsPanel } from "@/components/admin/LiveStatsPanel";
-import type { DashboardStats, User, Season, Team, Player, Fixture, Award, News, Booking, PaginatedResponse, Venue, Turf, Sponsor, Suspension, ActivityLog } from "@/types";
+import type { DashboardStats, User, Season, Team, Player, Fixture, Award, News, Booking, PaginatedResponse, Venue, Turf, Sponsor, Suspension, ActivityLog, Gallery, Competition } from "@/types";
 import { LayoutDashboard, Users, Calendar, Trophy, Settings, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2, ActivitySquare, ListChecks, AlertTriangle } from "lucide-react";
 
 const ADMIN_PASSWORD = "Abdurahman.15";
@@ -25,6 +25,8 @@ const adminTabs = [
   { id: "players", label: "Players", icon: Users },
   { id: "fixtures", label: "Fixtures", icon: Activity },
   { id: "awards", label: "Awards", icon: Medal },
+  { id: "competitions", label: "Competitions", icon: Trophy },
+  { id: "gallery", label: "Gallery", icon: Image },
   { id: "venues", label: "Venues", icon: MapPin },
   { id: "bookings", label: "Bookings", icon: Calendar },
   { id: "news", label: "News", icon: Newspaper },
@@ -142,6 +144,10 @@ export function AdminPage() {
   const { data: activityLogs } = useQuery({ queryKey: ["admin-activity"], queryFn: () => api.get<PaginatedResponse<ActivityLog>>("/admin/activity-logs", { limit: "50" }), enabled: unlocked });
 
   const { data: suspensions } = useQuery({ queryKey: ["admin-suspensions"], queryFn: () => api.get<PaginatedResponse<Suspension>>("/admin/suspensions", { limit: "50" }), enabled: unlocked });
+
+  const { data: competitions } = useQuery({ queryKey: ["admin-competitions"], queryFn: () => api.get<{ data: Competition[] }>("/admin/competitions"), enabled: unlocked });
+
+  const { data: galleryItems } = useQuery({ queryKey: ["admin-gallery"], queryFn: () => api.get<{ data: Gallery[] }>("/admin/gallery"), enabled: unlocked });
 
   const stats = dashboard?.stats;
 
@@ -705,6 +711,97 @@ export function AdminPage() {
                     queryClient.invalidateQueries({ queryKey: ["admin-awards"] });
                   } catch (err: any) { setFormErrors(err.message); }
                 }} disabled={!formData.playerId}>Confirm Winner</Button>
+              </div>
+            </Dialog>
+          </>
+        )}
+
+        {activeTab === "competitions" && (
+          <>
+            <AdminTable
+              title="Competitions"
+              columns={["Name", "Season", "Type", "Active", "Fixtures"]}
+              data={competitions?.data || []}
+              renderRow={(c: Competition) => [
+                <span className="font-medium">{c.name}</span>,
+                c.season?.name || "-",
+                <Badge variant="outline">{c.type}</Badge>,
+                c.isActive ? <Badge className="bg-primary">Active</Badge> : <Badge variant="destructive">Inactive</Badge>,
+                c._count?.fixtures || 0,
+              ]}
+              onAdd={() => { setEditingItem(null); openForm("competition", { name: "", seasonId: seasons?.[0]?.id || "", type: "LEAGUE", isActive: true }); }}
+              onEdit={(c) => { setEditingItem(c); openForm("competition", { name: c.name, slug: c.slug, seasonId: c.seasonId, type: c.type, isActive: c.isActive }); }}
+              onDelete={(c) => { if (confirm("Delete this competition?")) api.delete(`/admin/competitions/${c.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-competitions"] })); }}
+            />
+            <Dialog open={showForm === "competition"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Competition" : "Add Competition"}>
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label>Competition Name</Label>
+                  <Input value={formData.name || ""} onChange={(e) => handleFormChange("name", e.target.value)} placeholder="e.g. Premier League" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Season</Label>
+                  <Select value={formData.seasonId || ""} onChange={(e) => handleFormChange("seasonId", e.target.value)}>
+                    <option value="">Select season</option>
+                    {(seasons || []).map((s: Season) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Type</Label>
+                  <Select value={formData.type || "LEAGUE"} onChange={(e) => handleFormChange("type", e.target.value)}>
+                    <option value="LEAGUE">League</option>
+                    <option value="KNOCKOUT">Knockout</option>
+                    <option value="GROUP">Group Stage</option>
+                  </Select>
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={formData.isActive ?? true} onChange={(e) => handleFormChange("isActive", e.target.checked)} className="rounded" />
+                  Active
+                </label>
+                {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
+                <Button className="w-full" onClick={() => submitForm("competition", "/admin/competitions", "admin-competitions")}
+                  disabled={!formData.name}>{editingItem ? "Update Competition" : "Create Competition"}</Button>
+              </div>
+            </Dialog>
+          </>
+        )}
+
+        {activeTab === "gallery" && (
+          <>
+            <AdminTable
+              title="Gallery"
+              columns={["Image", "Title", "Active", "Created"]}
+              data={galleryItems?.data || []}
+              renderRow={(g: Gallery) => [
+                <img src={g.imageUrl || "/placeholder.svg"} alt={g.title} className="h-10 w-10 rounded-md bg-muted object-cover" />,
+                <span className="font-medium">{g.title}</span>,
+                g.isActive !== false ? <Badge className="bg-primary">Active</Badge> : <Badge variant="destructive">Inactive</Badge>,
+                g.createdAt ? formatDate(g.createdAt) : "-",
+              ]}
+              onAdd={() => { setEditingItem(null); openForm("gallery", { title: "", imageUrl: "", videoUrl: "", isActive: true }); }}
+              onDelete={(g) => { if (confirm("Delete this gallery item?")) api.delete(`/admin/gallery/${g.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-gallery"] })); }}
+            />
+            <Dialog open={showForm === "gallery"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Gallery Item" : "Add Gallery Item"}>
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label>Title</Label>
+                  <Input value={formData.title || ""} onChange={(e) => handleFormChange("title", e.target.value)} placeholder="Photo title" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Image URL</Label>
+                  <Input value={formData.imageUrl || ""} onChange={(e) => handleFormChange("imageUrl", e.target.value)} placeholder="https://..." />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Video URL (optional)</Label>
+                  <Input value={formData.videoUrl || ""} onChange={(e) => handleFormChange("videoUrl", e.target.value)} placeholder="https://..." />
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={formData.isActive ?? true} onChange={(e) => handleFormChange("isActive", e.target.checked)} className="rounded" />
+                  Active
+                </label>
+                {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
+                <Button className="w-full" onClick={() => submitForm("gallery", "/admin/gallery", "admin-gallery")}
+                  disabled={!formData.title || !formData.imageUrl}>{editingItem ? "Update Gallery Item" : "Add to Gallery"}</Button>
               </div>
             </Dialog>
           </>

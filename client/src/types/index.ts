@@ -412,6 +412,20 @@ export interface Gallery {
   title: string;
   imageUrl: string;
   videoUrl?: string;
+  isActive?: boolean;
+  createdAt?: string;
+}
+
+export interface Competition {
+  id: string;
+  seasonId: string;
+  name: string;
+  slug: string;
+  type: "LEAGUE" | "KNOCKOUT" | "GROUP";
+  isActive: boolean;
+  createdAt: string;
+  season?: Season;
+  _count?: { fixtures: number };
 }
 
 export interface Sponsor {

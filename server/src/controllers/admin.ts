@@ -430,6 +430,18 @@ export const deleteNews = async (req: Request, res: Response, next: NextFunction
   }
 };
 
+export const getGalleryItems = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const items = await prisma.gallery.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+    res.json({ data: items });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const manageGallery = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const item = await prisma.gallery.create({ data: req.body });
@@ -443,6 +455,45 @@ export const deleteGalleryItem = async (req: Request, res: Response, next: NextF
   try {
     await prisma.gallery.delete({ where: { id: req.params.id } });
     res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getCompetitions = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const items = await prisma.competition.findMany({ orderBy: { createdAt: "desc" } });
+    res.json({ data: items });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createCompetition = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const item = await prisma.competition.create({ data: req.body });
+    res.status(201).json(item);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateCompetition = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const item = await prisma.competition.update({
+      where: { id: req.params.id },
+      data: req.body,
+    });
+    res.json(item);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteCompetition = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await prisma.competition.delete({ where: { id: req.params.id } });
+    res.status(204).end();
   } catch (error) {
     next(error);
   }
