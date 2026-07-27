@@ -19,17 +19,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const autoLogin = async () => {
       try {
-        const res = await api.login("admin@fusionturf.com", "Abdurahman.15");
-        setUser(res.user);
-      } catch {
-        try {
-          if (api.isAuthenticated()) {
-            const me = await api.getMe();
-            setUser(me);
-          }
-        } catch {
-          api.logout();
+        if (api.isAuthenticated()) {
+          const me = await api.getMe();
+          setUser(me);
         }
+      } catch {
+        api.logout();
       } finally {
         setIsLoading(false);
       }

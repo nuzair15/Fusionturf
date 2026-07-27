@@ -38,18 +38,26 @@ class ApiClient {
       headers["Authorization"] = `Bearer ${authToken}`;
     }
 
-    const response = await fetch(`${API_BASE}${path}`, {
-      ...options,
-      headers,
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: "Request failed" }));
-      throw new Error(error.error || `HTTP ${response.status}`);
+    try {
+      const response = await fetch(`${API_BASE}${path}`, {
+        ...options,
+        headers,
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: "Request failed" }));
+        throw new Error(error.error || `HTTP ${response.status}`);
+      }
+
+      if (response.status === 204) return undefined as T;
+      return response.json();
+    } finally {
+      clearTimeout(timeout);
     }
-
-    if (response.status === 204) return undefined as T;
-    return response.json();
   }
 
   get<T>(path: string, params?: Record<string, string | number | undefined>) {

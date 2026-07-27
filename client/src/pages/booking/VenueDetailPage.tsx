@@ -5,7 +5,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import type { Venue, Booking } from "@/types";
@@ -43,6 +42,7 @@ export function VenueDetailPage() {
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
+  const [selectedTurfId, setSelectedTurfId] = useState<string>("");
 
   useEffect(() => {
     if (done) {
@@ -56,12 +56,18 @@ export function VenueDetailPage() {
     enabled: !!slug,
   });
 
-  const turf = venue?.turfs?.[0];
+  useEffect(() => {
+    if (venue?.turfs?.length && !selectedTurfId) {
+      setSelectedTurfId(venue.turfs[0].id);
+    }
+  }, [venue, selectedTurfId]);
+
+  const turf = venue?.turfs?.find((t) => t.id === selectedTurfId);
 
   const { data: bookedData } = useQuery({
-    queryKey: ["booked-slots", turf?.id, date],
-    queryFn: () => api.get<Booking[]>(`/bookings/booked-slots/${turf?.id}?date=${date}`),
-    enabled: !!turf?.id && !!date,
+    queryKey: ["booked-slots", selectedTurfId, date],
+    queryFn: () => api.get<Booking[]>(`/bookings/booked-slots/${selectedTurfId}?date=${date}`),
+    enabled: !!selectedTurfId && !!date,
   });
 
   const bookedSlots = useMemo(() => {
@@ -106,7 +112,7 @@ export function VenueDetailPage() {
     setError("");
     try {
       await api.post("/bookings", {
-        turfId: turf.id,
+        turfId: selectedTurfId,
         date,
         startTime: startSlot,
         endTime: endSlot,
@@ -157,11 +163,25 @@ export function VenueDetailPage() {
                 {venue.phone && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Phone className="h-4 w-4" /> {venue.phone}</p>}
                 {venue.email && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Mail className="h-4 w-4" /> {venue.email}</p>}
                 <p className="flex items-center gap-2 text-sm text-muted-foreground"><Clock className="h-4 w-4" /> {formatAmPm(venue.openingTime)} - {formatAmPm(venue.closingTime)}</p>
-                {turf && (
-                  <div className="rounded-lg bg-primary/10 p-3 text-sm">
-                    <p className="font-medium">{turf.name}</p>
-                    <p className="text-muted-foreground">{turf.size} &bull; {turf.surface}</p>
-                    <p className="mt-1 font-bold text-primary">{formatCurrency(turf.basePrice)}<span className="text-xs font-normal">/hr</span></p>
+                {venue.turfs && venue.turfs.length > 0 && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Select Turf</label>
+                    {venue.turfs.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => { setSelectedTurfId(t.id); setStartSlot(""); setEndSlot(""); }}
+                        className={`w-full rounded-lg border p-3 text-left text-sm transition ${
+                          selectedTurfId === t.id
+                            ? "border-primary bg-primary/10"
+                            : "hover:border-primary/50"
+                        }`}
+                      >
+                        <p className="font-medium">{t.name}</p>
+                        <p className="text-xs text-muted-foreground">{t.size} &bull; {t.surface}</p>
+                        <p className="mt-0.5 font-bold text-primary">{formatCurrency(t.basePrice)}<span className="text-xs font-normal">/hr</span></p>
+                      </button>
+                    ))}
                   </div>
                 )}
               </CardContent>
