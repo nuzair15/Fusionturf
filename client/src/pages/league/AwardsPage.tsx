@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import type { Award } from "@/types";
-import { Medal, Trophy, Users, Clock, Vote, ChevronLeft, ImageIcon } from "lucide-react";
+import { Medal, Trophy, Vote, ChevronLeft } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
 export function AwardsPage() {
