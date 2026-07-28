@@ -41,7 +41,7 @@ export function TeamDetailPage() {
           subtitle={`${team.city || "City unknown"} • ${team.homeStadium || "Home venue pending"}${team.description ? ` • ${team.description}` : ""}`}
           actions={(
             <>
-              <Badge variant="secondary" className="rounded-full px-3 py-1">{team.players?.length || 0} players</Badge>
+              <Badge variant="secondary" className="rounded-full px-3 py-1">{team._count?.players || 0} players</Badge>
               <Badge variant="secondary" className="rounded-full px-3 py-1">{standing ? `#${standing.position} • ${standing.points} pts` : "No standing yet"}</Badge>
             </>
           )}
@@ -204,7 +204,7 @@ export function TeamDetailPage() {
               <div className="p-4">
                 <div className="rounded-2xl border bg-secondary/30 p-4 text-center">
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Players</p>
-                  <p className="mt-1 text-4xl font-bold">{team.players?.length || 0}</p>
+                  <p className="mt-1 text-4xl font-bold">{team._count?.players || 0}</p>
                 </div>
               </div>
             </LeagueCard>

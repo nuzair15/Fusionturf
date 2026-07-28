@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { formatDate, formatTime, getMatchStatusColor } from "@/lib/utils";
-import type { Fixture, Standing, Team, Season, Venue, News } from "@/types";
+import type { Fixture, Standing, Team, Season, Venue, News, PaginatedResponse } from "@/types";
 import { Trophy, Calendar, BarChart3, Medal, Newspaper, ChevronRight, Users, MapPin, Target, Shield, Flame } from "lucide-react";
 import { LeagueHero, LeagueCard, LeagueEmptyState, LeaguePills, SectionLink, StatTile, TrendBadge } from "@/components/league/LeagueUI";
 import { useMemo, useState } from "react";
@@ -20,13 +20,13 @@ export function LeaguePage() {
   const { data: standings } = useQuery({ queryKey: ["standings"], queryFn: () => api.get<Standing[]>("/league/standings") });
   const { data: teams } = useQuery({ queryKey: ["teams"], queryFn: () => api.get<Team[]>("/league/teams") });
   const { data: venues } = useQuery({ queryKey: ["venues"], queryFn: () => api.get<Venue[]>("/booking/venues") });
-  const { data: newsData } = useQuery({ queryKey: ["news"], queryFn: () => api.get<News[]>("/league/news") });
+  const { data: newsData } = useQuery({ queryKey: ["league-news"], queryFn: () => api.get<PaginatedResponse<News>>("/league/news") });
 
   const fixtureList = fixtures?.data || [];
   const standingsList = standings || [];
   const teamList = teams || [];
   const venueList = venues || [];
-  const newsList = newsData || [];
+  const newsList = newsData?.data || [];
 
   const liveFixtures = useMemo(() => fixtureList.filter((f) => f.status === "LIVE"), [fixtureList]);
   const upcomingFixtures = useMemo(() => fixtureList.filter((f) => f.status === "SCHEDULED").slice(0, 4), [fixtureList]);
@@ -236,7 +236,7 @@ export function LeaguePage() {
                     </div>
                   </div>
                   <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-                    <span>{team.players?.length || 0} players</span>
+                    <span>{team._count?.players || 0} players</span>
                     <span>{team.standings?.[0]?.points ?? 0} pts</span>
                   </div>
                 </button>
@@ -260,7 +260,7 @@ export function LeaguePage() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <LeagueCard title="Latest headlines" action={<SectionLink onClick={() => navigate("/league/news")}>Newsroom</SectionLink>}>
             <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-4">
-              {newsList.slice(0, 4).map((article) => (
+              {newsList.slice(0, 4).map((article: News) => (
                 <button key={article.id} onClick={() => navigate("/league/news")} className="overflow-hidden rounded-2xl border text-left transition hover:-translate-y-0.5 hover:shadow-md">
                   <div className="aspect-video bg-muted">
                     <img src={article.imageUrl || "/placeholder.svg"} alt="" className="h-full w-full object-cover" />
