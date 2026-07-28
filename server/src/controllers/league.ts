@@ -351,9 +351,10 @@ export const getAwards = async (req: Request, res: Response, next: NextFunction)
       where,
       include: {
         winner: { select: { firstName: true, lastName: true, photoUrl: true } },
+        winnerTeam: { select: { name: true, logoUrl: true } },
         _count: { select: { votes: true, nominations: true } },
         previousWinners: {
-          include: { player: { select: { firstName: true, lastName: true, photoUrl: true } }, season: { select: { name: true } } },
+          include: { player: { select: { firstName: true, lastName: true, photoUrl: true } }, team: { select: { name: true, logoUrl: true } }, season: { select: { name: true } } },
           orderBy: { year: "desc" },
           take: 5,
         },
@@ -372,11 +373,12 @@ export const getAwardBySlug = async (req: Request, res: Response, next: NextFunc
       where: { slug: req.params.slug },
       include: {
         winner: true,
+        winnerTeam: true,
         nominations: {
           include: { player: { include: { team: { select: { name: true, logoUrl: true } } } } },
         },
         previousWinners: {
-          include: { player: true, season: { select: { name: true } } },
+          include: { player: true, team: { select: { name: true, logoUrl: true } }, season: { select: { name: true } } },
           orderBy: { year: "desc" },
         },
         votes: {

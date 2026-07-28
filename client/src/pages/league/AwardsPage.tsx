@@ -49,7 +49,11 @@ export function AwardsPage() {
                   {award.winner ? (
                     <div>
                       <p className="text-xs text-muted-foreground">Winner</p>
-                      <p className="font-semibold">{award.winner.firstName} {award.winner.lastName}</p>
+                      {award.type === "TEAM" && award.winnerTeam ? (
+                        <p className="font-semibold">{award.winnerTeam.name}</p>
+                      ) : (
+                        <p className="font-semibold">{award.winner.firstName} {award.winner.lastName}</p>
+                      )}
                     </div>
                   ) : award.votingEnabled ? (
                     <div>
@@ -85,14 +89,20 @@ export function AwardsPage() {
                   <Card key={pw.id}>
                     <CardContent className="flex items-center gap-3 p-4">
                       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-yellow-500/20">
-                        {pw.player?.photoUrl ? (
+                        {award.type === "TEAM" ? (
+                          pw.team?.logoUrl ? (
+                            <img src={pw.team.logoUrl} alt="" className="h-10 w-10 rounded-full object-cover" />
+                          ) : <Trophy className="h-5 w-5 text-yellow-500" />
+                        ) : pw.player?.photoUrl ? (
                           <img src={pw.player.photoUrl} alt="" className="h-10 w-10 rounded-full object-cover" />
                         ) : (
                           <Trophy className="h-5 w-5 text-yellow-500" />
                         )}
                       </div>
                       <div>
-                        <p className="text-sm font-medium">{pw.player?.firstName} {pw.player?.lastName}</p>
+                        <p className="text-sm font-medium">
+                          {award.type === "TEAM" ? pw.team?.name : `${pw.player?.firstName} ${pw.player?.lastName}`}
+                        </p>
                         <p className="text-xs text-muted-foreground">{award.name} &bull; {pw.season?.name}</p>
                       </div>
                     </CardContent>

@@ -501,6 +501,8 @@ model Team {
   homePlayerStats PlayerStat[] @relation("homePlayerStats")
   lineups         Lineup[]
   matchdaySquads  MatchdaySquad[]
+  awardWins       Award[]            @relation("TeamAwardWins")
+  previousWinnerEntries PreviousWinner[] @relation("TeamPreviousWinners")
 
   @@unique([seasonId, slug])
   @@map("teams")
@@ -511,7 +513,7 @@ model Player {
   seasonId      String
   season        Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
   teamId        String?
-  team          Team?    @relation(fields: [teamId], references: [id])
+  team      Team?    @relation(fields: [teamId], references: [id])
   firstName     String
   lastName      String
   slug          String
@@ -908,6 +910,9 @@ model Award {
   isActive           Boolean         @default(true)
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
+  type               String          @default("PLAYER")
+  winnerTeamId       String?
+  winnerTeam         Team?           @relation("TeamAwardWins", fields: [winnerTeamId], references: [id])
 
   nominations    AwardNomination[]
   votes          Vote[]
@@ -954,8 +959,10 @@ model PreviousWinner {
   id        String   @id @default(uuid())
   awardId   String
   award     Award    @relation(fields: [awardId], references: [id], onDelete: Cascade)
-  playerId  String
-  player    Player   @relation(fields: [playerId], references: [id])
+  playerId  String?
+  player    Player?  @relation(fields: [playerId], references: [id])
+  teamId    String?
+  team      Team?    @relation("TeamPreviousWinners", fields: [teamId], references: [id])
   seasonId  String
   season    Season   @relation(fields: [seasonId], references: [id])
   year      String

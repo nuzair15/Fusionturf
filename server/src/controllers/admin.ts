@@ -304,7 +304,7 @@ function calculateMatchStats(homeScore: number, awayScore: number) {
 export const getAwards = async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const awards = await prisma.award.findMany({
-      include: { winner: { select: { firstName: true, lastName: true, photoUrl: true } }, _count: { select: { votes: true, nominations: true } } },
+      include: { winner: { select: { firstName: true, lastName: true, photoUrl: true } }, winnerTeam: { select: { name: true, logoUrl: true } }, _count: { select: { votes: true, nominations: true } } },
       orderBy: { name: "asc" },
     });
     res.json(awards);
@@ -360,22 +360,35 @@ export const addNomination = async (req: Request, res: Response, next: NextFunct
 
 export const announceWinner = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { playerId, seasonId } = req.body;
-    const award = await prisma.award.update({
-      where: { id: req.params.id },
-      data: {
-        winnerId: playerId,
-        winnerAnnounced: true,
-        previousWinners: {
-          create: {
-            playerId,
-            seasonId,
-            year: new Date().getFullYear().toString(),
-          },
+    const { playerId, teamId, seasonId } = req.body;
+    const award = await prisma.award.findUnique({ where: { id: req.params.id } });
+    if (!award) return res.status(404).json({ error: "Award not found" });
+
+    const data: any = {
+      winnerAnnounced: true,
+      previousWinners: {
+        create: {
+          seasonId,
+          year: new Date().getFullYear().toString(),
         },
       },
+    };
+
+    if (award.type === "TEAM") {
+      data.winnerTeamId = teamId;
+      data.winnerId = null;
+      data.previousWinners.create.teamId = teamId;
+    } else {
+      data.winnerId = playerId;
+      data.winnerTeamId = null;
+      data.previousWinners.create.playerId = playerId;
+    }
+
+    const updated = await prisma.award.update({
+      where: { id: req.params.id },
+      data,
     });
-    res.json(award);
+    res.json(updated);
   } catch (error) {
     next(error);
   }
@@ -1108,6 +1121,30 @@ export const deleteReview = async (req: Request, res: Response, next: NextFuncti
   try {
     await prisma.review.delete({ where: { id: req.params.id } });
     res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const searchPlayers = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { q, teamId } = req.query;
+    if (!q || typeof q !== "string" || q.length < 2) {
+      return res.json([]);
+    }
+    const players = await prisma.player.findMany({
+      where: {
+        ...(teamId ? { teamId: String(teamId) } : {}),
+        OR: [
+          { firstName: { contains: q, mode: "insensitive" } },
+          { lastName: { contains: q, mode: "insensitive" } },
+        ],
+      },
+      include: { team: { select: { name: true } } },
+      take: 10,
+      orderBy: { firstName: "asc" },
+    });
+    res.json(players);
   } catch (error) {
     next(error);
   }

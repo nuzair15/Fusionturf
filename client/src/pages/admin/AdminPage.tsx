@@ -59,6 +59,10 @@ export function AdminPage() {
   const [fixtureOptions, setFixtureOptions] = useState({ teamCount: 6, leagueWeeks: 7, matchesPerPair: 2, startDate: "", fixtureDays: ["Friday", "Saturday", "Sunday"] as string[] });
   const [generating, setGenerating] = useState(false);
   const [liveStatsFixtureId, setLiveStatsFixtureId] = useState<string | null>(null);
+  const [winnerSearchTerm, setWinnerSearchTerm] = useState("");
+  const [winnerResults, setWinnerResults] = useState<any[]>([]);
+  const [winnerLoading, setWinnerLoading] = useState(false);
+  const [selectedWinner, setSelectedWinner] = useState<any>(null);
 
   const openForm = (type: string, initial: Record<string, any> = {}) => {
     setFormData(initial);
@@ -711,7 +715,7 @@ export function AdminPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold">Awards</h2>
-                <Button size="sm" onClick={() => { setEditingItem(null); openForm("award", { name: "", description: "", trophyImageUrl: "", seasonId: seasons?.[0]?.id || "" }); }}>
+                <Button size="sm" onClick={() => { setEditingItem(null); openForm("award", { name: "", description: "", trophyImageUrl: "", type: "PLAYER", seasonId: seasons?.[0]?.id || "" }); }}>
                   <Plus className="mr-1 h-4 w-4" /> Add Award
                 </Button>
               </div>
@@ -722,7 +726,7 @@ export function AdminPage() {
                       <div className="flex items-start justify-between">
                         <CardTitle className="text-base">{a.name}</CardTitle>
                         <div className="flex gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => { setEditingItem(a); openForm("award", { name: a.name, slug: a.slug, description: a.description || "", trophyImageUrl: a.trophyImageUrl || "", seasonId: a.seasonId }); }}>
+                          <Button variant="ghost" size="sm" onClick={() => { setEditingItem(a); openForm("award", { name: a.name, slug: a.slug, description: a.description || "", trophyImageUrl: a.trophyImageUrl || "", seasonId: a.seasonId, type: a.type }); }}>
                             <Edit2 className="h-4 w-4" />
                           </Button>
                         </div>
@@ -734,7 +738,9 @@ export function AdminPage() {
                       )}
                       {a.description && <p className="mb-2 text-sm text-muted-foreground">{a.description}</p>}
                       <p className="text-sm text-muted-foreground">
-                        {a.winner ? `Winner: ${a.winner.firstName} ${a.winner.lastName}` : a.votingEnabled ? "Voting Open" : "No winner yet"}
+                        {a.type === "TEAM" 
+                          ? (a.winnerTeam ? `Winner: ${a.winnerTeam.name}` : a.votingEnabled ? "Voting Open" : "No winner yet")
+                          : a.winner ? `Winner: ${a.winner.firstName} ${a.winner.lastName}` : a.votingEnabled ? "Voting Open" : "No winner yet"}
                       </p>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <Button variant="outline" size="sm" onClick={() => {
@@ -742,7 +748,7 @@ export function AdminPage() {
                         }}>
                           {a.votingEnabled ? "Close Voting" : "Open Voting"}
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => openForm("winner", { awardId: a.id, seasonId: a.seasonId, playerId: "" })}>
+                        <Button variant="outline" size="sm" onClick={() => { setSelectedWinner(null); setWinnerSearchTerm(""); setWinnerResults([]); openForm("winner", { awardId: a.id, seasonId: a.seasonId, awardType: a.type, playerId: "", teamId: "" }); }}>
                           Announce Winner
                         </Button>
                       </div>
@@ -772,24 +778,100 @@ export function AdminPage() {
                     ))}
                   </Select>
                 </div>
+                <div className="space-y-1.5">
+                  <Label>Type</Label>
+                  <Select value={formData.type || "PLAYER"} onChange={(e) => handleFormChange("type", e.target.value)}>
+                    <option value="PLAYER">Player Award</option>
+                    <option value="TEAM">Team Award</option>
+                  </Select>
+                </div>
                 {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                 <Button className="w-full" onClick={() => submitForm("award", "/admin/awards", "admin-awards")}
                   disabled={!formData.name}>{editingItem ? "Update Award" : "Create Award"}</Button>
               </div>
             </Dialog>
-            <Dialog open={showForm === "winner"} onClose={() => setShowForm(null)} title="Announce Winner">
+            <Dialog open={showForm === "winner"} onClose={() => { setShowForm(null); setSelectedWinner(null); setWinnerSearchTerm(""); setWinnerResults([]); }} title="Announce Winner">
               <div className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label>Player ID</Label>
-                  <Input value={formData.playerId || ""} onChange={(e) => handleFormChange("playerId", e.target.value)} placeholder="Enter player ID" />
+                  <Label>Search {formData.awardType === "TEAM" ? "Team" : "Player"}</Label>
+                  <Input value={winnerSearchTerm} onChange={async (e) => {
+                    const term = e.target.value;
+                    setWinnerSearchTerm(term);
+                    setSelectedWinner(null);
+                    if (formData.awardType === "TEAM") {
+                      const filtered = (teams || []).filter((t: Team) =>
+                        t.name.toLowerCase().includes(term.toLowerCase())
+                      ).slice(0, 10);
+                      setWinnerResults(filtered.map((t: Team) => ({ id: t.id, name: t.name, logoUrl: t.logoUrl })));
+                    } else if (term.length >= 2) {
+                      setWinnerLoading(true);
+                      try {
+                        const res = await api.get<any[]>("/admin/players/search", { q: term });
+                        setWinnerResults(res);
+                      } catch { setWinnerResults([]); }
+                      setWinnerLoading(false);
+                    } else { setWinnerResults([]); }
+                  }} placeholder={`Type to search ${formData.awardType === "TEAM" ? "teams" : "players"}...`} />
+                  {winnerLoading && <p className="text-xs text-muted-foreground">Searching...</p>}
                 </div>
+                {selectedWinner && (
+                  <div className="flex items-center gap-3 rounded-lg border bg-muted/50 p-3">
+                    {formData.awardType === "TEAM" ? (
+                      <>
+                        {selectedWinner.logoUrl && <img src={selectedWinner.logoUrl} alt="" className="h-8 w-8 rounded-full object-cover" />}
+                        <span className="font-medium">{selectedWinner.name}</span>
+                      </>
+                    ) : (
+                      <>
+                        {selectedWinner.photoUrl && <img src={selectedWinner.photoUrl} alt="" className="h-8 w-8 rounded-full object-cover" />}
+                        <span className="font-medium">{selectedWinner.firstName} {selectedWinner.lastName}</span>
+                        {selectedWinner.team?.name && <span className="text-sm text-muted-foreground">({selectedWinner.team.name})</span>}
+                      </>
+                    )}
+                    <Button variant="ghost" size="sm" className="ml-auto" onClick={() => { setSelectedWinner(null); setWinnerSearchTerm(""); setWinnerResults([]); }}>Change</Button>
+                  </div>
+                )}
+                {!selectedWinner && winnerResults.length > 0 && (
+                  <div className="max-h-48 overflow-y-auto rounded-lg border">
+                    {winnerResults.map((item: any) => (
+                      <div key={item.id} className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm hover:bg-muted/50" onClick={() => {
+                        setSelectedWinner(item);
+                        setWinnerResults([]);
+                        setWinnerSearchTerm(formData.awardType === "TEAM" ? item.name : `${item.firstName} ${item.lastName}`);
+                        handleFormChange(formData.awardType === "TEAM" ? "teamId" : "playerId", item.id);
+                      }}>
+                        {formData.awardType === "TEAM" ? (
+                          <>
+                            {item.logoUrl && <img src={item.logoUrl} alt="" className="h-7 w-7 rounded-full object-cover" />}
+                            <span>{item.name}</span>
+                          </>
+                        ) : (
+                          <>
+                            {item.photoUrl && <img src={item.photoUrl} alt="" className="h-7 w-7 rounded-full object-cover" />}
+                            <span>{item.firstName} {item.lastName}</span>
+                            {item.team?.name && <span className="ml-auto text-xs text-muted-foreground">{item.team.name}</span>}
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <Button className="w-full" onClick={async () => {
                   try {
-                    await api.post(`/admin/awards/${formData.awardId}/announce-winner`, { playerId: formData.playerId, seasonId: formData.seasonId });
+                    const payload: any = { seasonId: formData.seasonId };
+                    if (formData.awardType === "TEAM") {
+                      payload.teamId = formData.teamId;
+                    } else {
+                      payload.playerId = formData.playerId;
+                    }
+                    await api.post(`/admin/awards/${formData.awardId}/announce-winner`, payload);
                     setShowForm(null);
+                    setSelectedWinner(null);
+                    setWinnerSearchTerm("");
+                    setWinnerResults([]);
                     queryClient.invalidateQueries({ queryKey: ["admin-awards"] });
                   } catch (err: any) { setFormErrors(err.message); }
-                }} disabled={!formData.playerId}>Confirm Winner</Button>
+                }} disabled={formData.awardType === "TEAM" ? !formData.teamId : !formData.playerId}>Confirm Winner</Button>
               </div>
             </Dialog>
           </>

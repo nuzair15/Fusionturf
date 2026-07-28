@@ -357,12 +357,14 @@ export interface Award {
   slug: string;
   description?: string;
   trophyImageUrl?: string;
+  type: "PLAYER" | "TEAM";
   votingEnabled: boolean;
   votingType: AwardVotingType;
   voteFrequency: VoteFrequency;
   votingStartDate?: string;
   votingEndDate?: string;
   winner?: Player;
+  winnerTeam?: { name: string; logoUrl?: string };
   winnerAnnounced: boolean;
   nominations?: AwardNomination[];
   previousWinners?: PreviousWinner[];
@@ -380,7 +382,8 @@ export interface AwardNomination {
 
 export interface PreviousWinner {
   id: string;
-  player: Player;
+  player?: Player;
+  team?: { name: string; logoUrl?: string };
   season: { name: string };
   year: string;
 }
