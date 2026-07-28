@@ -338,3 +338,35 @@ export const adminRevenueAnalytics = async (_req: Request, res: Response, next: 
     next(error);
   }
 };
+
+export const getCalendarBookings = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { venueId, month, year } = req.query;
+    if (!venueId || !month || !year) return res.status(400).json({ error: "venueId, month, year required" });
+
+    const startDate = new Date(Number(year), Number(month) - 1, 1);
+    const endDate = new Date(Number(year), Number(month), 0, 23, 59, 59);
+
+    const bookings = await prisma.booking.findMany({
+      where: {
+        date: { gte: startDate, lte: endDate },
+        turf: { venueId: String(venueId) },
+      },
+      include: {
+        turf: { select: { name: true, basePrice: true } },
+      },
+      orderBy: { date: "asc" },
+    });
+
+    const grouped: Record<string, typeof bookings> = {};
+    for (const b of bookings) {
+      const key = new Date(b.date).toISOString().split("T")[0];
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(b);
+    }
+
+    res.json({ data: grouped, total: bookings.length });
+  } catch (error) {
+    next(error);
+  }
+};

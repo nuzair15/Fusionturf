@@ -6,14 +6,14 @@ export function Dialog({ open, onClose, title, children }: { open: boolean; onCl
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     if (open) {
+      const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
       document.addEventListener("keydown", handler);
       document.body.style.overflow = "hidden";
-      setTimeout(() => ref.current?.focus(), 50);
+      const timer = setTimeout(() => ref.current?.focus(), 50);
+      return () => { clearTimeout(timer); document.removeEventListener("keydown", handler); document.body.style.overflow = ""; };
     }
-    return () => { document.removeEventListener("keydown", handler); document.body.style.overflow = ""; };
-  }, [open, onClose]);
+  }, [open]);
 
   const handleBackdropClick = useCallback((e: React.MouseEvent) => {
     if (e.target === e.currentTarget) onClose();

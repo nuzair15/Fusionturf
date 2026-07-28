@@ -40,10 +40,21 @@ function generateRoundRobinPairings(teams: number): FixtureSlot[][] {
   return rounds;
 }
 
-export async function generateSeasonFixtures(seasonId: string): Promise<{ generated: number }> {
+export async function generateSeasonFixtures(seasonId: string, options?: {
+  teamCount?: number;
+  leagueWeeks?: number;
+  matchesPerPair?: number;
+  startDate?: string;
+  fixtureDays?: string[];
+}): Promise<{ generated: number }> {
   const teams = await prisma.team.findMany({ where: { seasonId, isActive: true }, orderBy: { name: "asc" } });
-  if (teams.length !== TEAM_COUNT) {
-    throw new Error(`Exactly ${TEAM_COUNT} teams required, got ${teams.length}`);
+
+  const teamCount = options?.teamCount || TEAM_COUNT;
+  const leagueWeeks = options?.leagueWeeks || LEAGUE_WEEKS;
+  const matchesPerPair = options?.matchesPerPair || MATCHES_PER_PAIR;
+
+  if (teams.length !== teamCount) {
+    throw new Error(`Exactly ${teamCount} teams required, got ${teams.length}`);
   }
 
   await prisma.fixture.deleteMany({ where: { seasonId, isGrandFinal: false, isRelegationPlayoff: false } });
@@ -51,14 +62,14 @@ export async function generateSeasonFixtures(seasonId: string): Promise<{ genera
   const season = await prisma.season.findUnique({ where: { id: seasonId } });
   if (!season) throw new Error("Season not found");
 
-  const seasonStart = new Date(season.startDate);
-  const weekDays = (season.fixtureDays || "Friday,Saturday,Sunday").split(",").map((d) => d.trim());
+  const seasonStart = options?.startDate ? new Date(options.startDate) : new Date(season.startDate);
+  const weekDays = (options?.fixtureDays?.length ? options.fixtureDays : (season.fixtureDays || "Friday,Saturday,Sunday").split(",")).map((d) => d.trim());
   const firstMatchDay = findNextDay(seasonStart, weekDays[0]);
 
-  const firstLeg = generateRoundRobinPairings(TEAM_COUNT);
-  const secondLeg = firstLeg.map((round) =>
+  const firstLeg = generateRoundRobinPairings(teamCount);
+  const secondLeg = matchesPerPair >= 2 ? firstLeg.map((round) =>
     round.map((f) => ({ homeTeamIdx: f.awayTeamIdx, awayTeamIdx: f.homeTeamIdx }))
-  );
+  ) : [];
   const allRounds = [...firstLeg, ...secondLeg];
 
   const fixtures: Array<{
@@ -73,7 +84,7 @@ export async function generateSeasonFixtures(seasonId: string): Promise<{ genera
 
   let matchDay = new Date(firstMatchDay);
 
-  for (let week = 0; week < LEAGUE_WEEKS; week++) {
+  for (let week = 0; week < leagueWeeks; week++) {
     const roundIdx = week < allRounds.length ? week : -1;
     if (roundIdx === -1) break;
 

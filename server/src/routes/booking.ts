@@ -2,7 +2,7 @@ import { Router } from "express";
 import {
   getVenues, getVenueBySlug, getAvailableSlots, getBookedSlotsForTurf, createBooking,
   getMyBookings, cancelBooking,
-  adminGetAllBookings, adminBlockDate, adminRevenueAnalytics,
+  adminGetAllBookings, adminBlockDate, adminRevenueAnalytics, getCalendarBookings,
 } from "../controllers/booking.js";
 import { authenticate, authorize } from "../middleware/auth.js";
 
@@ -21,5 +21,6 @@ router.patch("/:id/cancel", authenticate, cancelBooking);
 router.get("/admin", authenticate, authorize("SUPER_ADMIN", "BOOKING_MANAGER", "LEAGUE_ADMIN"), adminGetAllBookings);
 router.post("/block-date", authenticate, authorize("SUPER_ADMIN", "BOOKING_MANAGER"), adminBlockDate);
 router.get("/analytics/revenue", authenticate, authorize("SUPER_ADMIN", "BOOKING_MANAGER"), adminRevenueAnalytics);
+router.get("/calendar", authenticate, authorize("SUPER_ADMIN", "BOOKING_MANAGER"), getCalendarBookings);
 
 export default router;

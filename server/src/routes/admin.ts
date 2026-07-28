@@ -75,13 +75,7 @@ router.get("/reviews", admin.getReviews);
 router.patch("/reviews/:id/approve", authorize("SUPER_ADMIN"), admin.approveReview);
 router.delete("/reviews/:id", authorize("SUPER_ADMIN"), admin.deleteReview);
 
-// Competitions
-router.get("/competitions", admin.getCompetitions);
-router.post("/competitions", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.createCompetition);
-router.patch("/competitions/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.updateCompetition);
-router.delete("/competitions/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.deleteCompetition);
-
-router.post("/sponsors", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "CONTENT_EDITOR"), admin.manageSponsor);
+// Sponsors
 router.get("/sponsors", admin.getSponsors);
 router.patch("/sponsors/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "CONTENT_EDITOR"), admin.updateSponsor);
 router.delete("/sponsors/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "CONTENT_EDITOR"), admin.deleteSponsor);

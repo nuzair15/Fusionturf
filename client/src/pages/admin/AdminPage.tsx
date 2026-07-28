@@ -12,8 +12,10 @@ import { Dialog } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { LiveStatsPanel } from "@/components/admin/LiveStatsPanel";
-import type { DashboardStats, User, Season, Team, Player, Fixture, Award, News, Booking, PaginatedResponse, Venue, Turf, Sponsor, Suspension, ActivityLog, Gallery, Competition, Coupon, Advertisement, Faq, ReviewAdmin } from "@/types";
-import { LayoutDashboard, Users, Calendar, Trophy, Settings, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2, ActivitySquare, ListChecks, AlertTriangle, MessageSquare, HelpCircle, Tag, Monitor } from "lucide-react";
+import type { DashboardStats, User, Season, Team, Player, Fixture, Award, News, Booking, PaginatedResponse, Venue, Turf, Sponsor, Suspension, ActivityLog, Gallery, Coupon, Advertisement, Faq, ReviewAdmin } from "@/types";
+import { LayoutDashboard, Users, Calendar, CalendarDays, Trophy, Settings, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2, ActivitySquare, ListChecks, AlertTriangle, MessageSquare, HelpCircle, Tag, Monitor } from "lucide-react";
+import { VenueCalendar } from "@/components/admin/VenueCalendar";
+import { ImageUpload } from "@/components/admin/ImageUpload";
 
 const ADMIN_PASSWORD = "Abdurahman.15";
 const STORAGE_KEY = "admin_unlocked";
@@ -25,7 +27,6 @@ const adminTabs = [
   { id: "players", label: "Players", icon: Users },
   { id: "fixtures", label: "Fixtures", icon: Activity },
   { id: "awards", label: "Awards", icon: Medal },
-  { id: "competitions", label: "Competitions", icon: Trophy },
   { id: "gallery", label: "Gallery", icon: Image },
   { id: "venues", label: "Venues", icon: MapPin },
   { id: "bookings", label: "Bookings", icon: Calendar },
@@ -55,6 +56,8 @@ export function AdminPage() {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [formErrors, setFormErrors] = useState<string>("");
   const [actionError, setActionError] = useState<string>("");
+  const [fixtureOptions, setFixtureOptions] = useState({ teamCount: 6, leagueWeeks: 7, matchesPerPair: 2, startDate: "", fixtureDays: ["Friday", "Saturday", "Sunday"] as string[] });
+  const [generating, setGenerating] = useState(false);
   const [liveStatsFixtureId, setLiveStatsFixtureId] = useState<string | null>(null);
 
   const openForm = (type: string, initial: Record<string, any> = {}) => {
@@ -155,8 +158,6 @@ export function AdminPage() {
   const { data: activityLogs } = useQuery({ queryKey: ["admin-activity"], queryFn: () => api.get<PaginatedResponse<ActivityLog>>("/admin/activity-logs", { limit: "50" }), enabled: unlocked });
 
   const { data: suspensions } = useQuery({ queryKey: ["admin-suspensions"], queryFn: () => api.get<PaginatedResponse<Suspension>>("/admin/suspensions", { limit: "50" }), enabled: unlocked });
-
-  const { data: competitions } = useQuery({ queryKey: ["admin-competitions"], queryFn: () => api.get<{ data: Competition[] }>("/admin/competitions"), enabled: unlocked });
 
   const { data: galleryItems } = useQuery({ queryKey: ["admin-gallery"], queryFn: () => api.get<{ data: Gallery[] }>("/admin/gallery"), enabled: unlocked });
 
@@ -319,8 +320,9 @@ export function AdminPage() {
                 <Button size="sm" variant="outline" onClick={async () => {
                   const s = (seasons || []).find((s: Season) => s.isCurrent);
                   if (!s) return setActionError("No current season selected");
-                  try { setActionError(""); await api.post(`/admin/seasons/${s.id}/generate-fixtures`, {}); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); } catch (e: any) { setActionError(e.message); }
-                }}>Generate Fixtures (30)</Button>
+                  setFixtureOptions({ teamCount: 6, leagueWeeks: 7, matchesPerPair: 2, startDate: s.startDate?.split("T")[0] || "", fixtureDays: ["Friday", "Saturday", "Sunday"] });
+                  setShowForm("generateFixtures");
+                }}>Bulk Generate Fixtures</Button>
                 <Button size="sm" variant="outline" onClick={async () => {
                   const s = (seasons || []).find((s: Season) => s.isCurrent);
                   if (!s) return setActionError("No current season selected");
@@ -371,6 +373,38 @@ export function AdminPage() {
                 {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                 <Button className="w-full" onClick={() => submitForm("season", "/admin/seasons", "admin-seasons")}
                   disabled={!formData.name || !formData.startDate || !formData.endDate}>{editingItem ? "Update Season" : "Create Season"}</Button>
+              </div>
+            </Dialog>
+            <Dialog open={showForm === "generateFixtures"} onClose={() => { if (!generating) setShowForm(null); }} title="Bulk Generate Fixtures">
+              <div className="space-y-4">
+                <div>
+                  <Label>Number of Teams</Label>
+                  <Input type="number" min={2} max={20} value={fixtureOptions.teamCount} onChange={(e) => setFixtureOptions({ ...fixtureOptions, teamCount: Number(e.target.value) })} />
+                </div>
+                <div>
+                  <Label>League Weeks</Label>
+                  <Input type="number" min={1} max={52} value={fixtureOptions.leagueWeeks} onChange={(e) => setFixtureOptions({ ...fixtureOptions, leagueWeeks: Number(e.target.value) })} />
+                </div>
+                <div>
+                  <Label>Matches Per Pair</Label>
+                  <Input type="number" min={1} max={4} value={fixtureOptions.matchesPerPair} onChange={(e) => setFixtureOptions({ ...fixtureOptions, matchesPerPair: Number(e.target.value) })} />
+                </div>
+                <div>
+                  <Label>Start Date</Label>
+                  <Input type="date" value={fixtureOptions.startDate} onChange={(e) => setFixtureOptions({ ...fixtureOptions, startDate: e.target.value })} />
+                </div>
+                <div>
+                  <Label>Fixture Days (comma separated)</Label>
+                  <Input type="text" value={fixtureOptions.fixtureDays.join(", ")} onChange={(e) => setFixtureOptions({ ...fixtureOptions, fixtureDays: e.target.value.split(",").map((d) => d.trim()).filter(Boolean) })} />
+                </div>
+                {actionError && <p className="text-sm text-destructive">{actionError}</p>}
+                <Button className="w-full" disabled={generating} onClick={async () => {
+                  const s = (seasons || []).find((s: Season) => s.isCurrent);
+                  if (!s) return setActionError("No current season selected");
+                  setGenerating(true);
+                  try { setActionError(""); await api.post(`/admin/seasons/${s.id}/generate-fixtures`, fixtureOptions); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); setShowForm(null); } catch (e: any) { setActionError(e.message); }
+                  finally { setGenerating(false); }
+                }}>{generating ? "Generating..." : "Generate Fixtures"}</Button>
               </div>
             </Dialog>
               </>
@@ -728,11 +762,7 @@ export function AdminPage() {
                   <textarea value={formData.description || ""} onChange={(e) => handleFormChange("description", e.target.value)} rows={3} className="w-full rounded-lg border bg-background px-3 py-2 text-sm" placeholder="Award description" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Trophy Image URL</Label>
-                  <Input value={formData.trophyImageUrl || ""} onChange={(e) => handleFormChange("trophyImageUrl", e.target.value)} placeholder="https://..." />
-                  {formData.trophyImageUrl && (
-                    <img src={formData.trophyImageUrl} alt="Preview" className="mt-2 h-16 w-16 rounded object-cover" />
-                  )}
+                  <ImageUploadField label="Trophy Image" value={formData.trophyImageUrl || ""} onChange={(value) => handleFormChange("trophyImageUrl", value)} />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Season</Label>
@@ -765,56 +795,6 @@ export function AdminPage() {
           </>
         )}
 
-        {activeTab === "competitions" && (
-          <>
-            <AdminTable
-              title="Competitions"
-              columns={["Name", "Season", "Type", "Active", "Fixtures"]}
-              data={competitions?.data || []}
-              renderRow={(c: Competition) => [
-                <span className="font-medium">{c.name}</span>,
-                c.season?.name || "-",
-                <Badge variant="outline">{c.type}</Badge>,
-                c.isActive ? <Badge className="bg-primary">Active</Badge> : <Badge variant="destructive">Inactive</Badge>,
-                c._count?.fixtures || 0,
-              ]}
-              onAdd={() => { setEditingItem(null); openForm("competition", { name: "", seasonId: seasons?.[0]?.id || "", type: "LEAGUE", isActive: true }); }}
-              onEdit={(c) => { setEditingItem(c); openForm("competition", { name: c.name, slug: c.slug, seasonId: c.seasonId, type: c.type, isActive: c.isActive }); }}
-              onDelete={(c) => { if (confirm("Delete this competition?")) api.delete(`/admin/competitions/${c.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-competitions"] })); }}
-            />
-            <Dialog open={showForm === "competition"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Competition" : "Add Competition"}>
-              <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label>Competition Name</Label>
-                  <Input value={formData.name || ""} onChange={(e) => handleFormChange("name", e.target.value)} placeholder="e.g. Premier League" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Season</Label>
-                  <Select value={formData.seasonId || ""} onChange={(e) => handleFormChange("seasonId", e.target.value)}>
-                    <option value="">Select season</option>
-                    {(seasons || []).map((s: Season) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Type</Label>
-                  <Select value={formData.type || "LEAGUE"} onChange={(e) => handleFormChange("type", e.target.value)}>
-                    <option value="LEAGUE">League</option>
-                    <option value="KNOCKOUT">Knockout</option>
-                    <option value="GROUP">Group Stage</option>
-                  </Select>
-                </div>
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={formData.isActive ?? true} onChange={(e) => handleFormChange("isActive", e.target.checked)} className="rounded" />
-                  Active
-                </label>
-                {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
-                <Button className="w-full" onClick={() => submitForm("competition", "/admin/competitions", "admin-competitions")}
-                  disabled={!formData.name}>{editingItem ? "Update Competition" : "Create Competition"}</Button>
-              </div>
-            </Dialog>
-          </>
-        )}
-
         {activeTab === "gallery" && (
           <>
             <AdminTable
@@ -828,6 +808,7 @@ export function AdminPage() {
                 g.createdAt ? formatDate(g.createdAt) : "-",
               ]}
               onAdd={() => { setEditingItem(null); openForm("gallery", { title: "", imageUrl: "", videoUrl: "", isActive: true }); }}
+              onEdit={(g) => { setEditingItem(g); openForm("gallery", { title: g.title, imageUrl: g.imageUrl || "", videoUrl: g.videoUrl || "", isActive: g.isActive ?? true }); }}
               onDelete={(g) => { if (confirm("Delete this gallery item?")) api.delete(`/admin/gallery/${g.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-gallery"] })); }}
             />
             <Dialog open={showForm === "gallery"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Gallery Item" : "Add Gallery Item"}>
@@ -837,8 +818,7 @@ export function AdminPage() {
                   <Input value={formData.title || ""} onChange={(e) => handleFormChange("title", e.target.value)} placeholder="Photo title" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Image URL</Label>
-                  <Input value={formData.imageUrl || ""} onChange={(e) => handleFormChange("imageUrl", e.target.value)} placeholder="https://..." />
+                  <ImageUploadField label="Image" value={formData.imageUrl || ""} onChange={(value) => handleFormChange("imageUrl", value)} />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Video URL (optional)</Label>
@@ -878,7 +858,10 @@ export function AdminPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => openForm("venueEdit", { id: v.id, name: v.name, city: v.city, state: v.state, address: v.address || "", description: v.description || "", coverImage: v.coverImage || "", openingTime: v.openingTime, closingTime: v.closingTime })}>
+                      <Button variant="ghost" size="sm" onClick={() => openForm("venueCalendar", { venueId: v.id })}>
+                        <CalendarDays className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => openForm("venueEdit", { id: v.id, slug: v.slug, name: v.name, city: v.city, state: v.state, address: v.address || "", description: v.description || "", coverImage: v.coverImage || "", openingTime: v.openingTime, closingTime: v.closingTime })}>
                         <Edit2 className="h-4 w-4" />
                       </Button>
                       <Button variant="ghost" size="sm" onClick={() => {
@@ -898,7 +881,7 @@ export function AdminPage() {
                             </div>
                             <div className="flex items-center gap-3">
                               <span className="font-medium">₹{(t.basePrice / 100).toFixed(0)}/hr</span>
-                              <Button variant="ghost" size="sm" onClick={() => openForm("turfEdit", { id: t.id, venueId: v.id, name: t.name, size: t.size || "5-a-side", surface: t.surface || "Artificial", basePrice: t.basePrice, peakPrice: (t as any).peakPrice || 0, weekendPrice: (t as any).weekendPrice || 0 })}>
+                              <Button variant="ghost" size="sm" onClick={() => openForm("turfEdit", { id: t.id, venueId: v.id, name: t.name, size: t.size || "5-a-side", surface: t.surface || "Artificial", imageUrl: (t as any).imageUrl || "", basePrice: t.basePrice, peakPrice: (t as any).peakPrice || 0, weekendPrice: (t as any).weekendPrice || 0 })}>
                                 <Edit2 className="h-4 w-4" />
                               </Button>
                               <Button variant="ghost" size="sm" onClick={() => {
@@ -1024,6 +1007,9 @@ export function AdminPage() {
                     <option value="Natural">Natural Grass</option>
                   </Select>
                 </div>
+                <div className="space-y-1.5">
+                  <ImageUploadField label="Image" value={formData.imageUrl || ""} onChange={(value) => handleFormChange("imageUrl", value)} />
+                </div>
                   <div className="space-y-1.5">
                     <Label>Base Price (₹ per hour)</Label>
                     <Input type="number" min={0} value={formData.basePrice ? Math.round(formData.basePrice / 100) : ""} onChange={(e) => handleFormChange("basePrice", (parseInt(e.target.value) || 0) * 100)} placeholder="e.g. 500" />
@@ -1039,7 +1025,7 @@ export function AdminPage() {
                   {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                   <Button className="w-full" onClick={async () => {
                     try {
-                      await api.post("/admin/turfs", { name: formData.name, venueId: formData.venueId, size: formData.size, surface: formData.surface, basePrice: formData.basePrice, peakPrice: formData.peakPrice, weekendPrice: formData.weekendPrice });
+                      await api.post("/admin/turfs", { name: formData.name, venueId: formData.venueId, size: formData.size, surface: formData.surface, imageUrl: formData.imageUrl, basePrice: formData.basePrice, peakPrice: formData.peakPrice, weekendPrice: formData.weekendPrice });
                     setShowForm(null);
                     queryClient.invalidateQueries({ queryKey: ["admin-venues"] });
                   } catch (err: any) { setFormErrors(err.message); }
@@ -1068,6 +1054,9 @@ export function AdminPage() {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
+                  <ImageUploadField label="Image" value={formData.imageUrl || ""} onChange={(value) => handleFormChange("imageUrl", value)} />
+                </div>
+                <div className="space-y-1.5">
                   <Label>Base Price (₹ per hour)</Label>
                   <Input type="number" min={0} value={formData.basePrice ? Math.round(formData.basePrice / 100) : ""} onChange={(e) => handleFormChange("basePrice", (parseInt(e.target.value) || 0) * 100)} placeholder="e.g. 500" />
                 </div>
@@ -1081,11 +1070,16 @@ export function AdminPage() {
                 </div>
                 <Button className="w-full" onClick={async () => {
                   try {
-                    await api.patch(`/admin/turfs/${formData.id}`, { name: formData.name, size: formData.size, surface: formData.surface, basePrice: formData.basePrice, peakPrice: formData.peakPrice, weekendPrice: formData.weekendPrice });
+                    await api.patch(`/admin/turfs/${formData.id}`, { name: formData.name, size: formData.size, surface: formData.surface, imageUrl: formData.imageUrl, basePrice: formData.basePrice, peakPrice: formData.peakPrice, weekendPrice: formData.weekendPrice });
                     setShowForm(null);
                     queryClient.invalidateQueries({ queryKey: ["admin-venues"] });
                   } catch (err: any) { setFormErrors(err.message); }
                 }}>Save Turf</Button>
+              </div>
+            </Dialog>
+            <Dialog open={showForm === "venueCalendar"} onClose={() => setShowForm(null)} title="">
+              <div className="max-w-2xl">
+                <VenueCalendar venueId={formData.venueId || ""} venues={venues?.data || []} onClose={() => setShowForm(null)} />
               </div>
             </Dialog>
           </>
@@ -1329,8 +1323,7 @@ export function AdminPage() {
                   <Input value={formData.title || ""} onChange={(e) => handleFormChange("title", e.target.value)} placeholder="Ad title" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Image URL</Label>
-                  <Input value={formData.imageUrl || ""} onChange={(e) => handleFormChange("imageUrl", e.target.value)} placeholder="https://..." />
+                  <ImageUploadField label="Image" value={formData.imageUrl || ""} onChange={(value) => handleFormChange("imageUrl", value)} />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Link URL (optional)</Label>
@@ -1709,53 +1702,14 @@ function ImageUploadField({ label, value, onChange }: {
 }) {
   const [error, setError] = useState("");
 
-  const handleFile = (file?: File) => {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setError("Choose an image file.");
-      return;
-    }
-    if (file.size > 4 * 1024 * 1024) {
-      setError("Image must be under 4MB.");
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      setError("");
-      onChange(String(reader.result));
-    };
-    reader.onerror = () => setError("Could not read that image.");
-    reader.readAsDataURL(file);
+  const handleFile = (url: string) => {
+    onChange(url);
   };
 
   return (
     <div className="space-y-2">
-      <Label>{label}</Label>
-      <div className="rounded-lg border border-dashed bg-secondary/40 p-3">
-        {value ? (
-          <div className="mb-3 overflow-hidden rounded-lg border bg-background">
-            <img src={value} alt="" className="h-36 w-full object-cover" />
-          </div>
-        ) : (
-          <div className="mb-3 flex h-28 items-center justify-center rounded-lg bg-background/70 text-muted-foreground">
-            <Image className="h-8 w-8" />
-          </div>
-        )}
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90">
-            <Upload className="h-4 w-4" />
-            {value ? "Replace image" : "Upload image"}
-            <input type="file" accept="image/*" className="sr-only" onChange={(e) => handleFile(e.target.files?.[0])} />
-          </label>
-          {value && (
-            <Button type="button" variant="outline" size="sm" onClick={() => onChange("")}>
-              Remove
-            </Button>
-          )}
-        </div>
-        {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
-      </div>
+      <ImageUpload value={value || ""} onChange={(url) => { onChange(url); setError(""); }} label={label} />
+      {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
 }
@@ -1775,10 +1729,54 @@ function TabSkeleton() {
   );
 }
 
-function AdminTable<T extends { id: string }>({ title, columns, data, renderRow, onAdd, onEdit, onDelete }: {
-  title: string; columns: string[]; data: T[]; renderRow: (item: T) => React.ReactNode[]; onAdd?: () => void; onEdit?: (item: T) => void; onDelete?: (item: T) => void;
+function InlineEditCell({ value, type, options, onSave }: {
+  value: string; type?: "text" | "number" | "select"; options?: string[]; onSave: (val: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  if (!editing) {
+    return (
+      <span className="cursor-pointer rounded px-1 hover:bg-accent" onClick={() => { setDraft(value); setEditing(true); }} title="Click to edit">
+        {value || <span className="text-muted-foreground italic">empty</span>}
+      </span>
+    );
+  }
+
+  if (type === "select" && options) {
+    return (
+      <select
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => { onSave(draft); setEditing(false); }}
+        autoFocus
+        className="rounded border bg-background px-2 py-1 text-sm"
+      >
+        {options.map((o) => <option key={o} value={o}>{o}</option>)}
+      </select>
+    );
+  }
+
+  return (
+    <input
+      type={type === "number" ? "number" : "text"}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => { onSave(draft); setEditing(false); }}
+      onKeyDown={(e) => { if (e.key === "Enter") { onSave(draft); setEditing(false); } if (e.key === "Escape") setEditing(false); }}
+      autoFocus
+      className="w-full rounded border bg-background px-2 py-1 text-sm"
+    />
+  );
+}
+
+function AdminTable<T extends { id: string }>({ title, columns, data, renderRow, onAdd, onEdit, onDelete, editableColumns }: {
+  title: string; columns: string[]; data: T[]; renderRow: (item: T) => React.ReactNode[];
+  onAdd?: () => void; onEdit?: (item: T) => void; onDelete?: (item: T) => void;
+  editableColumns?: { index: number; type?: "text" | "number" | "select"; options?: string[]; onSave: (item: T, value: string) => void }[];
 }) {
   const hasActions = !!(onEdit || onDelete);
+  const editableMap = new Map(editableColumns?.map((ec) => [ec.index, ec]) || []);
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -1796,7 +1794,18 @@ function AdminTable<T extends { id: string }>({ title, columns, data, renderRow,
             ) : (
               data.map((item) => (
                 <tr key={item.id} className="border-t hover:bg-muted/20">
-                  {renderRow(item).map((cell, i) => <td key={i} className="p-3">{cell}</td>)}
+                  {renderRow(item).map((cell, i) => (
+                    <td key={i} className="p-3">
+                      {editableMap.has(i) ? (
+                        <InlineEditCell
+                          value={typeof cell === "string" ? cell : String(cell)}
+                          type={editableMap.get(i)!.type}
+                          options={editableMap.get(i)!.options}
+                          onSave={(val) => editableMap.get(i)!.onSave(item, val)}
+                        />
+                      ) : cell}
+                    </td>
+                  ))}
                   {hasActions && <td className="p-3 text-right">
                     {onEdit && <Button variant="ghost" size="sm" onClick={() => onEdit(item)}><Edit2 className="h-4 w-4" /></Button>}
                     {onDelete && <Button variant="ghost" size="sm" onClick={() => onDelete(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button>}

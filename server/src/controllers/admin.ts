@@ -460,45 +460,6 @@ export const deleteGalleryItem = async (req: Request, res: Response, next: NextF
   }
 };
 
-export const getCompetitions = async (_req: Request, res: Response, next: NextFunction) => {
-  try {
-    const items = await prisma.competition.findMany({ orderBy: { createdAt: "desc" } });
-    res.json({ data: items });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const createCompetition = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const item = await prisma.competition.create({ data: req.body });
-    res.status(201).json(item);
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const updateCompetition = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const item = await prisma.competition.update({
-      where: { id: req.params.id },
-      data: req.body,
-    });
-    res.json(item);
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const deleteCompetition = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    await prisma.competition.delete({ where: { id: req.params.id } });
-    res.status(204).end();
-  } catch (error) {
-    next(error);
-  }
-};
-
 export const manageSponsor = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const sponsor = await prisma.sponsor.create({ data: req.body });
@@ -729,7 +690,7 @@ export const deleteTurf = async (req: Request, res: Response, next: NextFunction
 
 export const generateFixtures = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await leagueSystem.generateSeasonFixtures(req.params.id);
+    const result = await leagueSystem.generateSeasonFixtures(req.params.id, req.body);
     res.json(result);
   } catch (error) {
     next(error);
