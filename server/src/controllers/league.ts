@@ -352,6 +352,11 @@ export const getAwards = async (req: Request, res: Response, next: NextFunction)
       include: {
         winner: { select: { firstName: true, lastName: true, photoUrl: true } },
         _count: { select: { votes: true, nominations: true } },
+        previousWinners: {
+          include: { player: { select: { firstName: true, lastName: true, photoUrl: true } }, season: { select: { name: true } } },
+          orderBy: { year: "desc" },
+          take: 5,
+        },
       },
       orderBy: { name: "asc" },
     });

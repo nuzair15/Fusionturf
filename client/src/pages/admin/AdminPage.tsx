@@ -677,7 +677,7 @@ export function AdminPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold">Awards</h2>
-                <Button size="sm" onClick={() => openForm("award", { name: "", seasonId: seasons?.[0]?.id || "" })}>
+                <Button size="sm" onClick={() => { setEditingItem(null); openForm("award", { name: "", description: "", trophyImageUrl: "", seasonId: seasons?.[0]?.id || "" }); }}>
                   <Plus className="mr-1 h-4 w-4" /> Add Award
                 </Button>
               </div>
@@ -685,13 +685,24 @@ export function AdminPage() {
                 {(awards || []).map((a: Award) => (
                   <Card key={a.id}>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-base">{a.name}</CardTitle>
+                      <div className="flex items-start justify-between">
+                        <CardTitle className="text-base">{a.name}</CardTitle>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => { setEditingItem(a); openForm("award", { name: a.name, slug: a.slug, description: a.description || "", trophyImageUrl: a.trophyImageUrl || "", seasonId: a.seasonId }); }}>
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
                     </CardHeader>
                     <CardContent>
+                      {a.trophyImageUrl && (
+                        <img src={a.trophyImageUrl} alt={a.name} className="mb-3 h-20 w-20 rounded-lg object-cover shadow-sm" />
+                      )}
+                      {a.description && <p className="mb-2 text-sm text-muted-foreground">{a.description}</p>}
                       <p className="text-sm text-muted-foreground">
                         {a.winner ? `Winner: ${a.winner.firstName} ${a.winner.lastName}` : a.votingEnabled ? "Voting Open" : "No winner yet"}
                       </p>
-                      <div className="mt-2 flex items-center gap-2">
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
                         <Button variant="outline" size="sm" onClick={() => {
                           api.patch(`/admin/awards/${a.id}/voting`, { enabled: !a.votingEnabled }).then(() => queryClient.invalidateQueries({ queryKey: ["admin-awards"] }));
                         }}>
@@ -706,11 +717,22 @@ export function AdminPage() {
                 ))}
               </div>
             </div>
-            <Dialog open={showForm === "award"} onClose={() => setShowForm(null)} title="Add Award">
+            <Dialog open={showForm === "award"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Award" : "Add Award"}>
               <div className="space-y-4">
                 <div className="space-y-1.5">
                   <Label>Award Name</Label>
                   <Input value={formData.name || ""} onChange={(e) => handleFormChange("name", e.target.value)} placeholder="e.g. Golden Boot" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Description</Label>
+                  <textarea value={formData.description || ""} onChange={(e) => handleFormChange("description", e.target.value)} rows={3} className="w-full rounded-lg border bg-background px-3 py-2 text-sm" placeholder="Award description" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Trophy Image URL</Label>
+                  <Input value={formData.trophyImageUrl || ""} onChange={(e) => handleFormChange("trophyImageUrl", e.target.value)} placeholder="https://..." />
+                  {formData.trophyImageUrl && (
+                    <img src={formData.trophyImageUrl} alt="Preview" className="mt-2 h-16 w-16 rounded object-cover" />
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <Label>Season</Label>
@@ -722,7 +744,7 @@ export function AdminPage() {
                 </div>
                 {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                 <Button className="w-full" onClick={() => submitForm("award", "/admin/awards", "admin-awards")}
-                  disabled={!formData.name}>Create Award</Button>
+                  disabled={!formData.name}>{editingItem ? "Update Award" : "Create Award"}</Button>
               </div>
             </Dialog>
             <Dialog open={showForm === "winner"} onClose={() => setShowForm(null)} title="Announce Winner">
