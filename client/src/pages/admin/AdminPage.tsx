@@ -482,14 +482,14 @@ export function AdminPage() {
               columns={["Photo", "Name", "Team", "Position", "Jersey"]}
               data={players?.data || []}
               renderRow={(p: Player) => [
-                <img src={p.photoUrl || "/placeholder.svg"} alt="" className="h-8 w-8 rounded-full bg-muted" />,
+                <img src={p.photoUrl || "/placeholder.svg"} alt="" className="h-14 w-14 rounded-xl bg-muted object-cover shadow-sm" />,
                 <span className="font-medium">{p.firstName} {p.lastName}</span>,
                 p.team?.name || "-",
                 p.position || "-",
                 p.jerseyNumber || "-",
               ]}
-              onAdd={() => { setEditingItem(null); openForm("player", { firstName: "", lastName: "", position: "", teamId: "", jerseyNumber: "", squadType: "" }); }}
-              onEdit={(p) => { setEditingItem(p); openForm("player", { firstName: p.firstName, lastName: p.lastName || "", position: p.position || "", teamId: p.teamId || "", jerseyNumber: p.jerseyNumber || "", squadType: p.squadType || "", photoUrl: p.photoUrl || "" }); }}
+              onAdd={() => { setEditingItem(null); openForm("player", { firstName: "", lastName: "", position: "", teamId: "", jerseyNumber: "", squadType: "", nationality: "", age: "", height: "", weight: "", preferredFoot: "", biography: "" }); }}
+              onEdit={(p) => { setEditingItem(p); openForm("player", { firstName: p.firstName, lastName: p.lastName || "", position: p.position || "", teamId: p.teamId || "", jerseyNumber: p.jerseyNumber || "", squadType: p.squadType || "", photoUrl: p.photoUrl || "", nationality: p.nationality || "", age: p.age || "", height: p.height || "", weight: p.weight || "", preferredFoot: p.preferredFoot || "", biography: p.biography || "" }); }}
               onDelete={(p) => { if (confirm(`Delete player ${p.firstName} ${p.lastName}?`)) api.delete(`/admin/players/${p.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-players"] })); }}
             />
             <Dialog open={showForm === "player"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Player" : "Add Player"}>
@@ -529,6 +529,40 @@ export function AdminPage() {
                     <option value="RESERVE">Reserve (4 per team)</option>
                   </Select>
                 </div>
+                <details className="rounded-lg border p-3">
+                  <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground">Personal Info</summary>
+                  <div className="mt-3 grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label>Nationality</Label>
+                      <Input value={formData.nationality || ""} onChange={(e) => handleFormChange("nationality", e.target.value)} placeholder="e.g. Indian" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Age</Label>
+                      <Input type="number" min={15} max={60} value={formData.age || ""} onChange={(e) => handleFormChange("age", e.target.value ? parseInt(e.target.value) : null)} placeholder="25" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Height (cm)</Label>
+                      <Input type="number" min={100} max={250} value={formData.height || ""} onChange={(e) => handleFormChange("height", e.target.value ? parseInt(e.target.value) : null)} placeholder="175" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Weight (kg)</Label>
+                      <Input type="number" min={40} max={150} value={formData.weight || ""} onChange={(e) => handleFormChange("weight", e.target.value ? parseInt(e.target.value) : null)} placeholder="70" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Preferred Foot</Label>
+                      <Select value={formData.preferredFoot || ""} onChange={(e) => handleFormChange("preferredFoot", e.target.value)}>
+                        <option value="">Select...</option>
+                        <option value="Left">Left</option>
+                        <option value="Right">Right</option>
+                        <option value="Both">Both</option>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="mt-3 space-y-1.5">
+                    <Label>Biography</Label>
+                    <textarea value={formData.biography || ""} onChange={(e) => handleFormChange("biography", e.target.value)} rows={3} className="w-full rounded-lg border bg-background px-3 py-2 text-sm" placeholder="Player biography..." />
+                  </div>
+                </details>
                 <div className="space-y-1.5">
                   <Label>Team *</Label>
                   <Select value={formData.teamId || ""} onChange={(e) => handleFormChange("teamId", e.target.value)}>

@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { formatDate, formatTime, getMatchStatusColor } from "@/lib/utils";
-import type { Fixture, Standing, Venue, News, Award, PaginatedResponse, Sponsor, Season } from "@/types";
+import type { Fixture, Standing, Venue, News, Award, PaginatedResponse, Sponsor, Season, Team } from "@/types";
 import { Calendar, Trophy, MapPin, Users, ChevronRight, Star, Medal, Sparkles, Handshake, ArrowUpRight, Flame, Target } from "lucide-react";
 import { LeagueHero, LeagueCard, LeagueEmptyState, SectionLink, StatTile, TrendBadge } from "@/components/league/LeagueUI";
 
@@ -35,6 +35,7 @@ export function HomePage() {
   const { data: venues } = useQuery({ queryKey: ["venues"], queryFn: () => api.get<PaginatedResponse<Venue>>("/bookings/venues?limit=4") });
   const { data: news } = useQuery({ queryKey: ["home-news"], queryFn: () => api.get<PaginatedResponse<News>>("/league/news?limit=4") });
   const { data: awards } = useQuery({ queryKey: ["awards"], queryFn: () => api.get<Award[]>("/league/awards") });
+  const { data: teamList } = useQuery({ queryKey: ["home-teams"], queryFn: () => api.get<Team[]>("/league/teams") });
   const { data: sponsors } = useQuery({ queryKey: ["sponsors"], queryFn: () => api.get<{ data: Sponsor[] }>("/league/sponsors") });
   const { data: currentSeason } = useQuery({ queryKey: ["current-season"], queryFn: () => api.get<Season>("/league/seasons/current"), retry: false });
 
@@ -81,6 +82,25 @@ export function HomePage() {
           <motion.div variants={fadeUp}><StatTile label="Top story" value={topScorer?.title || "News coming soon"} detail={topScorer?.publishedAt ? formatDate(topScorer.publishedAt) : "League coverage updates here"} /></motion.div>
         </motion.div>
       </div>
+
+      {/* Teams */}
+      {teamList && teamList.length > 0 && (
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+          <LeagueCard title="Clubs" action={<SectionLink onClick={() => navigate("/league")}>All clubs</SectionLink>}>
+            <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {teamList.slice(0, 8).map((team) => (
+                <button key={team.id} onClick={() => navigate(`/league/teams/${team.slug}`)} className="flex items-center gap-3 rounded-xl border p-3 text-left transition hover:bg-secondary/60">
+                  <img src={team.logoUrl || "/placeholder.svg"} alt="" className="h-12 w-12 rounded-full bg-muted object-cover" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{team.name}</p>
+                    <p className="text-xs text-muted-foreground">{team._count?.players || 0} players</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </LeagueCard>
+        </div>
+      )}
 
       <div className="mx-auto grid max-w-7xl gap-6 px-4 sm:px-6 xl:grid-cols-[1.25fr_0.75fr]">
         <LeagueCard
