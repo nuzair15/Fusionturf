@@ -1,4 +1,4 @@
-﻿services:
+services:
   - type: web
     name: fusion-league-api
     env: node
@@ -24,12 +24,6 @@
         value: https://fusion-league-client.onrender.com
       - key: PORT
         value: "10000"
-      - key: CLOUDINARY_CLOUD_NAME
-        value: kcr1gwq2
-      - key: CLOUDINARY_API_KEY
-        value: 728198398344494
-      - key: CLOUDINARY_API_SECRET
-        value: GDwVdKTmEe1x8XCy-wO_bfUvcc4
 
   - type: web
     name: fusion-league-client
@@ -50,5 +44,3 @@ databases:
     plan: free
     databaseName: fusion_league
     ipAllowList: []
-
-
