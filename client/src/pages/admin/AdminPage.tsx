@@ -512,7 +512,7 @@ export function AdminPage() {
                   </div>
                   <div className="space-y-1.5">
                     <Label>Jersey #</Label>
-                    <Input type="number" min={1} max={99} value={formData.jerseyNumber || ""} onChange={(e) => handleFormChange("jerseyNumber", e.target.value ? parseInt(e.target.value) : "")} placeholder="10" />
+                    <Input type="number" min={1} max={99} value={formData.jerseyNumber || ""} onChange={(e) => handleFormChange("jerseyNumber", e.target.value ? parseInt(e.target.value) : null)} placeholder="10" />
                   </div>
                 </div>
                 <div className="space-y-1.5">

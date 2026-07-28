@@ -166,7 +166,7 @@ export const updatePlayer = async (req: Request, res: Response, next: NextFuncti
     if (firstName !== undefined) { sets.push(`"firstName" = $${idx++}`); values.push(firstName); }
     if (lastName !== undefined) { sets.push(`"lastName" = $${idx++}`); values.push(lastName); }
     if (position !== undefined) { sets.push(`"position" = $${idx++}`); values.push(position); }
-    if (jerseyNumber !== undefined) { sets.push(`"jerseyNumber" = $${idx++}`); values.push(parseInt(jerseyNumber)); }
+    if (jerseyNumber !== undefined && jerseyNumber !== "") { sets.push(`"jerseyNumber" = $${idx++}`); values.push(parseInt(jerseyNumber)); }
     if (squadType !== undefined) { sets.push(`"squadType" = $${idx++}`); values.push(squadType); }
     if (teamId !== undefined) {
       sets.push(`"teamId" = $${idx++}`);
