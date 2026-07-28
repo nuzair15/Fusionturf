@@ -21,6 +21,9 @@ const upload = multer({
 
 const app = express();
 
+// Trust proxy (Nginx)
+app.set("trust proxy", 1);
+
 // Security
 app.use(helmet());
 const corsOptions: cors.CorsOptions = {

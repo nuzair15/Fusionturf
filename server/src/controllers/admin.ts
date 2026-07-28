@@ -148,7 +148,7 @@ export const createPlayer = async (req: Request, res: Response, next: NextFuncti
     const seasonId = seasonRow[0]?.seasonId;
     if (!seasonId) return res.status(400).json({ error: "Team not found or has no season" });
     const [player] = await prisma.$queryRawUnsafe(
-      `INSERT INTO "players" ("id", "firstName", "lastName", "slug", "position", "jerseyNumber", "squadType", "teamId", "seasonId", "photoUrl", "isActive", "createdAt", "updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW()) RETURNING *`,
+      `INSERT INTO "players" ("id", "firstName", "lastName", "slug", "position", "jerseyNumber", "squadType", "teamId", "seasonId", "photoUrl", "isActive", "createdAt", "updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7::"SquadType",$8,$9,$10,$11,NOW(),NOW()) RETURNING *`,
       require("uuid").v4(), firstName, lastName || "", slug, position || null, jerseyNumber ? parseInt(jerseyNumber) : null, squadType || null, teamId, seasonId, photoUrl || null, true
     ) as any[];
     res.status(201).json(player);
@@ -167,7 +167,7 @@ export const updatePlayer = async (req: Request, res: Response, next: NextFuncti
     if (lastName !== undefined) { sets.push(`"lastName" = $${idx++}`); values.push(lastName); }
     if (position !== undefined) { sets.push(`"position" = $${idx++}`); values.push(position); }
     if (jerseyNumber !== undefined && jerseyNumber !== "") { sets.push(`"jerseyNumber" = $${idx++}`); values.push(parseInt(jerseyNumber)); }
-    if (squadType !== undefined) { sets.push(`"squadType" = $${idx++}`); values.push(squadType); }
+    if (squadType !== undefined && squadType !== "") { sets.push(`"squadType" = $${idx++}::"SquadType"`); values.push(squadType); }
     if (teamId !== undefined) {
       sets.push(`"teamId" = $${idx++}`);
       values.push(teamId);
