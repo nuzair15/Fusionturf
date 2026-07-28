@@ -119,6 +119,9 @@ router.post("/process-match-result/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"
 // Live Match Stats
 router.get("/fixtures/:id/live-stats", admin.getLiveStats);
 router.post("/fixtures/:id/live-stats/update", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.updateLiveStat);
+router.post("/fixtures/:id/goal", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.addGoal);
+router.post("/fixtures/:id/goal/remove", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.removeGoal);
+router.post("/fixtures/:id/substitution", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.addSubstitution);
 
 // Suspensions
 router.get("/suspensions", admin.adminGetSuspensions);

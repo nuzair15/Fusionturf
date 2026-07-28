@@ -828,9 +828,10 @@ export const getLiveStats = async (req: Request, res: Response, next: NextFuncti
       orderBy: { jerseyNumber: "asc" },
     });
 
-    const goals = await prisma.goal.findMany({ where: { fixtureId: fixture.id }, include: { player: { select: { id: true, firstName: true, lastName: true } } } });
+      const goals = await prisma.goal.findMany({ where: { fixtureId: fixture.id }, include: { player: { select: { id: true, firstName: true, lastName: true } } } });
     const assists = await prisma.assist.findMany({ where: { fixtureId: fixture.id }, include: { player: { select: { id: true, firstName: true, lastName: true } } } });
     const cards = await prisma.card.findMany({ where: { fixtureId: fixture.id }, include: { player: { select: { id: true, firstName: true, lastName: true } } } });
+    const substitutions = await prisma.substitution.findMany({ where: { fixtureId: fixture.id }, include: { playerOff: { select: { id: true, firstName: true, lastName: true } }, playerOn: { select: { id: true, firstName: true, lastName: true } } }, orderBy: { minute: "asc" } });
 
     const formatPlayer = (p: any) => ({
       id: p.id,
@@ -852,7 +853,7 @@ export const getLiveStats = async (req: Request, res: Response, next: NextFuncti
       fixture: { id: fixture.id, matchDate: fixture.matchDate, status: fixture.status, homeScore: fixture.homeScore, awayScore: fixture.awayScore },
       homeTeam: { ...fixture.homeTeam, players: homePlayers.map(formatPlayer) },
       awayTeam: { ...fixture.awayTeam, players: awayPlayers.map(formatPlayer) },
-      matchStats: { goals, assists, cards },
+      matchStats: { goals, assists, cards, substitutions },
     });
   } catch (error) {
     next(error);
@@ -920,6 +921,74 @@ export const updateLiveStat = async (req: Request, res: Response, next: NextFunc
     } else {
       throw new AppError("Invalid statType", 400);
     }
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── Goal & Substitution Management ───
+
+export const addGoal = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { teamId, scorerId, assistId, minute } = req.body;
+    if (!teamId || !scorerId) throw new AppError("teamId and scorerId required", 400);
+
+    const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id } });
+    if (!fixture) throw new AppError("Fixture not found", 404);
+
+    const goal = await prisma.goal.create({
+      data: { fixtureId: fixture.id, playerId: scorerId, minute: minute || 0 },
+    });
+
+    if (assistId) {
+      await prisma.assist.create({
+        data: { fixtureId: fixture.id, playerId: assistId, minute: minute || 0 },
+      });
+    }
+
+    await recalcScore(fixture.id);
+    res.status(201).json(goal);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const removeGoal = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { playerId } = req.body;
+    const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id } });
+    if (!fixture) throw new AppError("Fixture not found", 404);
+
+    const goal = await prisma.goal.findFirst({ where: { fixtureId: fixture.id, playerId }, orderBy: { createdAt: "desc" } });
+    if (!goal) throw new AppError("No goal found for this player", 404);
+
+    const assist = await prisma.assist.findFirst({ where: { fixtureId: fixture.id }, orderBy: { createdAt: "desc" } });
+    if (assist) {
+      const goalTime = goal.createdAt;
+      const assistTime = assist.createdAt;
+      if (Math.abs(assistTime.getTime() - goalTime.getTime()) < 1000) {
+        await prisma.assist.delete({ where: { id: assist.id } });
+      }
+    }
+
+    await prisma.goal.delete({ where: { id: goal.id } });
+    await recalcScore(fixture.id);
+    res.json({ message: "Goal removed" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const addSubstitution = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { teamId, playerOffId, playerOnId, minute } = req.body;
+    if (!teamId || !playerOffId || !playerOnId) throw new AppError("teamId, playerOffId, playerOnId required", 400);
+    if (playerOffId === playerOnId) throw new AppError("Cannot substitute a player with themselves", 400);
+
+    const sub = await prisma.substitution.create({
+      data: { fixtureId: req.params.id, playerOffId, playerOnId, minute: minute || 0 },
+    });
+    res.status(201).json(sub);
   } catch (error) {
     next(error);
   }
