@@ -128,10 +128,14 @@ export function TeamDetailPage() {
             {team.players && team.players.length > 0 ? (
               <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {team.players.map((player) => (
-                  <button key={player.id} onClick={() => navigate(`/league/players/${player.slug}`)} className="rounded-2xl border p-4 text-left transition hover:bg-secondary/50">
-                    <img src={player.photoUrl || "/placeholder.svg"} alt="" className="h-14 w-14 rounded-2xl bg-muted object-cover" />
-                    <p className="mt-3 font-semibold">{player.firstName} {player.lastName}</p>
-                    <p className="text-xs text-muted-foreground">{player.position || "Player"} • #{player.jerseyNumber || "—"}</p>
+                  <button key={player.id} onClick={() => navigate(`/league/players/${player.slug}`)} className="overflow-hidden rounded-2xl border text-left transition hover:-translate-y-0.5 hover:shadow-md">
+                    <div className="aspect-[3/4] bg-muted">
+                      <img src={player.photoUrl || "/placeholder.svg"} alt="" className="h-full w-full object-cover" />
+                    </div>
+                    <div className="space-y-0.5 p-3">
+                      <p className="truncate font-semibold">{player.firstName} {player.lastName}</p>
+                      <p className="text-xs text-muted-foreground">{player.position || "Player"} • #{player.jerseyNumber || "—"}</p>
+                    </div>
                   </button>
                 ))}
               </div>
