@@ -129,7 +129,7 @@ export function TeamDetailPage() {
               <div className="grid gap-3 p-4 grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {team.players.map((player) => (
                   <button key={player.id} onClick={() => navigate(`/league/players/${player.slug}`)} className="overflow-hidden rounded-2xl border text-left transition hover:-translate-y-0.5 hover:shadow-md">
-                    <div className="aspect-[3/4] bg-muted">
+                    <div className="aspect-[4/5] bg-muted">
                       <img src={player.photoUrl || "/placeholder.svg"} alt="" className="h-full w-full object-cover" />
                     </div>
                     <div className="space-y-0.5 p-3">
