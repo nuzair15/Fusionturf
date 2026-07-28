@@ -64,9 +64,13 @@ export const updateSeason = async (req: Request, res: Response, next: NextFuncti
 
 // ─── Teams Management ───
 
-export const getTeams = async (_req: Request, res: Response, next: NextFunction) => {
+export const getTeams = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const { seasonId } = req.query;
+    const where: any = {};
+    if (seasonId) where.seasonId = seasonId;
     const teams = await prisma.team.findMany({
+      where,
       orderBy: { name: "asc" },
       include: { _count: { select: { players: true, homeMatches: true } } },
     });
@@ -160,6 +164,14 @@ export const createPlayer = async (req: Request, res: Response, next: NextFuncti
 export const updatePlayer = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { firstName, lastName, position, teamId, jerseyNumber, squadType, photoUrl, nationality, age, height, weight, preferredFoot, biography } = req.body;
+    const current = await prisma.player.findUnique({ where: { id: req.params.id }, select: { teamId: true, seasonId: true } });
+    if (!current) throw new AppError("Player not found", 404);
+    if (teamId !== undefined && teamId !== current.teamId) {
+      const season = await prisma.season.findUnique({ where: { id: current.seasonId }, select: { transferWindowOpen: true } });
+      if (season && !season.transferWindowOpen) {
+        throw new AppError("Transfer window is closed. Cannot change player team.", 400);
+      }
+    }
     const sets: string[] = [];
     const values: any[] = [];
     let idx = 1;
@@ -200,6 +212,53 @@ export const deletePlayer = async (req: Request, res: Response, next: NextFuncti
   try {
     await prisma.player.delete({ where: { id: req.params.id } });
     res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const copyPlayersFromSeason = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { seasonId, fromSeasonId } = req.params;
+    if (seasonId === fromSeasonId) throw new AppError("Cannot copy players from the same season", 400);
+
+    const sourceTeams = await prisma.team.findMany({ where: { seasonId: fromSeasonId }, select: { id: true, slug: true, name: true } });
+    const targetTeams = await prisma.team.findMany({ where: { seasonId }, select: { id: true, slug: true, name: true } });
+
+    const teamSlugMap = new Map<string, string>();
+    for (const t of sourceTeams) {
+      const match = targetTeams.find((tt) => tt.slug === t.slug || tt.name === t.name);
+      if (match) teamSlugMap.set(t.id, match.id);
+    }
+
+    const sourcePlayers = await prisma.player.findMany({
+      where: { seasonId: fromSeasonId, isActive: true },
+      select: {
+        firstName: true, lastName: true, position: true, jerseyNumber: true,
+        squadType: true, photoUrl: true, nationality: true, age: true,
+        height: true, weight: true, preferredFoot: true, biography: true,
+        teamId: true,
+      },
+    });
+
+    const uuid = require("uuid");
+    let copied = 0;
+    let skipped = 0;
+
+    for (const p of sourcePlayers) {
+      const targetTeamId = p.teamId ? teamSlugMap.get(p.teamId) : null;
+      if (p.teamId && !targetTeamId) { skipped++; continue; }
+
+      const slug = `${p.firstName.toLowerCase()}-${(p.lastName || "player").toLowerCase()}-${Date.now()}-${copied}`.replace(/[^a-z0-9-]+/g, "-");
+
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO "players" ("id","firstName","lastName","slug","position","jerseyNumber","squadType","teamId","seasonId","photoUrl","nationality","age","height","weight","preferredFoot","biography","isActive","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7::"SquadType",$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW(),NOW())`,
+        uuid.v4(), p.firstName, p.lastName || "", slug, p.position, p.jerseyNumber, p.squadType, targetTeamId, seasonId, p.photoUrl, p.nationality, p.age, p.height, p.weight, p.preferredFoot, p.biography, true
+      );
+      copied++;
+    }
+
+    res.json({ message: `Copied ${copied} players${skipped > 0 ? `, ${skipped} skipped (missing team in target season)` : ""}`, copied, skipped });
   } catch (error) {
     next(error);
   }

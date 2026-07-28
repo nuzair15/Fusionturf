@@ -20,7 +20,15 @@ export function PlayerDetailPage() {
   if (isLoading) return <div className="mx-auto max-w-7xl px-4 py-8"><div className="h-96 animate-pulse rounded-xl bg-muted" /></div>;
   if (!player) return null;
 
-  const stats = player.homeStats?.[0];
+  const statsBySeason = player.homeStats?.reduce<Record<string, { season: any; team: any; stats: any[] }>>((acc, s) => {
+    const key = `${s.season?.id || "unknown"}_${s.teamId}`;
+    if (!acc[key]) {
+      acc[key] = { season: s.season, team: s.team, stats: [] };
+    }
+    acc[key].stats.push(s);
+    return acc;
+  }, {}) || {};
+  const seasonKeys = Object.keys(statsBySeason);
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
@@ -53,56 +61,62 @@ export function PlayerDetailPage() {
               </Card>
             )}
 
-            {/* Season Stats */}
-            {stats && (
+            {/* Season Stats by Season + Team */}
+            {seasonKeys.length > 0 && (
               <Card>
-                <CardHeader><CardTitle>Season Statistics</CardTitle></CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                    {[
-                      { label: "Appearances", value: stats.appearances },
-                      { label: "Goals", value: stats.goals, color: "text-green-500" },
-                      { label: "Assists", value: stats.assists, color: "text-blue-500" },
-                      { label: "Minutes", value: stats.minutesPlayed },
-                      { label: "Pass Accuracy", value: stats.passAccuracy ? `${stats.passAccuracy}%` : "-" },
-                      { label: "Shots", value: stats.shots },
-                      { label: "Tackles", value: stats.tackles },
-                      { label: "Interceptions", value: stats.interceptions },
-                      { label: "Yellow Cards", value: stats.yellowCards, color: "text-yellow-500" },
-                      { label: "Red Cards", value: stats.redCards, color: "text-red-500" },
-                      { label: "Rating", value: stats.averageRating?.toFixed(1) || "-" },
-                      { label: "Clean Sheets", value: stats.cleanSheets ?? "-" },
-                    ].map((s) => (
-                      <div key={s.label} className="rounded-lg border p-3 text-center">
-                        <p className={`text-lg font-bold ${s.color || ""}`}>{s.value}</p>
-                        <p className="text-xs text-muted-foreground">{s.label}</p>
+                <CardHeader><CardTitle>Career Statistics</CardTitle></CardHeader>
+                <CardContent className="space-y-6">
+                  {seasonKeys.map((key) => {
+                    const group = statsBySeason[key];
+                    const seasonLabel = group.season?.name || "Unknown Season";
+                    const team = group.team;
+                    const s = group.stats[0];
+                    return (
+                      <div key={key}>
+                        <div className="mb-3 flex items-center gap-2">
+                          {team?.logoUrl && <img src={team.logoUrl} alt="" className="h-5 w-5 rounded-full" />}
+                          <h3 className="text-sm font-semibold text-muted-foreground">{seasonLabel} — {team?.name || "Unknown Team"}</h3>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                          {[
+                            { label: "Appearances", value: s.appearances },
+                            { label: "Goals", value: s.goals, color: "text-green-500" },
+                            { label: "Assists", value: s.assists, color: "text-blue-500" },
+                            { label: "Minutes", value: s.minutesPlayed },
+                            { label: "Pass Accuracy", value: s.passAccuracy ? `${s.passAccuracy}%` : "-" },
+                            { label: "Shots", value: s.shots },
+                            { label: "Tackles", value: s.tackles },
+                            { label: "Interceptions", value: s.interceptions },
+                            { label: "Yellow Cards", value: s.yellowCards, color: "text-yellow-500" },
+                            { label: "Red Cards", value: s.redCards, color: "text-red-500" },
+                            { label: "Rating", value: s.averageRating?.toFixed(1) || "-" },
+                            { label: "Clean Sheets", value: s.cleanSheets ?? "-" },
+                          ].map((stat) => (
+                            <div key={stat.label} className="rounded-lg border p-3 text-center">
+                              <p className={`text-lg font-bold ${stat.color || ""}`}>{stat.value}</p>
+                              <p className="text-xs text-muted-foreground">{stat.label}</p>
+                            </div>
+                          ))}
+                        </div>
+                        {/* Detailed Stats */}
+                        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                          {[
+                            { label: "Shots on Target", value: s.shotsOnTarget },
+                            { label: "Fouls", value: s.fouls },
+                            { label: "Offsides", value: s.offsides },
+                            { label: "Saves", value: s.saves ?? "-" },
+                            { label: "Goals Conceded", value: s.goalsConceded ?? "-" },
+                            { label: "Distance Covered", value: s.distanceCovered ? `${s.distanceCovered}km` : "-" },
+                          ].map((stat) => (
+                            <div key={stat.label} className="rounded-lg border p-3 text-center">
+                              <p className="text-lg font-bold">{stat.value}</p>
+                              <p className="text-xs text-muted-foreground">{stat.label}</p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Full Stats */}
-            {stats && (
-              <Card>
-                <CardHeader><CardTitle>Detailed Statistics</CardTitle></CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-                    {[
-                      { label: "Shots on Target", value: stats.shotsOnTarget },
-                      { label: "Fouls", value: stats.fouls },
-                      { label: "Offsides", value: stats.offsides },
-                      { label: "Saves", value: stats.saves ?? "-" },
-                      { label: "Goals Conceded", value: stats.goalsConceded ?? "-" },
-                      { label: "Distance Covered", value: stats.distanceCovered ? `${stats.distanceCovered}km` : "-" },
-                    ].map((s) => (
-                      <div key={s.label} className="rounded-lg border p-3 text-center">
-                        <p className="text-lg font-bold">{s.value}</p>
-                        <p className="text-xs text-muted-foreground">{s.label}</p>
-                      </div>
-                    ))}
-                  </div>
+                    );
+                  })}
                 </CardContent>
               </Card>
             )}

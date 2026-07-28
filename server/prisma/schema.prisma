@@ -847,7 +847,7 @@ model PlayerStat {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  @@unique([seasonId, playerId])
+  @@unique([seasonId, playerId, teamId])
   @@map("player_stats")
 }
 

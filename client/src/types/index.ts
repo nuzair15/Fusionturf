@@ -23,6 +23,9 @@ export interface Season {
   isActive: boolean;
   isCurrent: boolean;
   description?: string;
+  transferWindowOpen?: boolean;
+  transferWindowStartsAt?: string;
+  transferWindowEndsAt?: string;
   _count?: { teams: number; players: number; fixtures: number };
 }
 

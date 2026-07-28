@@ -59,6 +59,7 @@ export function AdminPage() {
   const [fixtureOptions, setFixtureOptions] = useState({ teamCount: 6, leagueWeeks: 7, matchesPerPair: 2, startDate: "", fixtureDays: ["Friday", "Saturday", "Sunday"] as string[] });
   const [generating, setGenerating] = useState(false);
   const [liveStatsFixtureId, setLiveStatsFixtureId] = useState<string | null>(null);
+  const [selectedSeasonId, setSelectedSeasonId] = useState<string>("");
   const [winnerSearchTerm, setWinnerSearchTerm] = useState("");
   const [winnerResults, setWinnerResults] = useState<any[]>([]);
   const [winnerLoading, setWinnerLoading] = useState(false);
@@ -141,9 +142,26 @@ export function AdminPage() {
 
   const { data: seasons } = useQuery({ queryKey: ["admin-seasons"], queryFn: () => api.get<Season[]>("/admin/seasons"), enabled: unlocked });
 
-  const { data: teams } = useQuery({ queryKey: ["admin-teams"], queryFn: () => api.get<Team[]>("/admin/teams"), enabled: unlocked });
+  const currentSeason = (seasons || []).find((s: Season) => s.isCurrent);
 
-  const { data: players } = useQuery({ queryKey: ["admin-players"], queryFn: () => api.get<PaginatedResponse<Player>>("/admin/players", { limit: "50" }), enabled: unlocked });
+  // Default selected season to current season when seasons load
+  useEffect(() => {
+    if (currentSeason && !selectedSeasonId) {
+      setSelectedSeasonId(currentSeason.id);
+    }
+  }, [currentSeason?.id]);
+
+  const { data: teams } = useQuery({
+    queryKey: ["admin-teams", selectedSeasonId],
+    queryFn: () => api.get<Team[]>("/admin/teams", { ...(selectedSeasonId ? { seasonId: selectedSeasonId } : {}) }),
+    enabled: unlocked,
+  });
+
+  const { data: players } = useQuery({
+    queryKey: ["admin-players", selectedSeasonId],
+    queryFn: () => api.get<PaginatedResponse<Player>>("/admin/players", { limit: "50", ...(selectedSeasonId ? { seasonId: selectedSeasonId } : {}) }),
+    enabled: unlocked,
+  });
 
   const { data: fixtures } = useQuery({ queryKey: ["admin-fixtures"], queryFn: () => api.get<PaginatedResponse<Fixture>>("/admin/fixtures", { limit: "50" }), enabled: unlocked });
 
@@ -310,6 +328,7 @@ export function AdminPage() {
                 <div className="flex gap-1">
                   {s.isCurrent && <Badge className="bg-primary">Current</Badge>}
                   {s.isActive ? <Badge variant="default">Active</Badge> : <Badge variant="destructive">Inactive</Badge>}
+                  {s.transferWindowOpen && <Badge variant="outline" className="border-green-500 text-green-600">Transfer Window Open</Badge>}
                 </div>,
                 s._count?.teams || 0,
                 s._count?.players || 0,
@@ -477,6 +496,26 @@ export function AdminPage() {
 
         {activeTab === "players" && (
           <>
+            <div className="mb-4 flex items-center gap-3">
+              <Label className="shrink-0">Season</Label>
+              <Select value={selectedSeasonId} onChange={(e) => setSelectedSeasonId(e.target.value)} className="w-64">
+                {(!seasons || seasons.length === 0) && <option value="">No seasons available</option>}
+                {(seasons || []).map((s: Season) => (
+                  <option key={s.id} value={s.id}>{s.name} {s.isCurrent ? "(Current)" : ""}</option>
+                ))}
+              </Select>
+              {(() => {
+                const sorted = (seasons || []).slice().sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+                const idx = sorted.findIndex((s) => s.id === selectedSeasonId);
+                const prevSeason = idx > 0 ? sorted[idx - 1] : null;
+                return prevSeason ? (
+                  <Button size="sm" variant="outline" onClick={async () => {
+                    if (!confirm(`Copy all players from "${prevSeason.name}" to this season?`)) return;
+                    try { setActionError(""); await api.post(`/admin/seasons/${selectedSeasonId}/copy-players-from/${prevSeason.id}`, {}); queryClient.invalidateQueries({ queryKey: ["admin-players"] }); } catch (e: any) { setActionError(e.message); }
+                  }}>Copy from {prevSeason.name}</Button>
+                ) : null;
+              })()}
+            </div>
             <AdminTable
               title="Players"
               columns={["Photo", "Name", "Team", "Position", "Jersey"]}
@@ -565,12 +604,13 @@ export function AdminPage() {
                 </details>
                 <div className="space-y-1.5">
                   <Label>Team *</Label>
-                  <Select value={formData.teamId || ""} onChange={(e) => handleFormChange("teamId", e.target.value)}>
+                  <Select value={formData.teamId || ""} onChange={(e) => handleFormChange("teamId", e.target.value)} disabled={editingItem && !currentSeason?.transferWindowOpen}>
                     <option value="">Select team...</option>
                     {(teams || []).map((t: Team) => (
                       <option key={t.id} value={t.id}>{t.name}</option>
                     ))}
                   </Select>
+                  {(editingItem && !currentSeason?.transferWindowOpen) && <p className="text-xs text-destructive">Transfer window closed — team cannot be changed</p>}
                 </div>
                 <ImageUploadField label="Player Photo" value={formData.photoUrl || ""} onChange={(value) => handleFormChange("photoUrl", value)} />
                 {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}

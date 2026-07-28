@@ -111,6 +111,7 @@ router.post("/seasons/:id/generate-fixtures", authorize("SUPER_ADMIN", "LEAGUE_A
 router.post("/seasons/:id/postseason", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.generatePostSeason);
 router.post("/seasons/:id/transfer-window/open", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.adminOpenTransferWindow);
 router.post("/seasons/:id/transfer-window/close", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.adminCloseTransferWindow);
+router.post("/seasons/:id/copy-players-from/:fromSeasonId", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.copyPlayersFromSeason);
 router.post("/seasons/:id/create-next", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.adminCreateNextSeason);
 router.post("/fixtures/:id/squad", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.adminSelectMatchdaySquad);
 router.get("/teams/:id/validate-squad", admin.adminValidateSquad);

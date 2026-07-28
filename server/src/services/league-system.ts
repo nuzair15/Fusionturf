@@ -526,12 +526,14 @@ export async function recalculatePlayerStats(seasonId: string): Promise<void> {
     const cleanSheets = player.position === "GK" ? await countGoalkeeperCleanSheets(player.id, seasonId) : undefined;
     const goalsConceded = player.position === "GK" ? await countGoalkeeperGoalsConceded(player.id, seasonId) : undefined;
 
+    const teamId = player.teamId!;
+
     await prisma.playerStat.upsert({
-      where: { seasonId_playerId: { seasonId, playerId: player.id } },
+      where: { seasonId_playerId_teamId: { seasonId, playerId: player.id, teamId } },
       create: {
         seasonId,
         playerId: player.id,
-        teamId: player.teamId!,
+        teamId,
         appearances,
         goals,
         assists,
