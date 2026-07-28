@@ -724,7 +724,7 @@ export function AdminPage() {
                   <Card key={a.id}>
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
-                        <CardTitle className="text-base">{a.name}</CardTitle>
+                        <CardTitle className="text-base">{a.name} <Badge variant="outline" className="ml-1 text-[10px]">{a.type === "TEAM" ? "Team" : "Player"}</Badge></CardTitle>
                         <div className="flex gap-1">
                           <Button variant="ghost" size="sm" onClick={() => { setEditingItem(a); openForm("award", { name: a.name, slug: a.slug, description: a.description || "", trophyImageUrl: a.trophyImageUrl || "", seasonId: a.seasonId, type: a.type }); }}>
                             <Edit2 className="h-4 w-4" />
@@ -743,11 +743,13 @@ export function AdminPage() {
                           : a.winner ? `Winner: ${a.winner.firstName} ${a.winner.lastName}` : a.votingEnabled ? "Voting Open" : "No winner yet"}
                       </p>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <Button variant="outline" size="sm" onClick={() => {
-                          api.patch(`/admin/awards/${a.id}/voting`, { enabled: !a.votingEnabled }).then(() => queryClient.invalidateQueries({ queryKey: ["admin-awards"] }));
-                        }}>
-                          {a.votingEnabled ? "Close Voting" : "Open Voting"}
-                        </Button>
+                        {a.type !== "TEAM" && (
+                          <Button variant="outline" size="sm" onClick={() => {
+                            api.patch(`/admin/awards/${a.id}/voting`, { enabled: !a.votingEnabled }).then(() => queryClient.invalidateQueries({ queryKey: ["admin-awards"] }));
+                          }}>
+                            {a.votingEnabled ? "Close Voting" : "Open Voting"}
+                          </Button>
+                        )}
                         <Button variant="outline" size="sm" onClick={() => { setSelectedWinner(null); setWinnerSearchTerm(""); setWinnerResults([]); openForm("winner", { awardId: a.id, seasonId: a.seasonId, awardType: a.type, playerId: "", teamId: "" }); }}>
                           Announce Winner
                         </Button>

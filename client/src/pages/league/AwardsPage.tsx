@@ -2,7 +2,6 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import type { Award } from "@/types";
@@ -34,7 +33,7 @@ export function AwardsPage() {
             <Card key={award.id} className="overflow-hidden transition-all hover:shadow-md">
               <div className="flex items-center justify-center bg-gradient-to-r from-yellow-500/20 to-amber-500/20 p-6">
                 {award.trophyImageUrl ? (
-                  <img src={award.trophyImageUrl} alt={award.name} className="h-24 w-24 rounded-full object-cover shadow-sm" />
+                  <img src={award.trophyImageUrl} alt={award.name} className="h-28 w-auto rounded-xl object-contain shadow-sm" />
                 ) : (
                   <Medal className="h-16 w-16 text-yellow-500" />
                 )}
@@ -53,17 +52,6 @@ export function AwardsPage() {
                         <p className="font-semibold">{award.winnerTeam.name}</p>
                       ) : (
                         <p className="font-semibold">{award.winner.firstName} {award.winner.lastName}</p>
-                      )}
-                    </div>
-                  ) : award.votingEnabled ? (
-                    <div>
-                      <Badge variant="secondary" className="mb-2">
-                        <Vote className="mr-1 h-3 w-3" /> Voting Open
-                      </Badge>
-                      {award.votingEndDate && (
-                        <p className="text-xs text-muted-foreground">
-                          Ends {formatDate(award.votingEndDate)}
-                        </p>
                       )}
                     </div>
                   ) : (

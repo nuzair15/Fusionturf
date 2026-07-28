@@ -209,7 +209,13 @@ export function HomePage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold">{award.name}</p>
-                      <p className="text-xs text-muted-foreground">{award.winner ? `${award.winner.firstName} ${award.winner.lastName}` : "Voting in progress"}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {award.winner 
+                          ? (award.type === "TEAM" && award.winnerTeam ? award.winnerTeam.name : `${award.winner.firstName} ${award.winner.lastName}`)
+                          : award.type === "TEAM" ? "Team Award"
+                          : award.votingEnabled ? "Voting in progress"
+                          : "TBD"}
+                      </p>
                     </div>
                   </button>
                 ))}
