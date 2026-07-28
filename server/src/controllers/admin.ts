@@ -190,6 +190,15 @@ export const updatePlayer = async (req: Request, res: Response, next: NextFuncti
   }
 };
 
+export const deletePlayer = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await prisma.player.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+};
+
 // ─── Fixtures Management ───
 
 export const getFixtures = async (req: Request, res: Response, next: NextFunction) => {

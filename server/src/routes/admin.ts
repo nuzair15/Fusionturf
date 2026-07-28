@@ -28,6 +28,7 @@ router.get("/players", admin.getPlayers);
 router.get("/players/search", admin.searchPlayers);
 router.post("/players", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.createPlayer);
 router.patch("/players/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.updatePlayer);
+router.delete("/players/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.deletePlayer);
 
 // Fixtures
 router.get("/fixtures", admin.getFixtures);

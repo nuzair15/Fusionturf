@@ -490,6 +490,7 @@ export function AdminPage() {
               ]}
               onAdd={() => { setEditingItem(null); openForm("player", { firstName: "", lastName: "", position: "", teamId: "", jerseyNumber: "", squadType: "" }); }}
               onEdit={(p) => { setEditingItem(p); openForm("player", { firstName: p.firstName, lastName: p.lastName || "", position: p.position || "", teamId: p.teamId || "", jerseyNumber: p.jerseyNumber || "", squadType: p.squadType || "", photoUrl: p.photoUrl || "" }); }}
+              onDelete={(p) => { if (confirm(`Delete player ${p.firstName} ${p.lastName}?`)) api.delete(`/admin/players/${p.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-players"] })); }}
             />
             <Dialog open={showForm === "player"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Player" : "Add Player"}>
               <div className="space-y-4">
