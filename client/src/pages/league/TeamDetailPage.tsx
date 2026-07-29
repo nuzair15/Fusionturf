@@ -31,8 +31,8 @@ export function TeamDetailPage() {
   return (
     <div className="space-y-8 pb-8">
       <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
-        <Button variant="ghost" onClick={() => navigate("/league")} className="mb-4 gap-1">
-          <ChevronLeft className="h-4 w-4" /> Back to League
+        <Button variant="ghost" onClick={() => { if (window.history.state?.idx > 0) navigate(-1); else navigate("/league"); }} className="mb-4 gap-1">
+          <ChevronLeft className="h-4 w-4" /> Back
         </Button>
         <LeagueHero
           image={team.coverUrl || team.logoUrl || "/hero.jpeg"}
