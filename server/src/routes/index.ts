@@ -13,6 +13,7 @@ router.use("/league", leagueRoutes);
 
 // Public settings endpoint (no auth required)
 router.get("/settings", adminController.getSettings);
+router.post("/admin/login", adminController.loginAdmin);
 
 router.use("/admin", adminRoutes);
 

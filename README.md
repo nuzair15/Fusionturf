@@ -52,8 +52,8 @@ cd ../client && npm install
 cd ..
 
 # Setup environment variables
-cp .env.example .env
-# Edit .env with your PostgreSQL connection string
+cp server/.env.example server/.env
+# Set DATABASE_URL, JWT_SECRET, and ADMIN_PANEL_PASSWORD in server/.env
 
 # Setup database
 cd server
@@ -66,9 +66,9 @@ cd ..
 npm run dev
 ```
 
-### Default Credentials
-- **Admin:** admin@fusionleague.com / password123
-- **Customer:** user@example.com / password123
+### Admin access
+
+Admin access is password-only. Set `ADMIN_PANEL_PASSWORD` in `server/.env`; no default production password is provided.
 
 ## Deploy to Render
 
@@ -100,6 +100,7 @@ If Blueprint doesn't work, create three resources manually:
   - `JWT_SECRET` (generate a random string)
   - `CORS_ORIGIN` = your client URL
   - `FRONTEND_URL` = your client URL
+  - `ADMIN_PANEL_PASSWORD` = strong admin password
 
 **3. Static Site (Client)**
 - Build command: `cd client && npm install && npm run build`

@@ -19,13 +19,13 @@ export function LeaguePage() {
   const { data: fixtures } = useQuery({ queryKey: ["fixtures"], queryFn: () => api.get<{ data: Fixture[] }>("/league/fixtures", { limit: "20" }) });
   const { data: standings } = useQuery({ queryKey: ["standings"], queryFn: () => api.get<Standing[]>("/league/standings") });
   const { data: teams } = useQuery({ queryKey: ["teams"], queryFn: () => api.get<Team[]>("/league/teams") });
-  const { data: venues } = useQuery({ queryKey: ["venues"], queryFn: () => api.get<Venue[]>("/booking/venues") });
+  const { data: venues } = useQuery({ queryKey: ["venues"], queryFn: () => api.get<{ data: Venue[] }>("/booking/venues") });
   const { data: newsData } = useQuery({ queryKey: ["league-news"], queryFn: () => api.get<PaginatedResponse<News>>("/league/news") });
 
   const fixtureList = fixtures?.data || [];
   const standingsList = standings || [];
   const teamList = teams || [];
-  const venueList = venues || [];
+  const venueList = venues?.data || [];
   const newsList = newsData?.data || [];
 
   const liveFixtures = useMemo(() => fixtureList.filter((f) => f.status === "LIVE"), [fixtureList]);

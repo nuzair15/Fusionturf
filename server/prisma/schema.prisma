@@ -41,6 +41,10 @@ enum PaymentStatus {
 enum MatchStatus {
   SCHEDULED
   LIVE
+  PAUSED
+  HALF_TIME
+  EXTRA_TIME
+  PENALTIES
   COMPLETED
   CANCELLED
   POSTPONED
@@ -326,6 +330,7 @@ model Booking {
 
   @@index([userId])
   @@index([turfId])
+  @@index([turfId, date, status])
   @@index([date])
   @@index([status])
   @@map("bookings")
@@ -649,6 +654,7 @@ model Goal {
   createdAt  DateTime @default(now())
 
   @@index([fixtureId])
+  @@index([playerId])
   @@map("goals")
 }
 
@@ -663,6 +669,7 @@ model Assist {
   createdAt DateTime @default(now())
 
   @@index([fixtureId])
+  @@index([playerId])
   @@map("assists")
 }
 
@@ -678,6 +685,7 @@ model Card {
   createdAt DateTime @default(now())
 
   @@index([fixtureId])
+  @@index([playerId, type])
   @@map("cards")
 }
 

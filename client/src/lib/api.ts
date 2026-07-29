@@ -50,7 +50,9 @@ class ApiClient {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: "Request failed" }));
-        throw new Error(error.error || `HTTP ${response.status}`);
+        const message = error.error || `HTTP ${response.status}`;
+        window.dispatchEvent(new CustomEvent("fusion-api-error", { detail: { message } }));
+        throw new Error(message);
       }
 
       if (response.status === 204) return undefined as T;
@@ -100,8 +102,15 @@ class ApiClient {
     return this.get<any>("/auth/me");
   }
 
+  async adminLogin(password: string) {
+    const res = await this.post<{ token: string }>("/admin/login", { password });
+    this.setAdminToken(res.token);
+    return res;
+  }
+
   logout() {
     this.setToken(null);
+    this.setAdminToken(null);
   }
 
   isAuthenticated() {

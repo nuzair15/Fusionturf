@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Trophy, Swords, ShieldAlert, Shield, ArrowRight, RotateCcw, X } from "lucide-react";
 
@@ -48,6 +49,7 @@ export function LiveStatsPanel({ fixtureId, onClose }: Props) {
   const [goalFlow, setGoalFlow] = useState<{ teamId: string; step: "scorer" | "assist"; scorerId?: string } | null>(null);
   const [subFlow, setSubFlow] = useState<{ teamId: string; step: "off" | "on"; playerOffId?: string } | null>(null);
   const [error, setError] = useState("");
+  const [minute, setMinute] = useState(1);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -64,7 +66,7 @@ export function LiveStatsPanel({ fixtureId, onClose }: Props) {
   const addGoal = async (teamId: string, scorerId: string, assistId?: string) => {
     setError("");
     try {
-      await api.post(`/admin/fixtures/${fixtureId}/goal`, { teamId, scorerId, assistId: assistId || undefined });
+      await api.post(`/admin/fixtures/${fixtureId}/goal`, { teamId, scorerId, assistId: assistId || undefined, minute });
       setGoalFlow(null);
       await fetchStats();
     } catch (e: any) { setError(e.message); }
@@ -86,7 +88,7 @@ export function LiveStatsPanel({ fixtureId, onClose }: Props) {
   const addSub = async (teamId: string, playerOffId: string, playerOnId: string) => {
     setError("");
     try {
-      await api.post(`/admin/fixtures/${fixtureId}/substitution`, { teamId, playerOffId, playerOnId, minute: 0 });
+      await api.post(`/admin/fixtures/${fixtureId}/substitution`, { teamId, playerOffId, playerOnId, minute });
       setSubFlow(null);
       await fetchStats();
     } catch (e: any) { setError(e.message); }
@@ -185,6 +187,36 @@ export function LiveStatsPanel({ fixtureId, onClose }: Props) {
         </div>
 
         {error && <p className="px-3 pt-3 text-center text-sm text-destructive sm:px-6">{error}</p>}
+
+        <div className="flex flex-wrap items-center gap-2 border-b px-3 py-3 sm:px-6">
+          <Button size="sm" variant={data.fixture.status === "LIVE" ? "default" : "outline"} disabled={data.fixture.status === "COMPLETED"}
+            onClick={async () => { try { await api.patch(`/admin/fixtures/${fixtureId}/status`, { status: "LIVE" }); await fetchStats(); } catch (e: any) { setError(e.message); } }}>
+            Start / Resume
+          </Button>
+          <Button size="sm" variant="outline" disabled={data.fixture.status !== "LIVE"}
+            onClick={async () => { try { await api.patch(`/admin/fixtures/${fixtureId}/status`, { status: "PAUSED" }); await fetchStats(); } catch (e: any) { setError(e.message); } }}>
+            Pause
+          </Button>
+          <Button size="sm" variant="outline" disabled={data.fixture.status !== "LIVE"}
+            onClick={async () => { try { await api.patch(`/admin/fixtures/${fixtureId}/status`, { status: "HALF_TIME" }); await fetchStats(); } catch (e: any) { setError(e.message); } }}>
+            Half-time
+          </Button>
+          <Button size="sm" variant="outline" disabled={!['LIVE', 'HALF_TIME'].includes(data.fixture.status)}
+            onClick={async () => { try { await api.patch(`/admin/fixtures/${fixtureId}/status`, { status: "EXTRA_TIME" }); await fetchStats(); } catch (e: any) { setError(e.message); } }}>
+            Extra time
+          </Button>
+          <Button size="sm" variant="outline" disabled={!['EXTRA_TIME', 'HALF_TIME'].includes(data.fixture.status)}
+            onClick={async () => { try { await api.patch(`/admin/fixtures/${fixtureId}/status`, { status: "PENALTIES" }); await fetchStats(); } catch (e: any) { setError(e.message); } }}>
+            Penalties
+          </Button>
+          <Button size="sm" variant="outline" disabled={data.fixture.status === "COMPLETED"}
+            onClick={async () => { try { await api.patch(`/admin/fixtures/${fixtureId}/status`, { status: "COMPLETED" }); await fetchStats(); } catch (e: any) { setError(e.message); } }}>
+            Finish
+          </Button>
+          <label className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">Minute
+            <Input className="h-8 w-20" type="number" min={0} max={150} value={minute} onChange={(e) => setMinute(Math.max(0, Math.min(150, Number(e.target.value) || 0)))} />
+          </label>
+        </div>
 
         {/* Teams */}
         <div className="flex flex-col divide-y sm:grid sm:grid-cols-2 sm:divide-x sm:divide-y-0">

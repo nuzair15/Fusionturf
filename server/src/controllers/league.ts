@@ -36,7 +36,7 @@ export const getCurrentSeason = async (_req: Request, res: Response, next: NextF
 export const getTeams = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { seasonId } = req.query;
-    const where: any = {};
+    const where: any = { isActive: true };
     if (seasonId) where.seasonId = seasonId;
 
     const teams = await prisma.team.findMany({
@@ -56,7 +56,7 @@ export const getTeams = async (req: Request, res: Response, next: NextFunction) 
 export const getTeamBySlug = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const team = await prisma.team.findFirst({
-      where: { slug: req.params.slug },
+      where: { slug: req.params.slug, isActive: true },
       include: {
         players: { orderBy: { jerseyNumber: "asc" } },
         staff: true,
@@ -219,7 +219,14 @@ export const getStandings = async (req: Request, res: Response, next: NextFuncti
   try {
     const where: any = {};
     if (req.query.seasonId) where.seasonId = req.query.seasonId;
-    if (req.query.competitionId) where.fixture = { competitionId: req.query.competitionId };
+    if (req.query.competitionId) {
+      const fixtures = await prisma.fixture.findMany({
+        where: { competitionId: req.query.competitionId as string, status: "COMPLETED" },
+        select: { homeTeamId: true, awayTeamId: true },
+      });
+      const teamIds = [...new Set(fixtures.flatMap((fixture) => [fixture.homeTeamId, fixture.awayTeamId]))];
+      where.teamId = { in: teamIds };
+    }
 
     const standings = await prisma.standing.findMany({
       where,
@@ -240,8 +247,6 @@ export const getTopScorers = async (req: Request, res: Response, next: NextFunct
   try {
     const where: any = {};
     if (req.query.seasonId) where.seasonId = req.query.seasonId;
-    if (req.query.limit) where.take = parseInt(req.query.limit as string, 10);
-
     const players = await prisma.playerStat.findMany({
       where,
       include: {
@@ -249,7 +254,7 @@ export const getTopScorers = async (req: Request, res: Response, next: NextFunct
         team: { select: { name: true, slug: true, logoUrl: true } },
       },
       orderBy: { goals: "desc" },
-      take: parseInt((req.query.limit as string) || "20", 10),
+      take: Math.min(100, Math.max(1, parseInt((req.query.limit as string) || "20", 10) || 20)),
     });
     res.json(players);
   } catch (error) {

@@ -166,7 +166,7 @@ export interface Fixture {
   competition?: { name: string };
 }
 
-export type MatchStatus = "SCHEDULED" | "LIVE" | "POSTPONED" | "CANCELLED" | "COMPLETED";
+export type MatchStatus = "SCHEDULED" | "LIVE" | "PAUSED" | "HALF_TIME" | "EXTRA_TIME" | "PENALTIES" | "POSTPONED" | "CANCELLED" | "COMPLETED";
 
 export interface Goal {
   id: string;

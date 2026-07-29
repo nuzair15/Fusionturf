@@ -230,6 +230,7 @@ function calculateHeadToHead(fixtures: Array<{ homeTeamId: string; awayTeamId: s
 export async function processMatchResult(fixtureId: string, homeScore: number, awayScore: number): Promise<void> {
   const fixture = await prisma.fixture.findUnique({ where: { id: fixtureId }, include: { season: true } });
   if (!fixture) throw new Error("Fixture not found");
+  const newlyCompleted = fixture.status !== "COMPLETED";
 
   await prisma.fixture.update({
     where: { id: fixtureId },
@@ -238,7 +239,10 @@ export async function processMatchResult(fixtureId: string, homeScore: number, a
 
   await recalculateStandings(fixture.seasonId);
 
-  await processSuspensions(fixtureId);
+  if (newlyCompleted) {
+    await serveSuspension(fixtureId);
+    await processSuspensions(fixtureId);
+  }
 
   await recalculatePlayerStats(fixture.seasonId);
 
@@ -256,6 +260,7 @@ export async function generatePostSeasonFixtures(seasonId: string): Promise<void
 
   const firstPlace = standings[0].team;
   const secondPlace = standings[1].team;
+  const fifthPlace = standings[4].team;
   const sixthPlace = standings[5].team;
 
   const season = await prisma.season.findUnique({ where: { id: seasonId } });
@@ -284,7 +289,7 @@ export async function generatePostSeasonFixtures(seasonId: string): Promise<void
   await prisma.fixture.create({
     data: {
       seasonId,
-      homeTeamId: sixthPlace.id,
+      homeTeamId: fifthPlace.id,
       awayTeamId: sixthPlace.id,
       matchDate: playoffDate,
       leagueWeek: 8,
@@ -423,15 +428,15 @@ export async function processSuspensions(fixtureId: string): Promise<void> {
 
   for (const card of cards) {
     if (card.type === "RED" || card.type === "SECOND_YELLOW") {
-      await prisma.suspension.create({
-        data: {
-          seasonId: card.player.seasonId,
-          playerId: card.playerId,
-          reason: card.type === "RED" ? "STRAIGHT_RED" : "SECOND_YELLOW",
-          matchBan: 1,
-          isActive: true,
-        },
+      const reason = card.type === "RED" ? "STRAIGHT_RED" : "SECOND_YELLOW";
+      const existing = await prisma.suspension.findFirst({
+        where: { seasonId: card.player.seasonId, playerId: card.playerId, reason, isActive: true },
       });
+      if (!existing) {
+        await prisma.suspension.create({
+          data: { seasonId: card.player.seasonId, playerId: card.playerId, reason, matchBan: 1, isActive: true },
+        });
+      }
     }
   }
 
@@ -473,7 +478,7 @@ async function checkYellowCardAccumulation(fixtureId: string): Promise<void> {
 }
 
 export async function serveSuspension(fixtureId: string): Promise<void> {
-  const fixture = await prisma.fixture.findUnique({ where: { id: fixtureId }, select: { seasonId: true } });
+  const fixture = await prisma.fixture.findUnique({ where: { id: fixtureId }, select: { seasonId: true, homeTeamId: true, awayTeamId: true } });
   if (!fixture) return;
 
   const activeSuspensions = await prisma.suspension.findMany({
@@ -481,18 +486,9 @@ export async function serveSuspension(fixtureId: string): Promise<void> {
   });
 
   for (const suspension of activeSuspensions) {
-    const played = await prisma.fixture.count({
-      where: {
-        seasonId: fixture.seasonId,
-        status: "COMPLETED",
-        OR: [
-          { homeTeam: { players: { some: { id: suspension.playerId } } } },
-          { awayTeam: { players: { some: { id: suspension.playerId } } } },
-        ],
-      },
-    });
-
-    const newServed = played;
+    const player = await prisma.player.findUnique({ where: { id: suspension.playerId }, select: { teamId: true } });
+    if (!player || (player.teamId !== fixture.homeTeamId && player.teamId !== fixture.awayTeamId)) continue;
+    const newServed = suspension.served + 1;
     if (newServed >= suspension.matchBan) {
       await prisma.suspension.update({
         where: { id: suspension.id },
@@ -509,77 +505,62 @@ export async function serveSuspension(fixtureId: string): Promise<void> {
 
 export async function recalculatePlayerStats(seasonId: string): Promise<void> {
   const players = await prisma.player.findMany({ where: { seasonId, isActive: true } });
+  if (players.length === 0) return;
 
-  for (const player of players) {
-    const goals = await prisma.goal.count({ where: { playerId: player.id } });
-    const assists = await prisma.assist.count({ where: { playerId: player.id } });
-    const yellowCards = await prisma.card.count({ where: { playerId: player.id, type: "YELLOW" } });
-    const redCards = await prisma.card.count({ where: { playerId: player.id, type: { in: ["RED", "SECOND_YELLOW"] } } });
-    const appearances = await prisma.fixture.count({
-      where: {
-        seasonId,
-        status: "COMPLETED",
-        OR: [{ homeTeam: { players: { some: { id: player.id } } } }, { awayTeam: { players: { some: { id: player.id } } } }],
-      },
-    });
+  const playerIds = players.map((player) => player.id);
+  const teamIds = [...new Set(players.map((player) => player.teamId).filter((id): id is string => !!id))];
+  const [goals, assists, cards, fixtures] = await Promise.all([
+    prisma.goal.groupBy({ by: ["playerId"], where: { playerId: { in: playerIds } }, _count: { _all: true } }),
+    prisma.assist.groupBy({ by: ["playerId"], where: { playerId: { in: playerIds } }, _count: { _all: true } }),
+    prisma.card.groupBy({ by: ["playerId", "type"], where: { playerId: { in: playerIds } }, _count: { _all: true } }),
+    prisma.fixture.findMany({
+      where: { seasonId, status: "COMPLETED", OR: [{ homeTeamId: { in: teamIds } }, { awayTeamId: { in: teamIds } }] },
+      select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true },
+    }),
+  ]);
 
-    const cleanSheets = player.position === "GK" ? await countGoalkeeperCleanSheets(player.id, seasonId) : undefined;
-    const goalsConceded = player.position === "GK" ? await countGoalkeeperGoalsConceded(player.id, seasonId) : undefined;
+  const goalCounts = new Map(goals.map((row) => [row.playerId, row._count._all]));
+  const assistCounts = new Map(assists.map((row) => [row.playerId, row._count._all]));
+  const cardCounts = new Map<string, { yellow: number; red: number }>();
+  for (const row of cards) {
+    const current = cardCounts.get(row.playerId) || { yellow: 0, red: 0 };
+    if (row.type === "YELLOW") current.yellow += row._count._all;
+    if (row.type === "RED" || row.type === "SECOND_YELLOW") current.red += row._count._all;
+    cardCounts.set(row.playerId, current);
+  }
 
+  const teamStats = new Map<string, { appearances: number; cleanSheets: number; conceded: number }>();
+  for (const teamId of teamIds) teamStats.set(teamId, { appearances: 0, cleanSheets: 0, conceded: 0 });
+  for (const fixture of fixtures) {
+    for (const [teamId, goalsAgainst] of [[fixture.homeTeamId, fixture.awayScore], [fixture.awayTeamId, fixture.homeScore]] as const) {
+      const stats = teamStats.get(teamId);
+      if (!stats) continue;
+      stats.appearances++;
+      stats.conceded += goalsAgainst || 0;
+      if (goalsAgainst === 0) stats.cleanSheets++;
+    }
+  }
+
+  await prisma.$transaction(players.filter((player) => player.teamId).map((player) => {
     const teamId = player.teamId!;
-
-    await prisma.playerStat.upsert({
+    const team = teamStats.get(teamId) || { appearances: 0, cleanSheets: 0, conceded: 0 };
+    const card = cardCounts.get(player.id) || { yellow: 0, red: 0 };
+    const goalkeeper = player.position === "GK";
+    const data = {
+      appearances: team.appearances,
+      goals: goalCounts.get(player.id) || 0,
+      assists: assistCounts.get(player.id) || 0,
+      yellowCards: card.yellow,
+      redCards: card.red,
+      cleanSheets: goalkeeper ? team.cleanSheets : null,
+      goalsConceded: goalkeeper ? team.conceded : null,
+    };
+    return prisma.playerStat.upsert({
       where: { seasonId_playerId_teamId: { seasonId, playerId: player.id, teamId } },
-      create: {
-        seasonId,
-        playerId: player.id,
-        teamId,
-        appearances,
-        goals,
-        assists,
-        yellowCards,
-        redCards,
-        cleanSheets,
-        goalsConceded,
-      },
-      update: {
-        appearances,
-        goals,
-        assists,
-        yellowCards,
-        redCards,
-        cleanSheets,
-        goalsConceded,
-      },
+      create: { seasonId, playerId: player.id, teamId, ...data },
+      update: data,
     });
-  }
-}
-
-async function countGoalkeeperCleanSheets(playerId: string, seasonId: string): Promise<number> {
-  const fixtures = await prisma.fixture.findMany({
-    where: { seasonId, status: "COMPLETED" },
-    include: { goals: true },
-  });
-  let cleanSheets = 0;
-  for (const f of fixtures) {
-    const isHome = await prisma.team.findFirst({ where: { seasonId, players: { some: { id: playerId } }, homeMatches: { some: { id: f.id } } } });
-    if (isHome && f.awayScore === 0) cleanSheets++;
-    else if (!isHome && f.homeScore === 0) cleanSheets++;
-  }
-  return cleanSheets;
-}
-
-async function countGoalkeeperGoalsConceded(playerId: string, seasonId: string): Promise<number> {
-  const fixtures = await prisma.fixture.findMany({
-    where: { seasonId, status: "COMPLETED" },
-  });
-  let conceded = 0;
-  for (const f of fixtures) {
-    const isHome = await prisma.team.findFirst({ where: { seasonId, players: { some: { id: playerId } }, homeMatches: { some: { id: f.id } } } });
-    if (isHome) conceded += f.awayScore || 0;
-    else conceded += f.homeScore || 0;
-  }
-  return conceded;
+  }));
 }
 
 export async function autoDetectAwards(seasonId: string): Promise<void> {

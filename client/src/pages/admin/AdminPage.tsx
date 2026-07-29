@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,9 +16,6 @@ import type { DashboardStats, User, Season, Team, Player, Fixture, Award, News, 
 import { LayoutDashboard, Users, Calendar, CalendarDays, Trophy, Settings, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2, ActivitySquare, ListChecks, AlertTriangle, MessageSquare, HelpCircle, Tag, Monitor } from "lucide-react";
 import { VenueCalendar } from "@/components/admin/VenueCalendar";
 import { ImageUpload } from "@/components/admin/ImageUpload";
-
-const ADMIN_PASSWORD = "Abdurahman.15";
-const STORAGE_KEY = "admin_unlocked";
 
 const adminTabs = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
@@ -50,7 +47,7 @@ export function AdminPage() {
   const [showForm, setShowForm] = useState<string | null>(null);
   const [passwordInput, setPasswordInput] = useState("");
   const [passwordError, setPasswordError] = useState(false);
-  const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem(STORAGE_KEY) === "true");
+  const [unlocked, setUnlocked] = useState(() => !!sessionStorage.getItem("admin_token"));
 
   // Form state for modals
   const [formData, setFormData] = useState<Record<string, any>>({});
@@ -117,28 +114,21 @@ export function AdminPage() {
     }
   };
 
-  const handleUnlock = () => {
-    if (passwordInput !== ADMIN_PASSWORD) {
+  const handleUnlock = async () => {
+    try {
+      await api.adminLogin(passwordInput);
+      setUnlocked(true);
+      setPasswordError(false);
+    } catch {
       setPasswordError(true);
-      return;
     }
-
-    sessionStorage.setItem(STORAGE_KEY, "true");
-    api.setAdminToken(ADMIN_PASSWORD);
-    setUnlocked(true);
-    setPasswordError(false);
   };
 
-  // Restore admin token on mount when already unlocked (e.g., page refresh)
-  useEffect(() => {
-    if (unlocked) {
-      api.setAdminToken(ADMIN_PASSWORD);
-    }
-  }, [unlocked]);
+  const tabEnabled = (...tabs: string[]) => unlocked && tabs.includes(activeTab);
 
-  const { data: dashboard, isLoading: dashboardLoading } = useQuery({ queryKey: ["admin-dashboard"], queryFn: () => api.get<DashboardStats>("/admin/dashboard"), enabled: unlocked, retry: 1, staleTime: 30000 });
+  const { data: dashboard, isLoading: dashboardLoading } = useQuery({ queryKey: ["admin-dashboard"], queryFn: () => api.get<DashboardStats>("/admin/dashboard"), enabled: tabEnabled("overview"), retry: 1, staleTime: 30000 });
 
-  const { data: users } = useQuery({ queryKey: ["admin-users"], queryFn: () => api.get<{ data: User[] }>("/admin/users", { limit: "20" }), enabled: unlocked });
+  const { data: users } = useQuery({ queryKey: ["admin-users"], queryFn: () => api.get<{ data: User[] }>("/admin/users", { limit: "20" }), enabled: tabEnabled("users") });
 
   const { data: seasons } = useQuery({ queryKey: ["admin-seasons"], queryFn: () => api.get<Season[]>("/admin/seasons"), enabled: unlocked });
 
@@ -154,47 +144,46 @@ export function AdminPage() {
   const { data: teams } = useQuery({
     queryKey: ["admin-teams", selectedSeasonId],
     queryFn: () => api.get<Team[]>("/admin/teams", { ...(selectedSeasonId ? { seasonId: selectedSeasonId } : {}) }),
-    enabled: unlocked,
+    enabled: tabEnabled("teams", "players", "fixtures"),
   });
 
   const { data: players } = useQuery({
     queryKey: ["admin-players", selectedSeasonId],
     queryFn: () => api.get<PaginatedResponse<Player>>("/admin/players", { limit: "50", ...(selectedSeasonId ? { seasonId: selectedSeasonId } : {}) }),
-    enabled: unlocked,
+    enabled: tabEnabled("players"),
   });
 
-  const { data: fixtures } = useQuery({ queryKey: ["admin-fixtures"], queryFn: () => api.get<PaginatedResponse<Fixture>>("/admin/fixtures", { limit: "50" }), enabled: unlocked });
+  const { data: fixtures } = useQuery({ queryKey: ["admin-fixtures"], queryFn: () => api.get<PaginatedResponse<Fixture>>("/admin/fixtures", { limit: "50" }), enabled: tabEnabled("fixtures") });
 
-  const { data: awards } = useQuery({ queryKey: ["admin-awards"], queryFn: () => api.get<Award[]>("/admin/awards"), enabled: unlocked });
+  const { data: awards } = useQuery({ queryKey: ["admin-awards"], queryFn: () => api.get<Award[]>("/admin/awards"), enabled: tabEnabled("awards") });
 
-  const { data: bookings } = useQuery({ queryKey: ["admin-bookings"], queryFn: () => api.get<PaginatedResponse<Booking>>("/admin/bookings", { limit: "50" }), enabled: unlocked });
+  const { data: bookings } = useQuery({ queryKey: ["admin-bookings"], queryFn: () => api.get<PaginatedResponse<Booking>>("/admin/bookings", { limit: "50" }), enabled: tabEnabled("bookings") });
 
-  const { data: news } = useQuery({ queryKey: ["admin-news"], queryFn: () => api.get<PaginatedResponse<News>>("/admin/news", { limit: "50" }), enabled: unlocked });
+  const { data: news } = useQuery({ queryKey: ["admin-news"], queryFn: () => api.get<PaginatedResponse<News>>("/admin/news", { limit: "50" }), enabled: tabEnabled("news") });
 
-  const { data: venues } = useQuery({ queryKey: ["admin-venues"], queryFn: () => api.get<{ data: Venue[] }>("/admin/venues"), enabled: unlocked });
+  const { data: venues } = useQuery({ queryKey: ["admin-venues"], queryFn: () => api.get<{ data: Venue[] }>("/admin/venues"), enabled: tabEnabled("venues") });
 
-  const { data: settings } = useQuery({ queryKey: ["admin-settings"], queryFn: () => api.get<Record<string, string>>("/admin/settings"), enabled: unlocked });
+  const { data: settings } = useQuery({ queryKey: ["admin-settings"], queryFn: () => api.get<Record<string, string>>("/admin/settings"), enabled: tabEnabled("settings") });
 
-  const { data: sponsors } = useQuery({ queryKey: ["admin-sponsors"], queryFn: () => api.get<{ data: Sponsor[] }>("/admin/sponsors"), enabled: unlocked });
+  const { data: sponsors } = useQuery({ queryKey: ["admin-sponsors"], queryFn: () => api.get<{ data: Sponsor[] }>("/admin/sponsors"), enabled: tabEnabled("sponsors") });
 
-  const { data: activityLogs } = useQuery({ queryKey: ["admin-activity"], queryFn: () => api.get<PaginatedResponse<ActivityLog>>("/admin/activity-logs", { limit: "50" }), enabled: unlocked });
+  const { data: activityLogs } = useQuery({ queryKey: ["admin-activity"], queryFn: () => api.get<PaginatedResponse<ActivityLog>>("/admin/activity-logs", { limit: "50" }), enabled: tabEnabled("activity") });
 
-  const { data: suspensions } = useQuery({ queryKey: ["admin-suspensions"], queryFn: () => api.get<PaginatedResponse<Suspension>>("/admin/suspensions", { limit: "50" }), enabled: unlocked });
+  const { data: suspensions } = useQuery({ queryKey: ["admin-suspensions"], queryFn: () => api.get<PaginatedResponse<Suspension>>("/admin/suspensions", { limit: "50" }), enabled: tabEnabled("suspensions") });
 
-  const { data: galleryItems } = useQuery({ queryKey: ["admin-gallery"], queryFn: () => api.get<{ data: Gallery[] }>("/admin/gallery"), enabled: unlocked });
+  const { data: galleryItems } = useQuery({ queryKey: ["admin-gallery"], queryFn: () => api.get<{ data: Gallery[] }>("/admin/gallery"), enabled: tabEnabled("gallery") });
 
-  const { data: coupons } = useQuery({ queryKey: ["admin-coupons"], queryFn: () => api.get<{ data: Coupon[] }>("/admin/coupons"), enabled: unlocked });
+  const { data: coupons } = useQuery({ queryKey: ["admin-coupons"], queryFn: () => api.get<{ data: Coupon[] }>("/admin/coupons"), enabled: tabEnabled("coupons") });
 
-  const { data: ads } = useQuery({ queryKey: ["admin-ads"], queryFn: () => api.get<{ data: Advertisement[] }>("/admin/ads"), enabled: unlocked });
+  const { data: ads } = useQuery({ queryKey: ["admin-ads"], queryFn: () => api.get<{ data: Advertisement[] }>("/admin/ads"), enabled: tabEnabled("ads") });
 
-  const { data: faqs } = useQuery({ queryKey: ["admin-faqs"], queryFn: () => api.get<{ data: Faq[] }>("/admin/faqs"), enabled: unlocked });
+  const { data: faqs } = useQuery({ queryKey: ["admin-faqs"], queryFn: () => api.get<{ data: Faq[] }>("/admin/faqs"), enabled: tabEnabled("faqs") });
 
-  const { data: reviews } = useQuery({ queryKey: ["admin-reviews"], queryFn: () => api.get<{ data: ReviewAdmin[] }>("/admin/reviews"), enabled: unlocked });
+  const { data: reviews } = useQuery({ queryKey: ["admin-reviews"], queryFn: () => api.get<{ data: ReviewAdmin[] }>("/admin/reviews"), enabled: tabEnabled("reviews") });
 
   const stats = dashboard?.stats;
 
   const handleLogout = () => {
-    sessionStorage.removeItem(STORAGE_KEY);
     api.setAdminToken(null);
     api.logout();
     navigate("/");
@@ -529,7 +518,7 @@ export function AdminPage() {
               ]}
               onAdd={() => { setEditingItem(null); openForm("player", { firstName: "", lastName: "", position: "", teamId: "", jerseyNumber: "", squadType: "", nationality: "", age: "", height: "", weight: "", preferredFoot: "", biography: "" }); }}
               onEdit={(p) => { setEditingItem(p); openForm("player", { firstName: p.firstName, lastName: p.lastName || "", position: p.position || "", teamId: p.teamId || "", jerseyNumber: p.jerseyNumber || "", squadType: p.squadType || "", photoUrl: p.photoUrl || "", nationality: p.nationality || "", age: p.age || "", height: p.height || "", weight: p.weight || "", preferredFoot: p.preferredFoot || "", biography: p.biography || "" }); }}
-              onDelete={(p) => { if (confirm(`Delete player ${p.firstName} ${p.lastName}?`)) api.delete(`/admin/players/${p.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-players"] })); }}
+              onDelete={(p) => { if (confirm(`Delete player ${p.firstName} ${p.lastName}?`)) api.delete(`/admin/players/${p.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-players"] })).catch((e: any) => setActionError(e.message)); }}
             />
             <Dialog open={showForm === "player"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Player" : "Add Player"}>
               <div className="space-y-4">
@@ -968,7 +957,7 @@ export function AdminPage() {
               ]}
               onAdd={() => { setEditingItem(null); openForm("gallery", { title: "", imageUrl: "", videoUrl: "", isActive: true }); }}
               onEdit={(g) => { setEditingItem(g); openForm("gallery", { title: g.title, imageUrl: g.imageUrl || "", videoUrl: g.videoUrl || "", isActive: g.isActive ?? true }); }}
-              onDelete={(g) => { if (confirm("Delete this gallery item?")) api.delete(`/admin/gallery/${g.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-gallery"] })); }}
+              onDelete={(g) => { if (confirm("Delete this gallery item?")) api.delete(`/admin/gallery/${g.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-gallery"] })).catch((e: any) => setActionError(e.message)); }}
             />
             <Dialog open={showForm === "gallery"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Gallery Item" : "Add Gallery Item"}>
               <div className="space-y-4">
@@ -1024,7 +1013,7 @@ export function AdminPage() {
                         <Edit2 className="h-4 w-4" />
                       </Button>
                       <Button variant="ghost" size="sm" onClick={() => {
-                        if (confirm("Delete this venue?")) api.delete(`/admin/venues/${v.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-venues"] }));
+                        if (confirm("Delete this venue?")) api.delete(`/admin/venues/${v.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-venues"] })).catch((e: any) => setActionError(e.message));
                       }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                     </div>
                   </CardHeader>
@@ -1044,7 +1033,7 @@ export function AdminPage() {
                                 <Edit2 className="h-4 w-4" />
                               </Button>
                               <Button variant="ghost" size="sm" onClick={() => {
-                                if (confirm("Delete this turf?")) api.delete(`/admin/turfs/${t.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-venues"] }));
+                                if (confirm("Delete this turf?")) api.delete(`/admin/turfs/${t.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-venues"] })).catch((e: any) => setActionError(e.message));
                               }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                             </div>
                           </div>
@@ -1307,7 +1296,7 @@ export function AdminPage() {
               ]}
               onAdd={() => { setEditingItem(null); openForm("news", { title: "", excerpt: "", content: "", imageUrl: "", author: "" }); }}
               onEdit={(n) => { setEditingItem(n); openForm("news", { title: n.title, slug: n.slug, excerpt: n.excerpt || "", content: n.content || "", imageUrl: n.imageUrl || "", author: n.author || "" }); }}
-              onDelete={(n) => { if (confirm("Delete this article?")) api.delete(`/admin/news/${n.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-news"] })); }}
+              onDelete={(n) => { if (confirm("Delete this article?")) api.delete(`/admin/news/${n.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-news"] })).catch((e: any) => setActionError(e.message)); }}
             />
             <Dialog open={showForm === "news"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Article" : "Add News Article"}>
               <div className="space-y-4">
@@ -1362,7 +1351,7 @@ export function AdminPage() {
               ]}
               onAdd={() => { setEditingItem(null); openForm("sponsor", { name: "", website: "", tier: "platinum", logoUrl: "", isActive: true }); }}
               onEdit={(s) => { setEditingItem(s); openForm("sponsor", { name: s.name, website: s.website || "", tier: s.tier || "platinum", logoUrl: s.logoUrl || "", isActive: s.isActive !== false }); }}
-              onDelete={(s) => { if (confirm("Delete this sponsor?")) api.delete(`/admin/sponsors/${s.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-sponsors"] })); }}
+              onDelete={(s) => { if (confirm("Delete this sponsor?")) api.delete(`/admin/sponsors/${s.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-sponsors"] })).catch((e: any) => setActionError(e.message)); }}
             />
             <Dialog open={showForm === "sponsor"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Sponsor" : "Add Sponsor"}>
               <div className="space-y-4">
@@ -1411,7 +1400,7 @@ export function AdminPage() {
               ]}
               onAdd={() => { setEditingItem(null); openForm("coupon", { code: "", discountType: "PERCENTAGE", discountValue: 10, maxUses: 100, minAmount: 0, isActive: true }); }}
               onEdit={(c) => { setEditingItem(c); openForm("coupon", c); }}
-              onDelete={(c) => { if (confirm(`Delete coupon "${c.code}"?`)) api.delete(`/admin/coupons/${c.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-coupons"] })); }}
+              onDelete={(c) => { if (confirm(`Delete coupon "${c.code}"?`)) api.delete(`/admin/coupons/${c.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-coupons"] })).catch((e: any) => setActionError(e.message)); }}
             />
             <Dialog open={showForm === "coupon"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Coupon" : "Add Coupon"}>
               <div className="space-y-4">
@@ -1473,7 +1462,7 @@ export function AdminPage() {
               ]}
               onAdd={() => { setEditingItem(null); openForm("ad", { title: "", imageUrl: "", linkUrl: "", position: "banner", isActive: true }); }}
               onEdit={(a) => { setEditingItem(a); openForm("ad", a); }}
-              onDelete={(a) => { if (confirm(`Delete ad "${a.title}"?`)) api.delete(`/admin/ads/${a.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-ads"] })); }}
+              onDelete={(a) => { if (confirm(`Delete ad "${a.title}"?`)) api.delete(`/admin/ads/${a.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-ads"] })).catch((e: any) => setActionError(e.message)); }}
             />
             <Dialog open={showForm === "ad"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Advertisement" : "Add Advertisement"}>
               <div className="space-y-4">
@@ -1532,7 +1521,7 @@ export function AdminPage() {
               ]}
               onAdd={() => { setEditingItem(null); openForm("faq", { question: "", answer: "", category: "general", order: 0, isActive: true }); }}
               onEdit={(f) => { setEditingItem(f); openForm("faq", f); }}
-              onDelete={(f) => { if (confirm(`Delete FAQ "${f.question}"?`)) api.delete(`/admin/faqs/${f.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-faqs"] })); }}
+              onDelete={(f) => { if (confirm(`Delete FAQ "${f.question}"?`)) api.delete(`/admin/faqs/${f.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-faqs"] })).catch((e: any) => setActionError(e.message)); }}
             />
             <Dialog open={showForm === "faq"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit FAQ" : "Add FAQ"}>
               <div className="space-y-4">
@@ -1583,7 +1572,7 @@ export function AdminPage() {
                 <span className="max-w-[200px] truncate text-sm text-muted-foreground">{r.comment || "—"}</span>,
                 r.isApproved ? <Badge className="bg-primary">Approved</Badge> : <Badge variant="secondary">Pending</Badge>,
               ]}
-              onDelete={(r) => { if (confirm("Delete this review?")) api.delete(`/admin/reviews/${r.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-reviews"] })); }}
+              onDelete={(r) => { if (confirm("Delete this review?")) api.delete(`/admin/reviews/${r.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-reviews"] })).catch((e: any) => setActionError(e.message)); }}
             />
             <div className="mt-2 flex gap-2">
               <Button size="sm" variant="outline" onClick={async () => {

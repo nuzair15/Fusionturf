@@ -7,7 +7,14 @@ import multer from "multer";
 import cloudinary from "./lib/cloudinary.js";
 import { config } from "./config/index.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
+import { authenticate, authorize } from "./middleware/auth.js";
 import routes from "./routes/index.js";
+
+if (config.nodeEnv === "production") {
+  const required = ["DATABASE_URL", "JWT_SECRET", "ADMIN_PANEL_PASSWORD"];
+  const missing = required.filter((key) => !process.env[key]);
+  if (missing.length > 0) throw new Error(`Missing required production environment variables: ${missing.join(", ")}`);
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -58,7 +65,7 @@ if (config.nodeEnv !== "test") {
 }
 
 // Upload endpoint
-app.post("/api/upload", upload.single("file"), async (req, res, next) => {
+app.post("/api/upload", authenticate, authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "CONTENT_EDITOR"), upload.single("file"), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const result = await new Promise<any>((resolve, reject) => {

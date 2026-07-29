@@ -25,12 +25,12 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
 
     const token = authHeader.split(" ")[1];
 
-    if (token === config.adminPanel.password) {
-      req.user = { userId: "admin-panel", role: "SUPER_ADMIN" };
+    const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+
+    if (decoded.userId === "admin-panel" && decoded.role === "SUPER_ADMIN") {
+      req.user = decoded;
       return next();
     }
-
-    const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
 
     const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
     if (!user || !user.isActive) {
@@ -61,12 +61,8 @@ export const optionalAuth = async (req: Request, res: Response, next: NextFuncti
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith("Bearer ")) {
       const token = authHeader.split(" ")[1];
-      if (token === config.adminPanel.password) {
-        req.user = { userId: "admin-panel", role: "SUPER_ADMIN" };
-      } else {
-        const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
-        req.user = decoded;
-      }
+      const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+      req.user = decoded;
     }
   } catch {
     // ignore

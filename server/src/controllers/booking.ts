@@ -8,14 +8,19 @@ import { sendBookingConfirmation } from "../services/email.js";
 
 const createBookingSchema = z.object({
   body: z.object({
-    turfId: z.string(),
-    date: z.string(),
-    startTime: z.string(),
-    endTime: z.string(),
+    turfId: z.string().min(1),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must use YYYY-MM-DD"),
+    startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "invalid start time"),
+    endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "invalid end time"),
     customerName: z.string().min(1),
     customerPhone: z.string().min(1),
     customerEmail: z.string().email().optional().or(z.literal("")),
     notes: z.string().optional(),
+  }).superRefine((body, ctx) => {
+    if (body.startTime >= body.endTime) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["endTime"], message: "endTime must be after startTime" });
+    if (new Date(`${body.date}T00:00:00`).getTime() < new Date(new Date().toDateString()).getTime()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["date"], message: "booking date cannot be in the past" });
+    }
   }),
 });
 
@@ -145,17 +150,21 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
     });
     if (overlap) throw new AppError("This time slot is already booked. Please choose a different time.", 409);
 
-    let totalAmount = turf.basePrice;
+    let hourlyPrice = turf.basePrice;
     const dayOfWeek = matchDate.getDay();
 
     if (dayOfWeek === 0 || dayOfWeek === 6) {
-      totalAmount = turf.weekendPrice || turf.basePrice;
+      hourlyPrice = turf.weekendPrice || turf.basePrice;
     }
 
     const hour = parseInt(data.startTime.split(":")[0], 10);
     if ((hour >= 17 && hour <= 21)) {
-      totalAmount = turf.peakPrice || totalAmount;
+      hourlyPrice = turf.peakPrice || hourlyPrice;
     }
+
+    const duration = (parseInt(data.endTime.slice(0, 2), 10) * 60 + parseInt(data.endTime.slice(3), 10)) -
+      (parseInt(data.startTime.slice(0, 2), 10) * 60 + parseInt(data.startTime.slice(3), 10));
+    const totalAmount = hourlyPrice * Math.ceil(duration / 60);
 
     // Create or find guest user for walk-in bookings
     const guestEmail = data.customerEmail || `guest-${Date.now()}@fusionturf.com`;
@@ -187,7 +196,7 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
         date: matchDate,
         startTime: data.startTime,
         endTime: data.endTime,
-        duration: 60,
+        duration,
         totalAmount,
         notes: bookingNotes,
         status: "PENDING",

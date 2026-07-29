@@ -23,7 +23,12 @@ export function ImageUpload({ value, onChange, label = "Image", uploadUrl = `${A
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch(uploadUrl, { method: "POST", body: form });
+      const token = sessionStorage.getItem("admin_token");
+      const res = await fetch(uploadUrl, {
+        method: "POST",
+        body: form,
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       const data = await res.json();
       if (data.url) onChange(data.url);
     } catch {
