@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import prisma from "../config/database.js";
 import { AppError } from "../middleware/errorHandler.js";
-import { paginate, paginatedResponse, calculateMatchStats } from "../utils/helpers.js";
+import { paginate, paginatedResponse, calculateMatchStats, searchPlayerIds } from "../utils/helpers.js";
 
 // ─── Seasons ───
 
@@ -93,10 +93,24 @@ export const getPlayers = async (req: Request, res: Response, next: NextFunction
     if (req.query.teamId) where.teamId = req.query.teamId;
     if (req.query.position) where.position = req.query.position;
     if (req.query.search) {
-      where.OR = [
-        { firstName: { contains: req.query.search, mode: "insensitive" } },
-        { lastName: { contains: req.query.search, mode: "insensitive" } },
-      ];
+      const { ids, total } = await searchPlayerIds(req.query.search as string, {
+        teamId: req.query.teamId as string,
+        seasonId: req.query.seasonId as string,
+        position: req.query.position as string,
+        isActive: true,
+        limit, offset: skip,
+      });
+      if (ids.length === 0) return res.json(paginatedResponse([], total, page, limit));
+      where.id = { in: ids };
+      const data = await prisma.player.findMany({
+        where,
+        include: {
+          team: { select: { name: true, slug: true, logoUrl: true } },
+          homeStats: { select: { goals: true, assists: true, appearances: true } },
+        },
+        orderBy: { firstName: "asc" },
+      });
+      return res.json(paginatedResponse(data, total, page, limit));
     }
 
     const [data, total] = await Promise.all([

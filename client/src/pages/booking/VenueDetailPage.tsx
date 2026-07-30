@@ -107,18 +107,24 @@ export function VenueDetailPage() {
 
   const isSlotBooked = (slot: string) => bookedSlots.includes(slot);
 
+  // A slot is invalid as an end time if [startSlot, slot) overlaps any existing booking
+  const isEndSlotInvalid = (slot: string) => {
+    if (!bookedData || !startSlot) return false;
+    return bookedData.some((b) => startSlot < b.endTime && slot > b.startTime);
+  };
+
   const validEndSlots = useMemo(() => {
     if (!startSlot) return [];
     const idx = timeSlots.indexOf(startSlot);
     if (idx === -1) return [];
-    return timeSlots.slice(idx + 1).filter((s) => !isSlotBooked(s));
-  }, [startSlot, timeSlots, bookedSlots]);
+    return timeSlots.slice(idx + 1).filter((s) => !isEndSlotInvalid(s));
+  }, [startSlot, timeSlots, bookedData]);
 
   useEffect(() => {
-    if (endSlot && (!startSlot || timeSlots.indexOf(endSlot) <= timeSlots.indexOf(startSlot))) {
+    if (endSlot && (!startSlot || timeSlots.indexOf(endSlot) <= timeSlots.indexOf(startSlot) || isEndSlotInvalid(endSlot))) {
       setEndSlot("");
     }
-  }, [startSlot, endSlot, timeSlots]);
+  }, [startSlot, endSlot, timeSlots, bookedData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -267,17 +273,17 @@ export function VenueDetailPage() {
                         {timeSlots
                           .filter((s) => timeSlots.indexOf(s) > timeSlots.indexOf(startSlot))
                           .map((slot) => {
-                            const booked = isSlotBooked(slot);
+                            const invalid = isEndSlotInvalid(slot);
                             return (
                               <button
                                 key={slot}
                                 type="button"
-                                disabled={booked}
+                                disabled={invalid}
                                 onClick={() => setEndSlot(slot)}
                                 className={`rounded-lg border py-3 text-sm font-medium transition-all ${
                                   endSlot === slot
                                     ? "border-primary bg-primary text-primary-foreground"
-                                    : booked
+                                    : invalid
                                       ? "cursor-not-allowed border-destructive/30 bg-destructive/10 text-destructive/50 line-through"
                                       : "hover:border-primary/50"
                                 }`}

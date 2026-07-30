@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import prisma from "../config/database.js";
 import { config } from "../config/index.js";
 import { AppError } from "../middleware/errorHandler.js";
-import { paginate, paginatedResponse } from "../utils/helpers.js";
+import { paginate, paginatedResponse, searchPlayerIds } from "../utils/helpers.js";
 import * as leagueSystem from "../services/league-system.js";
 
 export const loginAdmin = async (req: Request, res: Response, next: NextFunction) => {
@@ -169,10 +169,20 @@ export const getPlayers = async (req: Request, res: Response, next: NextFunction
     const where: any = {};
     if (teamId) where.teamId = teamId;
     if (seasonId) where.seasonId = seasonId;
-    if (search) where.OR = [
-      { firstName: { contains: search as string, mode: "insensitive" } },
-      { lastName: { contains: search as string, mode: "insensitive" } },
-    ];
+    if (search) {
+      const { ids, total } = await searchPlayerIds(search as string, {
+        teamId: teamId as string, seasonId: seasonId as string,
+        limit, offset: skip,
+      });
+      if (ids.length === 0) return res.json(paginatedResponse([], total, page, limit));
+      where.id = { in: ids };
+      const data = await prisma.player.findMany({
+        where,
+        include: { team: { select: { name: true, slug: true } } },
+        orderBy: { firstName: "asc" },
+      });
+      return res.json(paginatedResponse(data, total, page, limit));
+    }
     const [data, total] = await Promise.all([
       prisma.player.findMany({
         where,
@@ -1423,16 +1433,13 @@ export const searchPlayers = async (req: Request, res: Response, next: NextFunct
     if (!q || typeof q !== "string" || q.length < 2) {
       return res.json([]);
     }
+    const { ids } = await searchPlayerIds(q, {
+      teamId: teamId as string, limit: 10,
+    });
+    if (ids.length === 0) return res.json([]);
     const players = await prisma.player.findMany({
-      where: {
-        ...(teamId ? { teamId: String(teamId) } : {}),
-        OR: [
-          { firstName: { contains: q, mode: "insensitive" } },
-          { lastName: { contains: q, mode: "insensitive" } },
-        ],
-      },
+      where: { id: { in: ids } },
       include: { team: { select: { name: true } } },
-      take: 10,
       orderBy: { firstName: "asc" },
     });
     res.json(players);
@@ -1463,10 +1470,14 @@ export const adminSearch = async (req: Request, res: Response, next: NextFunctio
 
     const [teams, players, venues, bookings, fixtures, news, sponsors, users] = await Promise.all([
       prisma.team.findMany({ where: { name: { contains: q, mode: "insensitive" } }, take: 5 }),
-      prisma.player.findMany({
-        where: { OR: [{ firstName: { contains: q, mode: "insensitive" } }, { lastName: { contains: q, mode: "insensitive" } }] },
-        include: { team: { select: { name: true } } }, take: 5,
-      }),
+      (async () => {
+        const { ids } = await searchPlayerIds(q, { limit: 5 });
+        if (ids.length === 0) return [];
+        return prisma.player.findMany({
+          where: { id: { in: ids } },
+          include: { team: { select: { name: true } } },
+        });
+      })(),
       prisma.venue.findMany({ where: { name: { contains: q, mode: "insensitive" } }, take: 5 }),
       prisma.booking.findMany({
         where: { bookingNumber: { contains: q, mode: "insensitive" } },
