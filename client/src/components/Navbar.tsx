@@ -1,8 +1,9 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "@/providers/ThemeProvider";
+import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import { Moon, Sun, LogOut } from "lucide-react";
+import { Moon, Sun, Calendar } from "lucide-react";
 
 export function Navbar() {
   const { theme, setTheme } = useTheme();
@@ -29,23 +30,15 @@ export function Navbar() {
         </Link>
 
         <div className="hidden items-center gap-8 md:flex">
-          {[
-            { to: "/", label: "Home" },
-            { to: "/booking", label: "Book Turf" },
-            { to: "/league", label: "League" },
-            { to: "/admin", label: "Admin" },
-          ].map((link) => (
-            <Link
-              key={link.to}
-              to={link.to}
-              className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-            >
-              {link.label}
-            </Link>
-          ))}
+          <Link to="/league" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+            League
+          </Link>
         </div>
 
         <div className="flex items-center gap-2">
+          <Button onClick={() => navigate("/booking")} size="sm" className="gap-1.5">
+            <Calendar className="h-4 w-4" /> Book Now
+          </Button>
           <button
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent md:h-10 md:w-10"
