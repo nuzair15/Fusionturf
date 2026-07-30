@@ -33,7 +33,7 @@ export function HomePage() {
   const sponsorList = sponsors?.data || [];
 
   return (
-    <div className="space-y-10 pb-8">
+    <div className="space-y-24 pb-8">
       {/* Hero */}
       <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
         <LeagueHero
