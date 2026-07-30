@@ -560,6 +560,12 @@ export interface DashboardStats {
     totalRevenue: number;
     activeBookings: number;
   };
+  periodStats: {
+    period: string;
+    bookings: number;
+    revenue: number;
+    cancellations: number;
+  };
   recentFixtures: Fixture[];
   todayFixtures: Fixture[];
   recentBookings: Booking[];

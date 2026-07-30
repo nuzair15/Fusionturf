@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { ErrorState } from "@/components/admin/ErrorState";
@@ -12,6 +13,12 @@ import {
   DollarSign, Calendar, Building2, Wallet, Clock, Trophy,
   MapPin, Users, XCircle, UserPlus,
 } from "lucide-react";
+
+type Period = "today" | "week" | "month" | "year";
+
+const periodLabels: Record<Period, string> = {
+  today: "Today", week: "This Week", month: "This Month", year: "This Year",
+};
 
 function StatCard({ label, value, icon: Icon, color, isLoading, index = 0 }: {
   label: string; value: string | number; icon: any; color: string; isLoading?: boolean; index?: number;
@@ -51,14 +58,17 @@ function Skeleton({ className }: { className?: string }) {
 }
 
 export function AdminDashboard() {
+  const [period, setPeriod] = useState<Period>("today");
+
   const { data: dashboard, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ["admin-dashboard"],
-    queryFn: () => api.get<DashboardStats>("/admin/dashboard"),
+    queryKey: ["admin-dashboard", period],
+    queryFn: () => api.get<DashboardStats>("/admin/dashboard", { period }),
     retry: 1,
     staleTime: 30000,
   });
 
   const stats = dashboard?.stats;
+  const periodStats = dashboard?.periodStats;
   const recentFixtures = dashboard?.recentFixtures || [];
   const todayFixtures = dashboard?.todayFixtures || [];
   const recentBookings = dashboard?.recentBookings || [];
@@ -66,26 +76,9 @@ export function AdminDashboard() {
 
   const todayStr = new Date().toISOString().split("T")[0];
 
-  const todayBookings = useMemo(() =>
-    recentBookings.filter((b) => b.date?.startsWith(todayStr)),
-    [recentBookings, todayStr]
-  );
-
-  const pendingPayments = useMemo(() =>
-    recentBookings.filter((b) => b.status === "PENDING"),
-    [recentBookings]
-  );
-
-  const cancelledToday = useMemo(() =>
-    recentBookings.filter((b) => b.date?.startsWith(todayStr) && b.status === "CANCELLED"),
-    [recentBookings, todayStr]
-  );
-
-  const todayRevenue = useMemo(() =>
-    todayBookings.reduce((sum, b) => sum + b.totalAmount, 0),
-    [todayBookings]
-  );
-
+  const todayBookings = recentBookings.filter((b) => b.date?.startsWith(todayStr));
+  const pendingPayments = recentBookings.filter((b) => b.status === "PENDING");
+  const cancelledToday = recentBookings.filter((b) => b.date?.startsWith(todayStr) && b.status === "CANCELLED");
   const upcomingMatches = recentFixtures.filter((f) => f.status === "SCHEDULED");
   const totalVenues = venues.length;
 
@@ -113,16 +106,32 @@ export function AdminDashboard() {
 
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="space-y-6">
+      {/* Period Selector */}
+      <motion.div variants={item} className="flex items-center gap-2">
+        <span className="text-sm font-medium text-muted-foreground">Period:</span>
+        {(["today", "week", "month", "year"] as Period[]).map((p) => (
+          <Button
+            key={p}
+            variant={period === p ? "default" : "outline"}
+            size="sm"
+            onClick={() => setPeriod(p)}
+            className="h-8 px-3 text-xs"
+          >
+            {periodLabels[p]}
+          </Button>
+        ))}
+      </motion.div>
+
       {/* 8 Stat Cards */}
       <motion.div variants={item} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Today's Revenue" value={formatCurrency(todayRevenue || stats?.totalRevenue || 0)} icon={DollarSign} color="text-green-500" isLoading={isLoading} index={0} />
-        <StatCard label="Today's Bookings" value={todayBookings.length} icon={Calendar} color="text-blue-500" isLoading={isLoading} index={1} />
+        <StatCard label={`${periodLabels[period]} Revenue`} value={formatCurrency(periodStats?.revenue || 0)} icon={DollarSign} color="text-green-500" isLoading={isLoading} index={0} />
+        <StatCard label={`${periodLabels[period]} Bookings`} value={periodStats?.bookings ?? todayBookings.length} icon={Calendar} color="text-blue-500" isLoading={isLoading} index={1} />
         <StatCard label="Current Occupancy" value={stats?.activeBookings ? `${Math.min(Math.round((stats.activeBookings / 20) * 100), 100)}%` : "—"} icon={Building2} color="text-purple-500" isLoading={isLoading} index={2} />
         <StatCard label="Pending Payments" value={pendingPayments.length} icon={Wallet} color="text-amber-500" isLoading={isLoading} index={3} />
         <StatCard label="Upcoming Matches" value={upcomingMatches.length} icon={Trophy} color="text-orange-500" isLoading={isLoading} index={4} />
-        <StatCard label="Available Venues" value={totalVenues} icon={MapPin} color="text-teal-500" isLoading={isLoading} index={5} />
-        <StatCard label="Cancelled Today" value={cancelledToday.length} icon={XCircle} color="text-red-500" isLoading={isLoading} index={6} />
-        <StatCard label="New Users" value={stats?.totalUsers || 0} icon={UserPlus} color="text-pink-500" isLoading={isLoading} index={7} />
+        <StatCard label="Available Venues" value={venues.length} icon={MapPin} color="text-teal-500" isLoading={isLoading} index={5} />
+        <StatCard label={`Cancelled (${periodLabels[period]})`} value={period === "today" ? cancelledToday.length : periodStats?.cancellations ?? 0} icon={XCircle} color="text-red-500" isLoading={isLoading} index={6} />
+        <StatCard label="All-time Users" value={stats?.totalUsers || 0} icon={UserPlus} color="text-pink-500" isLoading={isLoading} index={7} />
       </motion.div>
 
       <div className="grid gap-6 lg:grid-cols-3">

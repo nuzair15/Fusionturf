@@ -756,8 +756,31 @@ export const updateUserRole = async (req: Request, res: Response, next: NextFunc
 
 // ─── Dashboard Analytics ───
 
-export const getDashboardStats = async (_req: Request, res: Response, next: NextFunction) => {
+function getPeriodRange(period: string): { start: Date; end: Date } {
+  const now = new Date();
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  let start: Date;
+  switch (period) {
+    case "week":
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+      break;
+    case "month":
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      break;
+    case "year":
+      start = new Date(now.getFullYear(), 0, 1);
+      break;
+    default:
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }
+  return { start, end };
+}
+
+export const getDashboardStats = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const period = (req.query.period as string) || "today";
+    const { start: periodStart, end: periodEnd } = getPeriodRange(period);
+
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date();
@@ -767,6 +790,7 @@ export const getDashboardStats = async (_req: Request, res: Response, next: Next
       totalUsers, totalBookings, totalTeams, totalPlayers,
       totalFixtures, totalRevenue, activeBookings, recentFixtures,
       todayFixtures, recentBookings, activity, venues,
+      periodBookings, periodRevenue, periodCancellations,
     ] = await Promise.all([
       prisma.user.count(),
       prisma.booking.count(),
@@ -803,6 +827,16 @@ export const getDashboardStats = async (_req: Request, res: Response, next: Next
         include: { turfs: { where: { isActive: true } }, _count: { select: { turfs: true } } },
         orderBy: { name: "asc" },
       }),
+      prisma.booking.count({
+        where: { date: { gte: periodStart, lte: periodEnd } },
+      }),
+      prisma.payment.aggregate({
+        _sum: { amount: true },
+        where: { booking: { date: { gte: periodStart, lte: periodEnd } } },
+      }),
+      prisma.booking.count({
+        where: { date: { gte: periodStart, lte: periodEnd }, status: "CANCELLED" },
+      }),
     ]);
 
     res.json({
@@ -810,6 +844,12 @@ export const getDashboardStats = async (_req: Request, res: Response, next: Next
         totalUsers, totalBookings, totalTeams, totalPlayers,
         totalFixtures, totalRevenue: totalRevenue._sum.amount || 0,
         activeBookings,
+      },
+      periodStats: {
+        period,
+        bookings: periodBookings,
+        revenue: periodRevenue._sum.amount || 0,
+        cancellations: periodCancellations,
       },
       recentFixtures,
       todayFixtures,
