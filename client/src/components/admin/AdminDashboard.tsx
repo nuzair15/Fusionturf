@@ -6,16 +6,23 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { formatDate, formatCurrency } from "@/lib/utils";
-import type { DashboardStats, Booking, ActivityLog, Fixture } from "@/types";
+import { ActivityFeed } from "@/components/admin/ActivityFeed";
+import type { DashboardStats, Booking, Fixture, Venue } from "@/types";
 import {
-  DollarSign, Calendar, Building2, Wallet, Clock, ArrowRight,
-  Plus, Users, Trophy, Activity, MapPin, UserPlus,
+  DollarSign, Calendar, Building2, Wallet, Clock, Trophy,
+  MapPin, Users, XCircle, UserPlus,
 } from "lucide-react";
 
-function StatCard({ label, value, icon: Icon, color, isLoading }: { label: string; value: string | number; icon: any; color: string; isLoading?: boolean }) {
+function StatCard({ label, value, icon: Icon, color, isLoading, index = 0 }: {
+  label: string; value: string | number; icon: any; color: string; isLoading?: boolean; index?: number;
+}) {
   return (
-    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-      <Card className="overflow-hidden border-none bg-gradient-to-br from-card to-muted/30 shadow-sm">
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: index * 0.05 }}
+    >
+      <Card className="overflow-hidden border-none bg-gradient-to-br from-card to-muted/30 shadow-sm hover:shadow-md transition-shadow">
         <CardContent className="p-5">
           {isLoading ? (
             <div className="space-y-2">
@@ -56,24 +63,22 @@ export function AdminDashboard() {
     queryFn: () => api.get<{ data: Booking[] }>("/admin/bookings", { limit: "10" }),
   });
 
-  const { data: logsData, isLoading: logsLoading } = useQuery({
-    queryKey: ["admin-activity"],
-    queryFn: () => api.get<{ data: ActivityLog[] }>("/admin/activity-logs", { limit: "10" }),
-  });
-
   const { data: fixturesData, isLoading: fixturesLoading } = useQuery({
     queryKey: ["admin-fixtures-today"],
     queryFn: () => api.get<{ data: Fixture[] }>("/admin/fixtures/live", { limit: "10" }),
   });
 
+  const { data: venuesData, isLoading: venuesLoading } = useQuery({
+    queryKey: ["admin-venues"],
+    queryFn: () => api.get<{ data: Venue[] }>("/admin/venues"),
+  });
+
   const stats = dashboard?.stats;
+  const todayStr = new Date().toISOString().split("T")[0];
 
   const todayBookings = useMemo(() =>
-    (bookingsData?.data || []).filter((b) => {
-      const today = new Date().toISOString().split("T")[0];
-      return b.date?.startsWith(today);
-    }),
-    [bookingsData]
+    (bookingsData?.data || []).filter((b) => b.date?.startsWith(todayStr)),
+    [bookingsData, todayStr]
   );
 
   const pendingPayments = useMemo(() =>
@@ -81,8 +86,20 @@ export function AdminDashboard() {
     [bookingsData]
   );
 
-  const logs = logsData?.data || [];
+  const cancelledToday = useMemo(() =>
+    (bookingsData?.data || []).filter((b) => b.date?.startsWith(todayStr) && b.status === "CANCELLED"),
+    [bookingsData, todayStr]
+  );
+
+  const todayRevenue = useMemo(() =>
+    todayBookings.reduce((sum, b) => sum + b.totalAmount, 0),
+    [todayBookings]
+  );
+
+  const statsLoading = dashLoading || bookingsLoading || venuesLoading;
   const recentFixtures = dashboard?.recentFixtures || [];
+  const upcomingMatches = recentFixtures.filter((f) => f.status === "SCHEDULED");
+  const totalVenues = venuesData?.data?.length || 0;
 
   const container = {
     hidden: { opacity: 0 },
@@ -96,16 +113,20 @@ export function AdminDashboard() {
 
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="space-y-6">
-      {/* Stats Row */}
+      {/* 8 Stat Cards */}
       <motion.div variants={item} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Revenue Today" value={stats?.totalRevenue ? formatCurrency(stats.totalRevenue) : "—"} icon={DollarSign} color="text-green-500" isLoading={dashLoading} />
-        <StatCard label="Bookings Today" value={todayBookings.length || "—"} icon={Calendar} color="text-blue-500" isLoading={bookingsLoading} />
-        <StatCard label="Occupancy" value="—" icon={Building2} color="text-purple-500" isLoading={false} />
-        <StatCard label="Pending Payments" value={pendingPayments.length || "—"} icon={Wallet} color="text-amber-500" isLoading={bookingsLoading} />
+        <StatCard label="Today's Revenue" value={formatCurrency(todayRevenue || stats?.totalRevenue || 0)} icon={DollarSign} color="text-green-500" isLoading={statsLoading} index={0} />
+        <StatCard label="Today's Bookings" value={todayBookings.length} icon={Calendar} color="text-blue-500" isLoading={bookingsLoading} index={1} />
+        <StatCard label="Current Occupancy" value={stats?.activeBookings ? `${Math.min(Math.round((stats.activeBookings / 20) * 100), 100)}%` : "—"} icon={Building2} color="text-purple-500" isLoading={dashLoading} index={2} />
+        <StatCard label="Pending Payments" value={pendingPayments.length} icon={Wallet} color="text-amber-500" isLoading={bookingsLoading} index={3} />
+        <StatCard label="Upcoming Matches" value={upcomingMatches.length} icon={Trophy} color="text-orange-500" isLoading={dashLoading} index={4} />
+        <StatCard label="Available Venues" value={totalVenues} icon={MapPin} color="text-teal-500" isLoading={venuesLoading} index={5} />
+        <StatCard label="Cancelled Today" value={cancelledToday.length} icon={XCircle} color="text-red-500" isLoading={bookingsLoading} index={6} />
+        <StatCard label="New Users" value={stats?.totalUsers || 0} icon={UserPlus} color="text-pink-500" isLoading={dashLoading} index={7} />
       </motion.div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Today's Schedule + Recent Bookings */}
+        {/* Left: Schedule + Bookings */}
         <motion.div variants={item} className="space-y-6 lg:col-span-2">
           {/* Today's Schedule */}
           <Card>
@@ -193,60 +214,9 @@ export function AdminDashboard() {
           </Card>
         </motion.div>
 
-        {/* Right Column: Quick Actions + Timeline */}
-        <motion.div variants={item} className="space-y-6">
-          {/* Quick Actions */}
-          <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2 text-base"><ArrowRight className="h-4 w-4" /> Quick Actions</CardTitle></CardHeader>
-            <CardContent className="grid gap-2">
-              <Button variant="outline" className="justify-start gap-2" onClick={() => {}}><Plus className="h-4 w-4" /> Booking</Button>
-              <Button variant="outline" className="justify-start gap-2" onClick={() => {}}><Users className="h-4 w-4" /> Team</Button>
-              <Button variant="outline" className="justify-start gap-2" onClick={() => {}}><UserPlus className="h-4 w-4" /> Player</Button>
-              <Button variant="outline" className="justify-start gap-2" onClick={() => {}}><Activity className="h-4 w-4" /> Fixture</Button>
-              <Button variant="outline" className="justify-start gap-2" onClick={() => {}}><MapPin className="h-4 w-4" /> Venue</Button>
-            </CardContent>
-          </Card>
-
-          {/* Activity Timeline */}
-          <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Clock className="h-4 w-4" /> Activity Timeline</CardTitle></CardHeader>
-            <CardContent>
-              {logsLoading ? (
-                <div className="space-y-3">
-                  {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-10 w-full" />)}
-                </div>
-              ) : logs.length === 0 ? (
-                <div className="flex flex-col items-center py-8 text-muted-foreground">
-                  <Clock className="mb-2 h-8 w-8" />
-                  <p className="text-sm">No recent activity</p>
-                </div>
-              ) : (
-                <div className="space-y-0">
-                  {logs.slice(0, 8).map((log, i) => (
-                    <div key={log.id} className="relative flex gap-3 pb-4 last:pb-0">
-                      {i < logs.length - 1 && i < 7 && (
-                        <div className="absolute left-[7px] top-4 h-full w-px bg-border" />
-                      )}
-                      <div className={`mt-1.5 h-3.5 w-3.5 shrink-0 rounded-full border-2 ${
-                        log.action?.includes("created") || log.action?.includes("booked")
-                          ? "border-green-500 bg-green-500/20"
-                          : log.action?.includes("updated") || log.action?.includes("paid")
-                          ? "border-blue-500 bg-blue-500/20"
-                          : "border-muted-foreground bg-muted"
-                      }`} />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{log.action} {log.entity && <span className="text-muted-foreground">{log.entity}</span>}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {log.createdAt ? formatDate(log.createdAt) : "—"}
-                          {log.user && ` by ${log.user.firstName} ${log.user.lastName}`}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        {/* Right: Activity Feed */}
+        <motion.div variants={item}>
+          <ActivityFeed />
         </motion.div>
       </div>
     </motion.div>

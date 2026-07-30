@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,8 +16,13 @@ import { LiveStatsPanel } from "@/components/admin/LiveStatsPanel";
 import { AdminSidebar, SidebarDrawer } from "@/components/admin/AdminSidebar";
 import { AdminDashboard } from "@/components/admin/AdminDashboard";
 import { AdminSearch } from "@/components/admin/AdminSearch";
+import { AdminCalendar } from "@/components/admin/AdminCalendar";
+import { AdminAnalytics } from "@/components/admin/AdminAnalytics";
+import { BookingDrawer } from "@/components/admin/BookingDrawer";
+import { BottomSheet } from "@/components/admin/BottomSheet";
+import { DataTable, ColumnDef, BulkAction } from "@/components/admin/DataTable";
 import type { DashboardStats, User, Season, Team, Player, Fixture, Award, News, Booking, PaginatedResponse, Venue, Turf, Sponsor, Suspension, ActivityLog, Gallery, Coupon, Advertisement, Faq, ReviewAdmin } from "@/types";
-import { LayoutDashboard, Users, Calendar, CalendarDays, Trophy, Settings, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2, ActivitySquare, ListChecks, AlertTriangle, MessageSquare, HelpCircle, Tag, Monitor, Search, Menu } from "lucide-react";
+import { LayoutDashboard, Users, Calendar, CalendarDays, Trophy, Settings, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2, XCircle, ListChecks, AlertTriangle, MessageSquare, HelpCircle, Tag, Monitor, Search, Menu, TrendingUp, MoreHorizontal } from "lucide-react";
 import { VenueCalendar } from "@/components/admin/VenueCalendar";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 
@@ -30,6 +36,8 @@ const adminTabs = [
   { id: "gallery", label: "Gallery", icon: Image },
   { id: "venues", label: "Venues", icon: MapPin },
   { id: "bookings", label: "Bookings", icon: Calendar },
+  { id: "calendar", label: "Calendar", icon: CalendarDays },
+  { id: "analytics", label: "Analytics", icon: TrendingUp },
   { id: "news", label: "News", icon: Newspaper },
   { id: "sponsors", label: "Sponsors", icon: Handshake },
   { id: "coupons", label: "Coupons", icon: Tag },
@@ -66,6 +74,7 @@ export function AdminPage() {
   const [winnerResults, setWinnerResults] = useState<any[]>([]);
   const [winnerLoading, setWinnerLoading] = useState(false);
   const [selectedWinner, setSelectedWinner] = useState<any>(null);
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
   const openForm = (type: string, initial: Record<string, any> = {}) => {
     setFormData(initial);
@@ -413,18 +422,18 @@ export function AdminPage() {
 
         {activeTab === "teams" && (
           <>
-            <AdminTable
+            <DataTable<Team>
               title="Teams"
-              columns={["Logo", "Name", "City", "Status", "Players", "Matches"]}
-              data={teams || []}
-              renderRow={(t: Team) => [
-                <img src={t.logoUrl || "/placeholder.svg"} alt="" className="h-8 w-8 rounded-full bg-muted" />,
-                <span className="font-medium">{t.name}</span>,
-                t.city || "-",
-                <Badge variant={t.status === "active" || !t.status ? "default" : t.status === "relegated" ? "secondary" : "destructive"}>{t.status || "active"}</Badge>,
-                t._count?.players || 0,
-                t._count?.homeMatches || 0,
+              columns={[
+                { key: "logo", label: "Logo", render: (t) => <img src={t.logoUrl || "/placeholder.svg"} alt="" className="h-8 w-8 rounded-full bg-muted" /> },
+                { key: "name", label: "Name", sortable: true, render: (t) => <span className="font-medium">{t.name}</span> },
+                { key: "city", label: "City", sortable: true, render: (t) => t.city || "-" },
+                { key: "status", label: "Status", render: (t) => <Badge variant={t.status === "active" || !t.status ? "default" : t.status === "relegated" ? "secondary" : "destructive"}>{t.status || "active"}</Badge> },
+                { key: "players", label: "Players", render: (t) => t._count?.players || 0 },
+                { key: "matches", label: "Matches", render: (t) => t._count?.homeMatches || 0 },
               ]}
+              data={teams || []}
+              keyExtractor={(t) => t.id}
               onAdd={() => { setEditingItem(null); openForm("team", { name: "", shortName: "", city: "", seasonId: seasons?.[0]?.id || "", status: "active" }); }}
               onEdit={(t) => { setEditingItem(t); openForm("team", { name: t.name, slug: t.slug, shortName: t.shortName || "", city: t.city || "", seasonId: t.seasonId, logoUrl: t.logoUrl || "", status: t.status || "active" }); }}
             />
@@ -492,17 +501,17 @@ export function AdminPage() {
                 ) : null;
               })()}
             </div>
-            <AdminTable
+            <DataTable<Player>
               title="Players"
-              columns={["Photo", "Name", "Team", "Position", "Jersey"]}
-              data={players?.data || []}
-              renderRow={(p: Player) => [
-                <img src={p.photoUrl || "/placeholder.svg"} alt="" className="h-14 w-14 rounded-xl bg-muted object-cover shadow-sm" />,
-                <span className="font-medium">{p.firstName} {p.lastName}</span>,
-                p.team?.name || "-",
-                p.position || "-",
-                p.jerseyNumber || "-",
+              columns={[
+                { key: "photo", label: "Photo", render: (p) => <img src={p.photoUrl || "/placeholder.svg"} alt="" className="h-10 w-10 rounded-xl bg-muted object-cover shadow-sm" /> },
+                { key: "name", label: "Name", sortable: true, render: (p) => <span className="font-medium">{p.firstName} {p.lastName}</span> },
+                { key: "team", label: "Team", sortable: true, render: (p) => p.team?.name || "-" },
+                { key: "position", label: "Position", render: (p) => p.position || "-" },
+                { key: "jersey", label: "Jersey", render: (p) => p.jerseyNumber || "-" },
               ]}
+              data={players?.data || []}
+              keyExtractor={(p) => p.id}
               onAdd={() => { setEditingItem(null); openForm("player", { firstName: "", lastName: "", position: "", teamId: "", jerseyNumber: "", squadType: "", nationality: "", age: "", height: "", weight: "", preferredFoot: "", biography: "" }); }}
               onEdit={(p) => { setEditingItem(p); openForm("player", { firstName: p.firstName, lastName: p.lastName || "", position: p.position || "", teamId: p.teamId || "", jerseyNumber: p.jerseyNumber || "", squadType: p.squadType || "", photoUrl: p.photoUrl || "", nationality: p.nationality || "", age: p.age || "", height: p.height || "", weight: p.weight || "", preferredFoot: p.preferredFoot || "", biography: p.biography || "" }); }}
               onDelete={(p) => { if (confirm(`Delete player ${p.firstName} ${p.lastName}?`)) api.delete(`/admin/players/${p.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-players"] })).catch((e: any) => setActionError(e.message)); }}
@@ -599,53 +608,20 @@ export function AdminPage() {
 
         {activeTab === "fixtures" && (
           <>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold">Fixtures</h2>
-                <Button size="sm" onClick={() => { setEditingItem(null); openForm("fixture", { homeTeamId: "", awayTeamId: "", matchDate: "", kickoffTime: "", seasonId: seasons?.[0]?.id || "" }); }}>
-                  <Plus className="mr-1 h-4 w-4" /> Add Fixture
-                </Button>
-              </div>
-              <div className="rounded-lg border">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50">
-                    <tr>
-                      <th className="p-3 text-left">Home</th>
-                      <th className="p-3 text-center">Score</th>
-                      <th className="p-3 text-left">Away</th>
-                      <th className="p-3 text-left">Date</th>
-                      <th className="p-3 text-left">Status</th>
-                      <th className="p-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(fixtures?.data || []).map((f: Fixture) => (
-                      <tr key={f.id} className="border-t">
-                        <td className="p-3 font-medium">{f.homeTeam?.name || "?"}</td>
-                        <td className="p-3 text-center font-bold">{f.status === "COMPLETED" ? `${f.homeScore ?? 0} - ${f.awayScore ?? 0}` : "vs"}</td>
-                        <td className="p-3 font-medium">{f.awayTeam?.name || "?"}</td>
-                        <td className="p-3 text-muted-foreground">{formatDate(f.matchDate)}</td>
-                        <td className="p-3"><Badge variant="secondary">{f.status}</Badge></td>
-                        <td className="p-3 text-right">
-                          <Button variant="ghost" size="sm" onClick={() => openForm("squad", { fixtureId: f.id, homeTeamId: f.homeTeamId, awayTeamId: f.awayTeamId, seasonId: f.seasonId, homeTeamName: f.homeTeam?.name, awayTeamName: f.awayTeam?.name })} title="Select Squad">
-                            <Users className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => { setEditingItem(f); openForm("fixture", { homeTeamId: f.homeTeamId, awayTeamId: f.awayTeamId, matchDate: f.matchDate, kickoffTime: f.kickoffTime || "", seasonId: f.seasonId, stadium: f.stadium || "", referee: (f as any).referee || "", referee2: (f as any).referee2 || "", matchReport: (f as any).matchReport || "" }); }} title="Edit Fixture">
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => setLiveStatsFixtureId(f.id)} title="Live Stats">
-                            <ActivitySquare className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => openForm("score", { fixtureId: f.id, homeScore: f.homeScore ?? 0, awayScore: f.awayScore ?? 0 })}>
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <DataTable<Fixture>
+              title="Fixtures"
+              columns={[
+                { key: "home", label: "Home", sortable: true, render: (f) => <span className="font-medium">{f.homeTeam?.name || "?"}</span> },
+                { key: "score", label: "Score", render: (f) => <span className="font-bold">{f.status === "COMPLETED" ? `${f.homeScore ?? 0} - ${f.awayScore ?? 0}` : "vs"}</span> },
+                { key: "away", label: "Away", sortable: true, render: (f) => <span className="font-medium">{f.awayTeam?.name || "?"}</span> },
+                { key: "date", label: "Date", sortable: true, render: (f) => <span className="text-muted-foreground">{formatDate(f.matchDate)}</span> },
+                { key: "status", label: "Status", render: (f) => <Badge variant="secondary">{f.status}</Badge> },
+              ]}
+              data={fixtures?.data || []}
+              keyExtractor={(f) => f.id}
+              onAdd={() => { setEditingItem(null); openForm("fixture", { homeTeamId: "", awayTeamId: "", matchDate: "", kickoffTime: "", seasonId: seasons?.[0]?.id || "" }); }}
+              onEdit={(f) => { setEditingItem(f); openForm("fixture", { homeTeamId: f.homeTeamId, awayTeamId: f.awayTeamId, matchDate: f.matchDate, kickoffTime: f.kickoffTime || "", seasonId: f.seasonId, stadium: f.stadium || "", referee: (f as any).referee || "", referee2: (f as any).referee2 || "", matchReport: (f as any).matchReport || "" }); }}
+            />
             <Dialog open={showForm === "fixture"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Fixture" : "Add Fixture"}>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -1223,64 +1199,49 @@ export function AdminPage() {
         {activeTab === "bookings" && (
           <div className="space-y-4">
             <h2 className="text-xl font-bold">Bookings</h2>
-            <div className="rounded-lg border overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50">
-                  <tr>
-                    <th className="p-3 text-left">#</th>
-                    <th className="p-3 text-left">Customer</th>
-                    <th className="p-3 text-left">Venue</th>
-                    <th className="p-3 text-left">Date</th>
-                    <th className="p-3 text-left">Time</th>
-                    <th className="p-3 text-left">Amount</th>
-                    <th className="p-3 text-left">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(bookings?.data || []).map((b: Booking) => (
-                    <tr key={b.id} className="border-t">
-                      <td className="p-3 font-medium">{b.bookingNumber}</td>
-                      <td className="p-3">{b.user?.firstName || "?"} {b.user?.lastName || ""}<br /><span className="text-xs text-muted-foreground">{b.user?.phone || ""}</span></td>
-                      <td className="p-3">{b.turf?.venue?.name || "?"}<br /><span className="text-xs text-muted-foreground">{b.turf?.name || ""}</span></td>
-                      <td className="p-3 text-muted-foreground">{formatDate(b.date)}</td>
-                      <td className="p-3">{b.startTime} - {b.endTime}</td>
-                      <td className="p-3">₹{(b.totalAmount / 100).toFixed(2)}</td>
-                      <td className="p-3">
-                        <Badge variant={b.status === "CONFIRMED" ? "default" : b.status === "CANCELLED" ? "destructive" : "secondary"}>{b.status}</Badge>
-                      </td>
-                      <td className="p-3 text-right">
-                        {b.status === "PENDING" && (
-                          <>
-                            <Button variant="ghost" size="sm" className="text-green-500" onClick={async () => {
-                              try { await api.patch(`/admin/bookings/${b.id}/status`, { status: "CONFIRMED" }); queryClient.invalidateQueries({ queryKey: ["admin-bookings"] }); } catch (e: any) { setFormErrors(e.message); }
-                            }}>Confirm</Button>
-                            <Button variant="ghost" size="sm" className="text-destructive" onClick={async () => {
-                              try { await api.patch(`/admin/bookings/${b.id}/status`, { status: "CANCELLED" }); queryClient.invalidateQueries({ queryKey: ["admin-bookings"] }); } catch (e: any) { setFormErrors(e.message); }
-                            }}>Cancel</Button>
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable<Booking>
+              title=""
+              columns={[
+                { key: "bookingNumber", label: "#", render: (b) => <span className="font-medium">{b.bookingNumber}</span> },
+                { key: "customer", label: "Customer", sortable: true, render: (b) => <>{b.user?.firstName || "?"} {b.user?.lastName || ""}<br /><span className="text-xs text-muted-foreground">{b.user?.phone || ""}</span></> },
+                { key: "venue", label: "Venue", render: (b) => <>{b.turf?.venue?.name || "?"}<br /><span className="text-xs text-muted-foreground">{b.turf?.name || ""}</span></> },
+                { key: "date", label: "Date", sortable: true, render: (b) => <span className="text-muted-foreground">{formatDate(b.date)}</span> },
+                { key: "time", label: "Time", render: (b) => <>{b.startTime} - {b.endTime}</> },
+                { key: "amount", label: "Amount", sortable: true, render: (b) => <>₹{(b.totalAmount / 100).toFixed(2)}</> },
+                { key: "status", label: "Status", render: (b) => <Badge variant={b.status === "CONFIRMED" ? "default" : b.status === "CANCELLED" ? "destructive" : "secondary"}>{b.status}</Badge> },
+              ]}
+              data={bookings?.data || []}
+              keyExtractor={(b) => b.id}
+              onView={(b) => setSelectedBooking(b)}
+              bulkActions={[
+                { label: "Confirm", onClick: async (ids) => { for (const id of ids) { try { await api.patch(`/admin/bookings/${id}/status`, { status: "CONFIRMED" }); } catch {} } queryClient.invalidateQueries({ queryKey: ["admin-bookings"] }); }, icon: <CheckCircle2 className="h-4 w-4" /> },
+                { label: "Cancel", onClick: async (ids) => { for (const id of ids) { try { await api.patch(`/admin/bookings/${id}/status`, { status: "CANCELLED" }); } catch {} } queryClient.invalidateQueries({ queryKey: ["admin-bookings"] }); }, icon: <XCircle className="h-4 w-4" />, variant: "destructive" },
+              ]}
+            />
           </div>
+        )}
+
+        {activeTab === "calendar" && (
+          <AdminCalendar venues={venues?.data || []} />
+        )}
+
+        {activeTab === "analytics" && (
+          <AdminAnalytics />
         )}
 
         {activeTab === "news" && (
           <>
-            <AdminTable
+            <DataTable<News>
               title="News Articles"
-              columns={["Image", "Title", "Author", "Published", "Featured"]}
-              data={news?.data || []}
-              renderRow={(n: News) => [
-                n.imageUrl ? <img src={n.imageUrl} alt="" className="h-10 w-16 rounded object-cover bg-muted" /> : <div className="h-10 w-16 rounded bg-muted" />,
-                <span className="font-medium line-clamp-1">{n.title}</span>,
-                n.author || "-",
-                n.publishedAt ? formatDate(n.publishedAt) : "-",
-                n.isFeatured ? <Badge>Featured</Badge> : "-",
+              columns={[
+                { key: "image", label: "Image", render: (n) => n.imageUrl ? <img src={n.imageUrl} alt="" className="h-10 w-16 rounded object-cover bg-muted" /> : <div className="h-10 w-16 rounded bg-muted" /> },
+                { key: "title", label: "Title", sortable: true, render: (n) => <span className="font-medium line-clamp-1">{n.title}</span> },
+                { key: "author", label: "Author", render: (n) => n.author || "-" },
+                { key: "published", label: "Published", sortable: true, render: (n) => n.publishedAt ? formatDate(n.publishedAt) : "-" },
+                { key: "featured", label: "Featured", render: (n) => n.isFeatured ? <Badge>Featured</Badge> : "-" },
               ]}
+              data={news?.data || []}
+              keyExtractor={(n) => n.id}
               onAdd={() => { setEditingItem(null); openForm("news", { title: "", excerpt: "", content: "", imageUrl: "", author: "" }); }}
               onEdit={(n) => { setEditingItem(n); openForm("news", { title: n.title, slug: n.slug, excerpt: n.excerpt || "", content: n.content || "", imageUrl: n.imageUrl || "", author: n.author || "" }); }}
               onDelete={(n) => { if (confirm("Delete this article?")) api.delete(`/admin/news/${n.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-news"] })).catch((e: any) => setActionError(e.message)); }}
@@ -1325,17 +1286,17 @@ export function AdminPage() {
 
         {activeTab === "sponsors" && (
           <>
-            <AdminTable
+            <DataTable<Sponsor>
               title="Sponsors"
-              columns={["Logo", "Name", "Website", "Tier", "Status"]}
-              data={sponsors?.data || []}
-              renderRow={(s: Sponsor) => [
-                <img src={s.logoUrl || "/placeholder.svg"} alt="" className="h-8 w-8 rounded-full bg-muted" />,
-                <span className="font-medium">{s.name}</span>,
-                s.website ? <a href={s.website} target="_blank" className="text-primary hover:underline">{s.website}</a> : "-",
-                s.tier || "-",
-                s.isActive !== false ? <Badge>Active</Badge> : <Badge variant="destructive">Inactive</Badge>,
+              columns={[
+                { key: "logo", label: "Logo", render: (s) => <img src={s.logoUrl || "/placeholder.svg"} alt="" className="h-8 w-8 rounded-full bg-muted" /> },
+                { key: "name", label: "Name", sortable: true, render: (s) => <span className="font-medium">{s.name}</span> },
+                { key: "website", label: "Website", render: (s) => s.website ? <a href={s.website} target="_blank" className="text-primary hover:underline">{s.website}</a> : "-" },
+                { key: "tier", label: "Tier", sortable: true, render: (s) => s.tier || "-" },
+                { key: "status", label: "Status", render: (s) => s.isActive !== false ? <Badge>Active</Badge> : <Badge variant="destructive">Inactive</Badge> },
               ]}
+              data={sponsors?.data || []}
+              keyExtractor={(s) => s.id}
               onAdd={() => { setEditingItem(null); openForm("sponsor", { name: "", website: "", tier: "platinum", logoUrl: "", isActive: true }); }}
               onEdit={(s) => { setEditingItem(s); openForm("sponsor", { name: s.name, website: s.website || "", tier: s.tier || "platinum", logoUrl: s.logoUrl || "", isActive: s.isActive !== false }); }}
               onDelete={(s) => { if (confirm("Delete this sponsor?")) api.delete(`/admin/sponsors/${s.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-sponsors"] })).catch((e: any) => setActionError(e.message)); }}
@@ -1793,37 +1754,23 @@ export function AdminPage() {
         )}
 
         {activeTab === "users" && (
-          <Card>
-            <CardHeader><CardTitle>Users</CardTitle></CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50">
-                    <tr>
-                      <th className="p-3 text-left">Name</th>
-                      <th className="p-3 text-left">Email</th>
-                      <th className="p-3 text-left">Role</th>
-                      <th className="p-3 text-left">Status</th>
-                      <th className="p-3 text-left">Joined</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(users?.data || []).map((u: User) => (
-                      <tr key={u.id} className="border-t">
-                        <td className="p-3">{u.firstName} {u.lastName}</td>
-                        <td className="p-3 text-muted-foreground">{u.email}</td>
-                        <td className="p-3"><Badge variant="secondary">{u.role.replace("_", " ")}</Badge></td>
-                        <td className="p-3"><Badge variant={u.isActive ? "default" : "destructive"}>{u.isActive ? "Active" : "Inactive"}</Badge></td>
-                        <td className="p-3 text-muted-foreground">{formatDate(u.createdAt)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
+          <DataTable<User>
+            title="Users"
+            columns={[
+              { key: "name", label: "Name", sortable: true, render: (u) => <>{u.firstName} {u.lastName}</> },
+              { key: "email", label: "Email", sortable: true, render: (u) => <span className="text-muted-foreground">{u.email}</span> },
+              { key: "role", label: "Role", render: (u) => <Badge variant="secondary">{u.role.replace("_", " ")}</Badge> },
+              { key: "status", label: "Status", render: (u) => <Badge variant={u.isActive ? "default" : "destructive"}>{u.isActive ? "Active" : "Inactive"}</Badge> },
+              { key: "joined", label: "Joined", sortable: true, render: (u) => <span className="text-muted-foreground">{formatDate(u.createdAt)}</span> },
+            ]}
+            data={users?.data || []}
+            keyExtractor={(u) => u.id}
+          />
         )}
       {liveStatsFixtureId && <LiveStatsPanel fixtureId={liveStatsFixtureId} onClose={() => setLiveStatsFixtureId(null)} />}
+      <AnimatePresence>
+        {selectedBooking && <BookingDrawer booking={selectedBooking} onClose={() => setSelectedBooking(null)} />}
+      </AnimatePresence>
         </main>
       </div>
     </div>
@@ -1910,8 +1857,88 @@ function AdminTable<T extends { id: string }>({ title, columns, data, renderRow,
   onAdd?: () => void; onEdit?: (item: T) => void; onDelete?: (item: T) => void;
   editableColumns?: { index: number; type?: "text" | "number" | "select"; options?: string[]; onSave: (item: T, value: string) => void }[];
 }) {
+  const isMobile = useIsMobile();
   const hasActions = !!(onEdit || onDelete);
   const editableMap = new Map(editableColumns?.map((ec) => [ec.index, ec]) || []);
+  const [sheetItem, setSheetItem] = useState<T | null>(null);
+
+  const sheetActions = sheetItem ? [
+    ...(onEdit ? [{ label: "Edit", icon: <Edit2 className="h-4 w-4" /> as React.ReactNode, onClick: () => onEdit(sheetItem) }] : []),
+    ...(onDelete ? [{ label: "Delete", icon: <Trash2 className="h-4 w-4" /> as React.ReactNode, variant: "destructive" as const, onClick: () => onDelete(sheetItem) }] : []),
+  ] : [];
+
+  if (isMobile) {
+    return (
+      <div className="space-y-4 pb-20">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-bold">{title}</h2>
+          {onAdd && <Button size="sm" onClick={onAdd}><Plus className="mr-1 h-4 w-4" /> Add</Button>}
+        </div>
+        {data.length === 0 ? (
+          <div className="flex flex-col items-center py-12 text-muted-foreground">
+            <p className="text-sm">No {title.toLowerCase()} yet</p>
+          </div>
+        ) : (
+          data.map((item) => {
+            const cells = renderRow(item);
+            return (
+              <div key={item.id} className="rounded-xl border bg-card p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1 space-y-2">
+                    {columns.slice(0, 3).map((col, i) => (
+                      <div key={col} className="text-sm">
+                        <span className="text-xs font-medium text-muted-foreground">{col}: </span>
+                        <span>{cells[i]}</span>
+                      </div>
+                    ))}
+                    {columns.length > 3 && (
+                      <details className="text-xs text-muted-foreground">
+                        <summary className="cursor-pointer py-1 font-medium">More details</summary>
+                        <div className="mt-1.5 space-y-1.5 pl-1">
+                          {columns.slice(3).map((col, i) => (
+                            <div key={col}>
+                              <span className="text-muted-foreground">{col}: </span>
+                              {cells[i + 3]}
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                  {hasActions && (
+                    <button
+                      onClick={() => setSheetItem(item)}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md hover:bg-muted"
+                    >
+                      <MoreHorizontal className="h-5 w-5 text-muted-foreground" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+        {onAdd && (
+          <motion.div
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="fixed bottom-6 right-6 z-30"
+          >
+            <Button size="lg" className="h-14 w-14 rounded-full shadow-xl bg-primary hover:bg-primary/90" onClick={onAdd}>
+              <Plus className="h-6 w-6" />
+            </Button>
+          </motion.div>
+        )}
+        <BottomSheet
+          open={!!sheetItem}
+          onClose={() => setSheetItem(null)}
+          title="Actions"
+          actions={sheetActions.map((a) => ({ label: a.label, icon: a.icon, variant: a.variant as any, onClick: a.onClick }))}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">

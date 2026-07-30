@@ -309,6 +309,8 @@ export interface Booking {
   notes?: string;
   payments?: Payment[];
   services?: BookingService[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type BookingStatus = "PENDING" | "CONFIRMED" | "CANCELLED" | "COMPLETED" | "RESCHEDULED";
@@ -320,6 +322,7 @@ export interface Payment {
   status: PaymentStatus;
   method?: string;
   transactionId?: string;
+  createdAt?: string;
 }
 
 export type PaymentStatus = "PENDING" | "PAID" | "REFUNDED" | "FAILED" | "PARTIALLY_REFUNDED";
