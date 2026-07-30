@@ -53,14 +53,21 @@ export async function searchPlayerIds(
   params.push(pattern);
   idx++;
 
-  // Optional filters
-  if (teamId) { conditions.push(`p."teamId" = $${idx}`); params.push(teamId); idx++; }
-  if (seasonId) { conditions.push(`p."seasonId" = $${idx}`); params.push(seasonId); idx++; }
-  if (position) { conditions.push(`p."position" = $${idx}`); params.push(position); idx++; }
-  if (isActive !== undefined) { conditions.push(`p."isActive" = $${idx}`); params.push(isActive); idx++; }
-
-  const where = conditions.join(" OR ");
   const join = `LEFT JOIN "teams" t ON t."id" = p."teamId"`;
+
+  // Search conditions (OR'd — broaden across fields)
+  const searchClause = conditions.join(" OR ");
+
+  // Optional filters (AND'd — narrow down)
+  const filterParts: string[] = [];
+  if (teamId) { filterParts.push(`p."teamId" = $${idx}`); params.push(teamId); idx++; }
+  if (seasonId) { filterParts.push(`p."seasonId" = $${idx}`); params.push(seasonId); idx++; }
+  if (position) { filterParts.push(`p."position" = $${idx}`); params.push(position); idx++; }
+  if (isActive !== undefined) { filterParts.push(`p."isActive" = $${idx}`); params.push(isActive); idx++; }
+
+  const where = filterParts.length > 0
+    ? `(${searchClause}) AND ${filterParts.join(" AND ")}`
+    : searchClause;
 
   const [countRow] = await prisma.$queryRawUnsafe<{ total: bigint }[]>(
     `SELECT COUNT(*) as total FROM "players" p ${join} WHERE ${where}`,
