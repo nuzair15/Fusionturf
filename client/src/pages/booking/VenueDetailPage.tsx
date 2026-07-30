@@ -82,6 +82,14 @@ export function VenueDetailPage() {
     return price;
   }, [turf, date, startSlot]);
 
+  const computedTotal = useMemo(() => {
+    if (!startSlot || !endSlot) return 0;
+    const startMin = parseInt(startSlot.slice(0, 2), 10) * 60 + parseInt(startSlot.slice(3), 10);
+    const endMin = parseInt(endSlot.slice(0, 2), 10) * 60 + parseInt(endSlot.slice(3), 10);
+    const hours = Math.ceil((endMin - startMin) / 60);
+    return computedPrice * hours;
+  }, [startSlot, endSlot, computedPrice]);
+
   const { data: bookedData } = useQuery({
     queryKey: ["booked-slots", selectedTurfId, date],
     queryFn: () => api.get<Booking[]>(`/bookings/booked-slots/${selectedTurfId}?date=${date}`),
@@ -300,7 +308,9 @@ export function VenueDetailPage() {
                     <div className="rounded-lg bg-primary/5 p-3 text-sm">
                       <p className="font-medium">Booking Summary</p>
                       <p className="text-muted-foreground">{formatAmPm(startSlot)} - {formatAmPm(endSlot)} on {new Date(date).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}</p>
-                      <p className="mt-1 font-semibold">{formatCurrency(computedPrice)}<span className="text-xs font-normal text-muted-foreground">/hr</span></p>
+                      <div className="mt-1 space-y-0.5">
+                        <p className="text-xs text-muted-foreground">{formatCurrency(computedPrice)} × {Math.ceil((parseInt(endSlot.slice(0, 2), 10) * 60 + parseInt(endSlot.slice(3), 10) - (parseInt(startSlot.slice(0, 2), 10) * 60 + parseInt(startSlot.slice(3), 10))) / 60)} hr = <span className="font-semibold text-foreground">{formatCurrency(computedTotal)}</span></p>
+                      </div>
                       {computedPrice !== turf?.basePrice && (
                         <p className="mt-0.5 text-[11px] text-amber-600">Weekend or peak hour pricing applied</p>
                       )}
@@ -311,7 +321,7 @@ export function VenueDetailPage() {
                   {error && <p className="text-sm text-destructive">{error}</p>}
 
                   <Button type="submit" className="w-full" size="lg" disabled={submitting || !startSlot || !endSlot}>
-                    {submitting ? "Booking..." : `Confirm Booking${turf ? ` - ${formatCurrency(computedPrice)}` : ""}`}
+                    {submitting ? "Booking..." : `Confirm Booking${turf && computedTotal ? ` - ${formatCurrency(computedTotal)}` : ""}`}
                   </Button>
                 </form>
               </CardContent>
