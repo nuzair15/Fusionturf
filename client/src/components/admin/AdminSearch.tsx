@@ -1,28 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { useQuery } from "@tanstack/react-query";
 import { Search, Command, ArrowUpDown, ExternalLink, X } from "lucide-react";
 import { api } from "@/lib/api";
-import type { Team, Player, Venue, Booking, Fixture, News, Sponsor, User } from "@/types";
 
 interface SearchResult {
   id: string;
   label: string;
   description: string;
-  url: string;
   type: string;
-}
-
-function fuzzyMatch(text: string, query: string): boolean {
-  const lower = text.toLowerCase();
-  const q = query.toLowerCase().trim();
-  if (!q) return false;
-  let qi = 0;
-  for (let i = 0; i < lower.length && qi < q.length; i++) {
-    if (lower[i] === q[qi]) qi++;
-  }
-  return qi === q.length;
 }
 
 function useDebounce<T>(value: T, delay: number): T {
@@ -41,59 +28,27 @@ export function AdminSearch({ onClose }: { onClose: () => void }) {
   const [selectedIdx, setSelectedIdx] = useState(0);
   const debouncedQuery = useDebounce(query, 200);
 
-  const { data: teams } = useQuery({ queryKey: ["admin-teams"], queryFn: () => api.get<Team[]>("/admin/teams"), enabled: debouncedQuery.length > 0 });
-  const { data: players } = useQuery({ queryKey: ["admin-players-search"], queryFn: () => api.get<{ data: Player[] }>("/admin/players", { limit: "50" }), enabled: debouncedQuery.length > 0 });
-  const { data: venues } = useQuery({ queryKey: ["admin-venues"], queryFn: () => api.get<{ data: Venue[] }>("/admin/venues"), enabled: debouncedQuery.length > 0 });
-  const { data: bookings } = useQuery({ queryKey: ["admin-bookings-search"], queryFn: () => api.get<{ data: Booking[] }>("/admin/bookings", { limit: "30" }), enabled: debouncedQuery.length > 0 });
-  const { data: fixtures } = useQuery({ queryKey: ["admin-fixtures-search"], queryFn: () => api.get<{ data: Fixture[] }>("/admin/fixtures", { limit: "30" }), enabled: debouncedQuery.length > 0 });
-  const { data: news } = useQuery({ queryKey: ["admin-news-search"], queryFn: () => api.get<{ data: News[] }>("/admin/news", { limit: "30" }), enabled: debouncedQuery.length > 0 });
-  const { data: sponsors } = useQuery({ queryKey: ["admin-sponsors"], queryFn: () => api.get<{ data: Sponsor[] }>("/admin/sponsors"), enabled: debouncedQuery.length > 0 });
-  const { data: users } = useQuery({ queryKey: ["admin-users-search"], queryFn: () => api.get<{ data: User[] }>("/admin/users", { limit: "30" }), enabled: debouncedQuery.length > 0 });
+  const { data, isFetching } = useQuery({
+    queryKey: ["admin-search", debouncedQuery],
+    queryFn: () => api.get<{ data: SearchResult[] }>("/admin/search", { q: debouncedQuery }),
+    enabled: debouncedQuery.length > 0,
+    staleTime: 30000,
+  });
 
-  const results: SearchResult[] = [];
-
-  if (debouncedQuery.length > 0) {
-    const q = debouncedQuery;
-    (teams || []).forEach((t) => {
-      if (fuzzyMatch(t.name, q)) results.push({ id: t.id, label: t.name, description: "Team", url: `/admin?tab=teams`, type: "team" });
-    });
-    (players?.data || []).forEach((p) => {
-      const name = `${p.firstName} ${p.lastName}`;
-      if (fuzzyMatch(name, q)) results.push({ id: p.id, label: name, description: `Player — ${p.team?.name || "No team"}`, url: `/admin?tab=players`, type: "player" });
-    });
-    (venues?.data || []).forEach((v) => {
-      if (fuzzyMatch(v.name, q)) results.push({ id: v.id, label: v.name, description: "Venue", url: `/admin?tab=venues`, type: "venue" });
-    });
-    (bookings?.data || []).forEach((b) => {
-      const name = b.user ? `${b.user.firstName} ${b.user.lastName}` : b.bookingNumber;
-      if (fuzzyMatch(name, q)) results.push({ id: b.id, label: `#${b.bookingNumber}`, description: `${b.turf?.venue?.name || "Venue"} — ${b.user?.firstName || ""} ${b.user?.lastName || ""}`, url: `/admin?tab=bookings`, type: "booking" });
-    });
-    (fixtures?.data || []).forEach((f) => {
-      const label = `${f.homeTeam?.shortName || "?"} vs ${f.awayTeam?.shortName || "?"}`;
-      if (fuzzyMatch(label, q)) results.push({ id: f.id, label, description: `Fixture — ${f.status}`, url: `/admin?tab=fixtures`, type: "fixture" });
-    });
-    (news?.data || []).forEach((n) => {
-      if (fuzzyMatch(n.title, q)) results.push({ id: n.id, label: n.title, description: "News", url: `/admin?tab=news`, type: "news" });
-    });
-    (sponsors?.data || []).forEach((s) => {
-      if (fuzzyMatch(s.name, q)) results.push({ id: s.id, label: s.name, description: "Sponsor", url: `/admin?tab=sponsors`, type: "sponsor" });
-    });
-    (users?.data || []).forEach((u) => {
-      const name = `${u.firstName} ${u.lastName}`;
-      if (fuzzyMatch(name, q)) results.push({ id: u.id, label: name, description: `User — ${u.email}`, url: `/admin?tab=users`, type: "user" });
-    });
-  }
-
+  const results = data?.data || [];
   const limited = results.slice(0, 12);
 
   const handleSelect = useCallback((result: SearchResult) => {
-    navigate(result.url);
+    const tabMap: Record<string, string> = {
+      team: "teams", player: "players", venue: "venues",
+      booking: "bookings", fixture: "fixtures", news: "news",
+      sponsor: "sponsors", user: "users",
+    };
+    navigate(`/admin?tab=${tabMap[result.type] || result.type}`);
     onClose();
   }, [navigate, onClose]);
 
-  useEffect(() => {
-    setSelectedIdx(0);
-  }, [debouncedQuery]);
+  useEffect(() => { setSelectedIdx(0); }, [debouncedQuery]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -106,9 +61,7 @@ export function AdminSearch({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [limited, selectedIdx, handleSelect, onClose]);
 
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+  useEffect(() => { inputRef.current?.focus(); }, []);
 
   return (
     <motion.div
@@ -134,6 +87,13 @@ export function AdminSearch({ onClose }: { onClose: () => void }) {
             placeholder="Search teams, players, bookings, venues..."
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
+          {isFetching && (
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+              className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent"
+            />
+          )}
           <kbd className="hidden shrink-0 items-center gap-1 rounded border px-1.5 text-[11px] text-muted-foreground sm:flex">
             <Command className="h-3 w-3" />K
           </kbd>
@@ -153,10 +113,19 @@ export function AdminSearch({ onClose }: { onClose: () => void }) {
                 <span className="flex items-center gap-1"><kbd className="rounded border px-1">ESC</kbd> Close</span>
               </div>
             </div>
-          ) : limited.length === 0 ? (
+          ) : limited.length === 0 && !isFetching ? (
             <div className="flex flex-col items-center py-12 text-muted-foreground">
               <Search className="mb-2 h-8 w-8" />
               <p className="text-sm">No results for "{query}"</p>
+            </div>
+          ) : limited.length === 0 && isFetching ? (
+            <div className="flex flex-col items-center py-12 text-muted-foreground">
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                className="h-6 w-6 rounded-full border-2 border-primary border-t-transparent"
+              />
+              <p className="mt-3 text-sm">Searching...</p>
             </div>
           ) : (
             <div className="py-2">

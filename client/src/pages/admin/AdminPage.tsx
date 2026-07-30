@@ -75,6 +75,13 @@ export function AdminPage() {
   const [winnerLoading, setWinnerLoading] = useState(false);
   const [selectedWinner, setSelectedWinner] = useState<any>(null);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [teamSearch, setTeamSearch] = useState("");
+  const [playerSearch, setPlayerSearch] = useState("");
+  const [fixtureSearch, setFixtureSearch] = useState("");
+  const [bookingSearch, setBookingSearch] = useState("");
+  const [newsSearch, setNewsSearch] = useState("");
+  const [sponsorSearch, setSponsorSearch] = useState("");
+  const [userSearch, setUserSearch] = useState("");
 
   const openForm = (type: string, initial: Record<string, any> = {}) => {
     setFormData(initial);
@@ -142,7 +149,7 @@ export function AdminPage() {
 
   const { data: dashboard, isLoading: dashboardLoading } = useQuery({ queryKey: ["admin-dashboard"], queryFn: () => api.get<DashboardStats>("/admin/dashboard"), enabled: tabEnabled("overview"), retry: 1, staleTime: 30000 });
 
-  const { data: users } = useQuery({ queryKey: ["admin-users"], queryFn: () => api.get<{ data: User[] }>("/admin/users", { limit: "20" }), enabled: tabEnabled("users") });
+  const { data: users } = useQuery({ queryKey: ["admin-users", userSearch], queryFn: () => api.get<{ data: User[] }>("/admin/users", { limit: "100", ...(userSearch ? { search: userSearch } : {}) }), enabled: tabEnabled("users") });
 
   const { data: seasons } = useQuery({ queryKey: ["admin-seasons"], queryFn: () => api.get<Season[]>("/admin/seasons"), enabled: unlocked });
 
@@ -170,30 +177,30 @@ export function AdminPage() {
   }, [currentSeason?.id]);
 
   const { data: teams } = useQuery({
-    queryKey: ["admin-teams", selectedSeasonId],
-    queryFn: () => api.get<Team[]>("/admin/teams", { ...(selectedSeasonId ? { seasonId: selectedSeasonId } : {}) }),
+    queryKey: ["admin-teams", selectedSeasonId, teamSearch],
+    queryFn: () => api.get<Team[]>("/admin/teams", { ...(selectedSeasonId ? { seasonId: selectedSeasonId } : {}), ...(teamSearch ? { search: teamSearch } : {}) }),
     enabled: tabEnabled("teams", "players", "fixtures"),
   });
 
   const { data: players } = useQuery({
-    queryKey: ["admin-players", selectedSeasonId],
-    queryFn: () => api.get<PaginatedResponse<Player>>("/admin/players", { limit: "50", ...(selectedSeasonId ? { seasonId: selectedSeasonId } : {}) }),
+    queryKey: ["admin-players", selectedSeasonId, playerSearch],
+    queryFn: () => api.get<PaginatedResponse<Player>>("/admin/players", { limit: "100", ...(selectedSeasonId ? { seasonId: selectedSeasonId } : {}), ...(playerSearch ? { search: playerSearch } : {}) }),
     enabled: tabEnabled("players"),
   });
 
-  const { data: fixtures } = useQuery({ queryKey: ["admin-fixtures"], queryFn: () => api.get<PaginatedResponse<Fixture>>("/admin/fixtures", { limit: "50" }), enabled: tabEnabled("fixtures") });
+  const { data: fixtures } = useQuery({ queryKey: ["admin-fixtures", fixtureSearch], queryFn: () => api.get<PaginatedResponse<Fixture>>("/admin/fixtures", { limit: "100", ...(fixtureSearch ? { search: fixtureSearch } : {}) }), enabled: tabEnabled("fixtures") });
 
   const { data: awards } = useQuery({ queryKey: ["admin-awards"], queryFn: () => api.get<Award[]>("/admin/awards"), enabled: tabEnabled("awards") });
 
-  const { data: bookings } = useQuery({ queryKey: ["admin-bookings"], queryFn: () => api.get<PaginatedResponse<Booking>>("/admin/bookings", { limit: "50" }), enabled: tabEnabled("bookings") });
+  const { data: bookings } = useQuery({ queryKey: ["admin-bookings", bookingSearch], queryFn: () => api.get<PaginatedResponse<Booking>>("/admin/bookings", { limit: "100", ...(bookingSearch ? { search: bookingSearch } : {}) }), enabled: tabEnabled("bookings") });
 
-  const { data: news } = useQuery({ queryKey: ["admin-news"], queryFn: () => api.get<PaginatedResponse<News>>("/admin/news", { limit: "50" }), enabled: tabEnabled("news") });
+  const { data: news } = useQuery({ queryKey: ["admin-news", newsSearch], queryFn: () => api.get<PaginatedResponse<News>>("/admin/news", { limit: "100", ...(newsSearch ? { search: newsSearch } : {}) }), enabled: tabEnabled("news") });
 
   const { data: venues } = useQuery({ queryKey: ["admin-venues"], queryFn: () => api.get<{ data: Venue[] }>("/admin/venues"), enabled: tabEnabled("venues") });
 
   const { data: settings } = useQuery({ queryKey: ["admin-settings"], queryFn: () => api.get<Record<string, string>>("/admin/settings"), enabled: tabEnabled("settings") });
 
-  const { data: sponsors } = useQuery({ queryKey: ["admin-sponsors"], queryFn: () => api.get<{ data: Sponsor[] }>("/admin/sponsors"), enabled: tabEnabled("sponsors") });
+  const { data: sponsors } = useQuery({ queryKey: ["admin-sponsors", sponsorSearch], queryFn: () => api.get<{ data: Sponsor[] }>("/admin/sponsors", { ...(sponsorSearch ? { search: sponsorSearch } : {}) }), enabled: tabEnabled("sponsors") });
 
   const { data: activityLogs } = useQuery({ queryKey: ["admin-activity"], queryFn: () => api.get<PaginatedResponse<ActivityLog>>("/admin/activity-logs", { limit: "50" }), enabled: tabEnabled("activity") });
 
@@ -434,6 +441,7 @@ export function AdminPage() {
               ]}
               data={teams || []}
               keyExtractor={(t) => t.id}
+              onSearch={setTeamSearch}
               onAdd={() => { setEditingItem(null); openForm("team", { name: "", shortName: "", city: "", seasonId: seasons?.[0]?.id || "", status: "active" }); }}
               onEdit={(t) => { setEditingItem(t); openForm("team", { name: t.name, slug: t.slug, shortName: t.shortName || "", city: t.city || "", seasonId: t.seasonId, logoUrl: t.logoUrl || "", status: t.status || "active" }); }}
             />
@@ -512,6 +520,8 @@ export function AdminPage() {
               ]}
               data={players?.data || []}
               keyExtractor={(p) => p.id}
+              total={players?.meta?.total}
+              onSearch={setPlayerSearch}
               onAdd={() => { setEditingItem(null); openForm("player", { firstName: "", lastName: "", position: "", teamId: "", jerseyNumber: "", squadType: "", nationality: "", age: "", height: "", weight: "", preferredFoot: "", biography: "" }); }}
               onEdit={(p) => { setEditingItem(p); openForm("player", { firstName: p.firstName, lastName: p.lastName || "", position: p.position || "", teamId: p.teamId || "", jerseyNumber: p.jerseyNumber || "", squadType: p.squadType || "", photoUrl: p.photoUrl || "", nationality: p.nationality || "", age: p.age || "", height: p.height || "", weight: p.weight || "", preferredFoot: p.preferredFoot || "", biography: p.biography || "" }); }}
               onDelete={(p) => { if (confirm(`Delete player ${p.firstName} ${p.lastName}?`)) api.delete(`/admin/players/${p.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-players"] })).catch((e: any) => setActionError(e.message)); }}
@@ -619,6 +629,8 @@ export function AdminPage() {
               ]}
               data={fixtures?.data || []}
               keyExtractor={(f) => f.id}
+              total={fixtures?.meta?.total}
+              onSearch={setFixtureSearch}
               onAdd={() => { setEditingItem(null); openForm("fixture", { homeTeamId: "", awayTeamId: "", matchDate: "", kickoffTime: "", seasonId: seasons?.[0]?.id || "" }); }}
               onEdit={(f) => { setEditingItem(f); openForm("fixture", { homeTeamId: f.homeTeamId, awayTeamId: f.awayTeamId, matchDate: f.matchDate, kickoffTime: f.kickoffTime || "", seasonId: f.seasonId, stadium: f.stadium || "", referee: (f as any).referee || "", referee2: (f as any).referee2 || "", matchReport: (f as any).matchReport || "" }); }}
             />
@@ -1212,6 +1224,8 @@ export function AdminPage() {
               ]}
               data={bookings?.data || []}
               keyExtractor={(b) => b.id}
+              total={bookings?.meta?.total}
+              onSearch={setBookingSearch}
               onView={(b) => setSelectedBooking(b)}
               bulkActions={[
                 { label: "Confirm", onClick: async (ids) => { for (const id of ids) { try { await api.patch(`/admin/bookings/${id}/status`, { status: "CONFIRMED" }); } catch {} } queryClient.invalidateQueries({ queryKey: ["admin-bookings"] }); }, icon: <CheckCircle2 className="h-4 w-4" /> },
@@ -1242,6 +1256,8 @@ export function AdminPage() {
               ]}
               data={news?.data || []}
               keyExtractor={(n) => n.id}
+              total={news?.meta?.total}
+              onSearch={setNewsSearch}
               onAdd={() => { setEditingItem(null); openForm("news", { title: "", excerpt: "", content: "", imageUrl: "", author: "" }); }}
               onEdit={(n) => { setEditingItem(n); openForm("news", { title: n.title, slug: n.slug, excerpt: n.excerpt || "", content: n.content || "", imageUrl: n.imageUrl || "", author: n.author || "" }); }}
               onDelete={(n) => { if (confirm("Delete this article?")) api.delete(`/admin/news/${n.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-news"] })).catch((e: any) => setActionError(e.message)); }}
@@ -1297,6 +1313,7 @@ export function AdminPage() {
               ]}
               data={sponsors?.data || []}
               keyExtractor={(s) => s.id}
+              onSearch={setSponsorSearch}
               onAdd={() => { setEditingItem(null); openForm("sponsor", { name: "", website: "", tier: "platinum", logoUrl: "", isActive: true }); }}
               onEdit={(s) => { setEditingItem(s); openForm("sponsor", { name: s.name, website: s.website || "", tier: s.tier || "platinum", logoUrl: s.logoUrl || "", isActive: s.isActive !== false }); }}
               onDelete={(s) => { if (confirm("Delete this sponsor?")) api.delete(`/admin/sponsors/${s.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-sponsors"] })).catch((e: any) => setActionError(e.message)); }}
@@ -1765,6 +1782,7 @@ export function AdminPage() {
             ]}
             data={users?.data || []}
             keyExtractor={(u) => u.id}
+            onSearch={setUserSearch}
           />
         )}
       {liveStatsFixtureId && <LiveStatsPanel fixtureId={liveStatsFixtureId} onClose={() => setLiveStatsFixtureId(null)} />}

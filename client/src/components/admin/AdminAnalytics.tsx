@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { api } from "@/lib/api";
+import { ErrorState } from "@/components/admin/ErrorState";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import type { Booking, PaginatedResponse } from "@/types";
 import {
@@ -55,10 +56,11 @@ export function AdminAnalytics() {
   const [revenuePeriod, setRevenuePeriod] = useState<Period>("month");
   const [bookingPeriod, setBookingPeriod] = useState<Period>("week");
 
-  const { data: bookingsData, isLoading } = useQuery({
+  const { data: bookingsData, isLoading, isError, refetch } = useQuery({
     queryKey: ["admin-bookings-analytics"],
     queryFn: () => api.get<PaginatedResponse<Booking>>("/admin/bookings", { limit: "200" }),
     staleTime: 30000,
+    retry: 2,
   });
 
   const allBookings = bookingsData?.data || [];
@@ -186,6 +188,16 @@ export function AdminAnalytics() {
     });
     return grid;
   }, [chartBookings]);
+
+  if (isError) {
+    return (
+      <Card className="border-destructive/20">
+        <CardContent>
+          <ErrorState message="Couldn't load analytics." onRetry={refetch} />
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="space-y-6">

@@ -3,11 +3,11 @@ import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import { formatDate, formatCurrency } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
+import { ErrorState } from "@/components/admin/ErrorState";
 import { ActivityFeed } from "@/components/admin/ActivityFeed";
-import type { DashboardStats, Booking, Fixture, Venue } from "@/types";
+import type { DashboardStats, Booking } from "@/types";
 import {
   DollarSign, Calendar, Building2, Wallet, Clock, Trophy,
   MapPin, Users, XCircle, UserPlus,
@@ -51,44 +51,34 @@ function Skeleton({ className }: { className?: string }) {
 }
 
 export function AdminDashboard() {
-  const { data: dashboard, isLoading: dashLoading } = useQuery({
+  const { data: dashboard, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["admin-dashboard"],
     queryFn: () => api.get<DashboardStats>("/admin/dashboard"),
     retry: 1,
     staleTime: 30000,
   });
 
-  const { data: bookingsData, isLoading: bookingsLoading } = useQuery({
-    queryKey: ["admin-bookings"],
-    queryFn: () => api.get<{ data: Booking[] }>("/admin/bookings", { limit: "10" }),
-  });
-
-  const { data: fixturesData, isLoading: fixturesLoading } = useQuery({
-    queryKey: ["admin-fixtures-today"],
-    queryFn: () => api.get<{ data: Fixture[] }>("/admin/fixtures/live", { limit: "10" }),
-  });
-
-  const { data: venuesData, isLoading: venuesLoading } = useQuery({
-    queryKey: ["admin-venues"],
-    queryFn: () => api.get<{ data: Venue[] }>("/admin/venues"),
-  });
-
   const stats = dashboard?.stats;
+  const recentFixtures = dashboard?.recentFixtures || [];
+  const todayFixtures = dashboard?.todayFixtures || [];
+  const recentBookings = dashboard?.recentBookings || [];
+  const venues = dashboard?.venues || [];
+
   const todayStr = new Date().toISOString().split("T")[0];
 
   const todayBookings = useMemo(() =>
-    (bookingsData?.data || []).filter((b) => b.date?.startsWith(todayStr)),
-    [bookingsData, todayStr]
+    recentBookings.filter((b) => b.date?.startsWith(todayStr)),
+    [recentBookings, todayStr]
   );
 
   const pendingPayments = useMemo(() =>
-    (bookingsData?.data || []).filter((b) => b.status === "PENDING"),
-    [bookingsData]
+    recentBookings.filter((b) => b.status === "PENDING"),
+    [recentBookings]
   );
 
   const cancelledToday = useMemo(() =>
-    (bookingsData?.data || []).filter((b) => b.date?.startsWith(todayStr) && b.status === "CANCELLED"),
-    [bookingsData, todayStr]
+    recentBookings.filter((b) => b.date?.startsWith(todayStr) && b.status === "CANCELLED"),
+    [recentBookings, todayStr]
   );
 
   const todayRevenue = useMemo(() =>
@@ -96,10 +86,8 @@ export function AdminDashboard() {
     [todayBookings]
   );
 
-  const statsLoading = dashLoading || bookingsLoading || venuesLoading;
-  const recentFixtures = dashboard?.recentFixtures || [];
   const upcomingMatches = recentFixtures.filter((f) => f.status === "SCHEDULED");
-  const totalVenues = venuesData?.data?.length || 0;
+  const totalVenues = venues.length;
 
   const container = {
     hidden: { opacity: 0 },
@@ -111,18 +99,30 @@ export function AdminDashboard() {
     show: { opacity: 1, y: 0 },
   };
 
+  const todaySchedule = todayFixtures.length > 0 ? todayFixtures : recentFixtures.slice(0, 5);
+
+  if (isError) {
+    return (
+      <Card className="border-destructive/20">
+        <CardContent>
+          <ErrorState message={`Couldn't load dashboard. ${(error as any)?.message || ""}`} onRetry={refetch} />
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="space-y-6">
       {/* 8 Stat Cards */}
       <motion.div variants={item} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Today's Revenue" value={formatCurrency(todayRevenue || stats?.totalRevenue || 0)} icon={DollarSign} color="text-green-500" isLoading={statsLoading} index={0} />
-        <StatCard label="Today's Bookings" value={todayBookings.length} icon={Calendar} color="text-blue-500" isLoading={bookingsLoading} index={1} />
-        <StatCard label="Current Occupancy" value={stats?.activeBookings ? `${Math.min(Math.round((stats.activeBookings / 20) * 100), 100)}%` : "—"} icon={Building2} color="text-purple-500" isLoading={dashLoading} index={2} />
-        <StatCard label="Pending Payments" value={pendingPayments.length} icon={Wallet} color="text-amber-500" isLoading={bookingsLoading} index={3} />
-        <StatCard label="Upcoming Matches" value={upcomingMatches.length} icon={Trophy} color="text-orange-500" isLoading={dashLoading} index={4} />
-        <StatCard label="Available Venues" value={totalVenues} icon={MapPin} color="text-teal-500" isLoading={venuesLoading} index={5} />
-        <StatCard label="Cancelled Today" value={cancelledToday.length} icon={XCircle} color="text-red-500" isLoading={bookingsLoading} index={6} />
-        <StatCard label="New Users" value={stats?.totalUsers || 0} icon={UserPlus} color="text-pink-500" isLoading={dashLoading} index={7} />
+        <StatCard label="Today's Revenue" value={formatCurrency(todayRevenue || stats?.totalRevenue || 0)} icon={DollarSign} color="text-green-500" isLoading={isLoading} index={0} />
+        <StatCard label="Today's Bookings" value={todayBookings.length} icon={Calendar} color="text-blue-500" isLoading={isLoading} index={1} />
+        <StatCard label="Current Occupancy" value={stats?.activeBookings ? `${Math.min(Math.round((stats.activeBookings / 20) * 100), 100)}%` : "—"} icon={Building2} color="text-purple-500" isLoading={isLoading} index={2} />
+        <StatCard label="Pending Payments" value={pendingPayments.length} icon={Wallet} color="text-amber-500" isLoading={isLoading} index={3} />
+        <StatCard label="Upcoming Matches" value={upcomingMatches.length} icon={Trophy} color="text-orange-500" isLoading={isLoading} index={4} />
+        <StatCard label="Available Venues" value={totalVenues} icon={MapPin} color="text-teal-500" isLoading={isLoading} index={5} />
+        <StatCard label="Cancelled Today" value={cancelledToday.length} icon={XCircle} color="text-red-500" isLoading={isLoading} index={6} />
+        <StatCard label="New Users" value={stats?.totalUsers || 0} icon={UserPlus} color="text-pink-500" isLoading={isLoading} index={7} />
       </motion.div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -135,18 +135,18 @@ export function AdminDashboard() {
               <Badge variant="outline" className="text-xs">{new Date().toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}</Badge>
             </CardHeader>
             <CardContent>
-              {fixturesLoading ? (
+              {isLoading ? (
                 <div className="space-y-3">
                   {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
                 </div>
-              ) : recentFixtures.length === 0 ? (
+              ) : todaySchedule.length === 0 ? (
                 <div className="flex flex-col items-center py-8 text-muted-foreground">
                   <Calendar className="mb-2 h-8 w-8" />
                   <p className="text-sm">No fixtures scheduled today</p>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {recentFixtures.slice(0, 5).map((f) => (
+                  {todaySchedule.map((f) => (
                     <div key={f.id} className="flex items-center gap-3 rounded-lg border p-3 text-sm transition hover:bg-muted/30">
                       <div className="w-14 text-xs font-medium text-muted-foreground">
                         {f.matchDate ? new Date(f.matchDate).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—"}
@@ -171,11 +171,11 @@ export function AdminDashboard() {
               <Badge variant="outline" className="text-xs">Today: {todayBookings.length}</Badge>
             </CardHeader>
             <CardContent>
-              {bookingsLoading ? (
+              {isLoading ? (
                 <div className="space-y-3">
                   {[1, 2, 3].map((i) => <Skeleton key={i} className="h-14 w-full" />)}
                 </div>
-              ) : bookingsData?.data?.length === 0 ? (
+              ) : recentBookings.length === 0 ? (
                 <div className="flex flex-col items-center py-8 text-muted-foreground">
                   <Calendar className="mb-2 h-8 w-8" />
                   <p className="text-sm">No bookings yet</p>
@@ -192,7 +192,7 @@ export function AdminDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {(bookingsData?.data || []).slice(0, 6).map((b) => (
+                      {recentBookings.slice(0, 6).map((b) => (
                         <tr key={b.id} className="border-b last:border-0 transition hover:bg-muted/20">
                           <td className="py-2.5 pr-3">
                             <span className="font-medium">{b.user?.firstName} {b.user?.lastName}</span>

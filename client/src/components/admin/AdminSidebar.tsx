@@ -25,7 +25,7 @@ const navGroups: NavGroup[] = [
     label: "OPERATIONS",
     items: [
       { id: "bookings", label: "Bookings", icon: Calendar },
-      { id: "venues", label: "Calendar", icon: MapPin },
+      { id: "calendar", label: "Calendar", icon: MapPin },
       { id: "payments", label: "Payments", icon: Wallet },
     ],
   },

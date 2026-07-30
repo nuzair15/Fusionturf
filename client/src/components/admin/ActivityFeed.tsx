@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { ErrorState } from "@/components/admin/ErrorState";
 import type { ActivityLog, PaginatedResponse } from "@/types";
 import {
   Clock, CreditCard, Calendar, UserPlus, Activity,
@@ -48,11 +49,12 @@ function getActivityConfig(action: string, entity: string) {
 }
 
 export function ActivityFeed() {
-  const { data, isLoading, isRefetching } = useQuery({
+  const { data, isLoading, isError, isRefetching, refetch } = useQuery({
     queryKey: ["admin-activity-feed"],
     queryFn: () => api.get<PaginatedResponse<ActivityLog>>("/admin/activity-logs", { limit: "30" }),
     refetchInterval: 15000,
     staleTime: 5000,
+    retry: 2,
   });
 
   const logs = data?.data || [];
@@ -79,7 +81,9 @@ export function ActivityFeed() {
         </div>
       </CardHeader>
       <CardContent className="max-h-[500px] overflow-y-auto pr-1">
-        {isLoading ? (
+        {isError ? (
+          <ErrorState message="Couldn't load activity feed." onRetry={refetch} />
+        ) : isLoading ? (
           <div className="space-y-3">
             {[1, 2, 3, 4, 5].map((i) => (
               <div key={i} className="flex gap-3">

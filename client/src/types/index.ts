@@ -561,4 +561,8 @@ export interface DashboardStats {
     activeBookings: number;
   };
   recentFixtures: Fixture[];
+  todayFixtures: Fixture[];
+  recentBookings: Booking[];
+  activity: ActivityLog[];
+  venues: Venue[];
 }

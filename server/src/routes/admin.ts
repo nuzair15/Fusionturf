@@ -99,6 +99,7 @@ router.patch("/users/:id/role", authorize("SUPER_ADMIN"), admin.updateUserRole);
 router.get("/bookings", bookingAdmin.adminGetAllBookings);
 router.post("/bookings/block-date", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), bookingAdmin.adminBlockDate);
 router.patch("/bookings/:id/status", authorize("SUPER_ADMIN", "BOOKING_MANAGER", "LEAGUE_ADMIN"), bookingAdmin.adminUpdateBookingStatus);
+router.patch("/bookings/:id", authorize("SUPER_ADMIN", "BOOKING_MANAGER", "LEAGUE_ADMIN"), bookingAdmin.adminUpdateBooking);
 
 // Venue Management
 router.get("/venues", admin.getVenues);
@@ -128,6 +129,9 @@ router.post("/fixtures/:id/live-stats/update", authorize("SUPER_ADMIN", "LEAGUE_
 router.post("/fixtures/:id/goal", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.addGoal);
 router.post("/fixtures/:id/goal/remove", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.removeGoal);
 router.post("/fixtures/:id/substitution", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.addSubstitution);
+
+// Global Search
+router.get("/search", admin.adminSearch);
 
 // Suspensions
 router.get("/suspensions", admin.adminGetSuspensions);

@@ -1,11 +1,12 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { api } from "@/lib/api";
+import { ErrorState } from "@/components/admin/ErrorState";
 import { formatDate, formatTime, formatCurrency } from "@/lib/utils";
 import type { Booking, Venue } from "@/types";
 import {
@@ -16,6 +17,7 @@ import {
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 6);
+const WEEKDAY_LABELS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING: "bg-amber-100 border-amber-300 text-amber-800 dark:bg-amber-900/30 dark:border-amber-700 dark:text-amber-300",
@@ -36,18 +38,21 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [hoveredBooking, setHoveredBooking] = useState<Booking | null>(null);
   const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
-  const [dragRange, setDragRange] = useState<{ start: number; end: number } | null>(null);
-  const [dragActive, setDragActive] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
   const gridRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
+
+  const [dragBooking, setDragBooking] = useState<Booking | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ date: string; hour: number } | null>(null);
 
   useEffect(() => { setSelectedVenue((prev) => prev || venues[0]?.id || ""); }, [venues]);
 
-  const { data: calendarData, isLoading } = useQuery({
+  const { data: calendarData, isLoading, isError, refetch } = useQuery({
     queryKey: ["admin-calendar", selectedVenue, month, year],
     queryFn: () => api.get<{ data: Record<string, Booking[]>; total: number }>("/bookings/calendar", { venueId: selectedVenue, month, year }),
     enabled: !!selectedVenue,
+    retry: 2,
   });
 
   const bookingsByDate = calendarData?.data || {};
@@ -141,7 +146,54 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
     setWeekOffset(0);
   };
 
+  const handleDragStart = (e: any, booking: Booking) => {
+    setDragBooking(booking);
+    e.dataTransfer!.effectAllowed = "move";
+    e.dataTransfer!.setData("text/plain", booking.id);
+  };
+
+  const handleDragOver = (e: React.DragEvent, date: string, hour: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDropTarget({ date, hour });
+  };
+
+  const handleDragLeave = () => {
+    setDropTarget(null);
+  };
+
+  const handleDrop = async (e: React.DragEvent, date: string, hour: number) => {
+    e.preventDefault();
+    if (!dragBooking) return;
+    if (dragBooking.date === date && dragBooking.startTime === `${String(hour).padStart(2, "0")}:00`) {
+      setDragBooking(null);
+      setDropTarget(null);
+      return;
+    }
+    const duration = dragBooking.duration || 1;
+    const endH = Math.floor(hour + duration);
+    const endM = ((hour + duration) % 1) * 60;
+    const newStart = `${String(hour).padStart(2, "0")}:00`;
+    const newEnd = `${String(endH).padStart(2, "0")}:${String(Math.round(endM)).padStart(2, "0")}`;
+    try {
+      await api.patch(`/admin/bookings/${dragBooking.id}`, { date, startTime: newStart, endTime: newEnd });
+      queryClient.invalidateQueries({ queryKey: ["admin-calendar"] });
+    } catch {}
+    setDragBooking(null);
+    setDropTarget(null);
+  };
+
+  const handleDragEnd = () => {
+    setDragBooking(null);
+    setDropTarget(null);
+  };
+
   const startOfWeek = weekDays[0];
+
+  const weekDayDateKeys = useMemo(() =>
+    weekDays.map((d) => d.toISOString().split("T")[0]),
+    [weekDays]
+  );
 
   return (
     <div className="space-y-4">
@@ -190,7 +242,7 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
         </div>
       </div>
 
-      {/* Month View */}
+      {/* Month View (read-only, click to jump to day) */}
       {viewMode === "month" && (
         <Card>
           <CardContent className="p-3">
@@ -239,18 +291,18 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
         </Card>
       )}
 
-      {/* Week View */}
+      {/* Week View with Drag & Drop */}
       {viewMode === "week" && (
         <Card>
           <CardContent className="p-0 overflow-x-auto">
             <div className="flex border-b bg-muted/30 text-xs font-medium text-muted-foreground">
               <div className="w-16 shrink-0 p-2 text-right">Time</div>
               {weekDays.map((day, i) => {
-                const key = day.toISOString().split("T")[0];
+                const key = weekDayDateKeys[i];
                 const isToday = key === todayStr;
                 return (
                   <div key={key} className={`flex-1 p-2 text-center ${isToday ? "font-bold text-primary" : ""}`}>
-                    {DAYS[(day.getDay() + 1) % 7]} {day.getDate()}
+                    {WEEKDAY_LABELS[i]} {day.getDate()}
                   </div>
                 );
               })}
@@ -261,27 +313,38 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
                   <div className="w-16 shrink-0 p-1 pr-2 text-right text-[10px] text-muted-foreground">
                     {h > 12 ? h - 12 : h}{h >= 12 ? "p" : "a"}
                   </div>
-                  {weekDays.map((day) => (
-                    <div key={day.toISOString()} className="flex-1 border-l" />
-                  ))}
+                  {weekDayDateKeys.map((dayKey, di) => {
+                    const isDropTarget = dropTarget?.date === dayKey && dropTarget?.hour === h;
+                    return (
+                      <div
+                        key={dayKey}
+                        className={`flex-1 border-l transition-colors ${isDropTarget ? "bg-primary/15" : ""} ${dragBooking ? "cursor-copy" : ""}`}
+                        onDragOver={(e) => handleDragOver(e, dayKey, h)}
+                        onDragLeave={handleDragLeave}
+                        onDrop={(e) => handleDrop(e, dayKey, h)}
+                      />
+                    );
+                  })}
                 </div>
               ))}
-              {weekDays.map((day) => {
-                const key = day.toISOString().split("T")[0];
-                return dayBookingsForDate(key).map((b) => {
+              {weekDayDateKeys.map((dayKey, di) =>
+                dayBookingsForDate(dayKey).map((b) => {
                   const top = bookingTimeToPercent(b.startTime);
                   const height = bookingTimeToPercent(b.endTime) - top;
                   const hasConflict = checkConflict(b);
                   return (
                     <div
                       key={b.id}
-                      className={`absolute left-16 right-0 mx-0.5 cursor-pointer overflow-hidden rounded border px-1 py-0.5 text-[10px] transition hover:z-10 hover:shadow-md ${
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, b)}
+                      onDragEnd={handleDragEnd}
+                      className={`absolute left-16 right-0 mx-0.5 cursor-grab overflow-hidden rounded border px-1 py-0.5 text-[10px] transition hover:z-10 hover:shadow-md active:cursor-grabbing ${
                         STATUS_COLORS[b.status] || "bg-gray-100 border-gray-300"
-                      } ${hasConflict ? "ring-2 ring-red-500" : ""}`}
+                      } ${hasConflict ? "ring-2 ring-red-500" : ""} ${dragBooking?.id === b.id ? "opacity-40" : ""} ${dragBooking && dragBooking.id !== b.id ? "pointer-events-none" : ""}`}
                       style={{
                         top: `${top}%`,
                         height: `${Math.max(height, 2)}%`,
-                        left: `${16 + (weekDays.indexOf(day) * (100 - 16 / 7)) / 7}%`,
+                        left: `${16 + di * ((100 - 16) / 7)}%`,
                         width: `${(100 - 16) / 7}%`,
                       }}
                       onMouseEnter={(e) => handleMouseEnter(b, e)}
@@ -292,14 +355,28 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
                       <span className="ml-1">{formatTime(b.startTime)}</span>
                     </div>
                   );
-                });
-              })}
+                })
+              )}
+              {/* Ghost indicator */}
+              {dropTarget && (
+                <div
+                  className="absolute left-16 right-0 z-20 rounded border-2 border-dashed border-primary bg-primary/10 pointer-events-none"
+                  style={{
+                    top: `${((dropTarget.hour - 6) / 18) * 100}%`,
+                    height: `${(1 / 18) * 100}%`,
+                  }}
+                >
+                  <span className="ml-1 text-[10px] font-semibold text-primary">
+                    {dropTarget.hour > 12 ? dropTarget.hour - 12 : dropTarget.hour}{dropTarget.hour >= 12 ? "p" : "a"}
+                  </span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Day View */}
+      {/* Day View with Drag & Drop */}
       {viewMode === "day" && selectedDate && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between py-3">
@@ -313,18 +390,24 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
           </CardHeader>
           <CardContent className="p-0">
             <div className="relative" style={{ height: 18 * 48 }}>
-              {HOURS.map((h) => (
-                <div
-                  key={h}
-                  className="flex border-t text-[11px]"
-                  style={{ height: 48 }}
-                >
-                  <div className="w-16 shrink-0 p-1 pr-2 text-right text-muted-foreground">
-                    {h > 12 ? h - 12 : h}{h >= 12 ? "p" : "a"}
+              {HOURS.map((h) => {
+                const isDropTarget = dropTarget?.date === selectedDate && dropTarget?.hour === h;
+                return (
+                  <div
+                    key={h}
+                    className={`flex border-t text-[11px] transition-colors ${isDropTarget ? "bg-primary/15" : ""} ${dragBooking ? "cursor-copy" : ""}`}
+                    style={{ height: 48 }}
+                    onDragOver={(e) => handleDragOver(e, selectedDate, h)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, selectedDate, h)}
+                  >
+                    <div className="w-16 shrink-0 p-1 pr-2 text-right text-muted-foreground">
+                      {h > 12 ? h - 12 : h}{h >= 12 ? "p" : "a"}
+                    </div>
+                    <div className="flex-1 border-l" />
                   </div>
-                  <div className="flex-1 border-l" />
-                </div>
-              ))}
+                );
+              })}
               {dayBookingsForDate(selectedDate).map((b) => {
                 const top = bookingTimeToPercent(b.startTime);
                 const height = bookingTimeToPercent(b.endTime) - top;
@@ -334,9 +417,12 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
                     key={b.id}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    className={`absolute left-16 right-2 cursor-pointer rounded-lg border p-2 shadow-sm transition hover:shadow-md ${
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, b)}
+                    onDragEnd={handleDragEnd}
+                    className={`absolute left-16 right-2 cursor-grab rounded-lg border p-2 shadow-sm transition hover:shadow-md active:cursor-grabbing ${
                       STATUS_COLORS[b.status] || "bg-gray-100 border-gray-300"
-                    } ${hasConflict ? "ring-2 ring-red-500" : ""}`}
+                    } ${hasConflict ? "ring-2 ring-red-500" : ""} ${dragBooking?.id === b.id ? "opacity-40" : ""}`}
                     style={{ top: `${top}%`, height: `${Math.max(height, 4)}%`, minHeight: 48 }}
                     onMouseEnter={(e) => handleMouseEnter(b, e)}
                     onMouseLeave={handleMouseLeave}
@@ -362,6 +448,21 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
                   </motion.div>
                 );
               })}
+              {/* Ghost indicator for day view */}
+              {dropTarget && dropTarget.date === selectedDate && (
+                <div
+                  className="absolute left-16 right-2 z-20 rounded border-2 border-dashed border-primary bg-primary/10 pointer-events-none"
+                  style={{
+                    top: `${((dropTarget.hour - 6) / 18) * 100}%`,
+                    height: `${(1 / 18) * 100}%`,
+                    minHeight: 28,
+                  }}
+                >
+                  <span className="ml-1 text-xs font-semibold text-primary">
+                    {dropTarget.hour > 12 ? dropTarget.hour - 12 : dropTarget.hour}{dropTarget.hour >= 12 ? "p" : "a"}
+                  </span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -378,11 +479,13 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
         </div>
       )}
 
-      {isLoading && (
+      {isError ? (
+        <ErrorState message="Couldn't load calendar." onRetry={refetch} />
+      ) : isLoading ? (
         <div className="space-y-3">
           {[1, 2, 3, 4].map((i) => <div key={i} className="h-12 animate-pulse rounded-lg bg-muted" />)}
         </div>
-      )}
+      ) : null}
 
       {/* Hover Tooltip */}
       <AnimatePresence>
@@ -512,6 +615,7 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
                       onClick={async () => {
                         try {
                           await api.patch(`/admin/bookings/${selectedBooking.id}/status`, { status: "CONFIRMED" });
+                          queryClient.invalidateQueries({ queryKey: ["admin-calendar"] });
                           setSelectedBooking(null);
                         } catch {}
                       }}
@@ -524,6 +628,7 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
                       onClick={async () => {
                         try {
                           await api.patch(`/admin/bookings/${selectedBooking.id}/status`, { status: "CANCELLED" });
+                          queryClient.invalidateQueries({ queryKey: ["admin-calendar"] });
                           setSelectedBooking(null);
                         } catch {}
                       }}

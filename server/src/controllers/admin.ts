@@ -93,9 +93,14 @@ export const deleteSeason = async (req: Request, res: Response, next: NextFuncti
 
 export const getTeams = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { seasonId } = req.query;
+    const { seasonId, search } = req.query;
     const where: any = {};
     if (seasonId) where.seasonId = seasonId;
+    if (search) where.OR = [
+      { name: { contains: search as string, mode: "insensitive" } },
+      { shortName: { contains: search as string, mode: "insensitive" } },
+      { city: { contains: search as string, mode: "insensitive" } },
+    ];
     const teams = await prisma.team.findMany({
       where,
       orderBy: { name: "asc" },
@@ -160,10 +165,14 @@ export const deleteTeam = async (req: Request, res: Response, next: NextFunction
 export const getPlayers = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { page, limit, skip } = paginate(req.query);
-    const { teamId, seasonId } = req.query;
+    const { teamId, seasonId, search } = req.query;
     const where: any = {};
     if (teamId) where.teamId = teamId;
     if (seasonId) where.seasonId = seasonId;
+    if (search) where.OR = [
+      { firstName: { contains: search as string, mode: "insensitive" } },
+      { lastName: { contains: search as string, mode: "insensitive" } },
+    ];
     const [data, total] = await Promise.all([
       prisma.player.findMany({
         where,
@@ -304,13 +313,21 @@ export const copyPlayersFromSeason = async (req: Request, res: Response, next: N
 export const getFixtures = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { page, limit, skip } = paginate(req.query);
+    const { search } = req.query;
+    const where: any = {};
+    if (search) where.OR = [
+      { homeTeam: { name: { contains: search as string, mode: "insensitive" } } },
+      { awayTeam: { name: { contains: search as string, mode: "insensitive" } } },
+      { status: { contains: search as string, mode: "insensitive" } },
+    ];
     const [data, total] = await Promise.all([
       prisma.fixture.findMany({
+        where,
         include: { homeTeam: { select: { name: true, slug: true, logoUrl: true } }, awayTeam: { select: { name: true, slug: true, logoUrl: true } }, season: { select: { name: true } } },
         skip, take: limit,
         orderBy: { matchDate: "desc" },
       }),
-      prisma.fixture.count(),
+      prisma.fixture.count({ where }),
     ]);
     res.json(paginatedResponse(data, total, page, limit));
   } catch (error) {
@@ -537,13 +554,21 @@ export const announceWinner = async (req: Request, res: Response, next: NextFunc
 export const getNews = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { page, limit, skip } = paginate(req.query);
+    const { search } = req.query;
+    const where: any = {};
+    if (search) where.OR = [
+      { title: { contains: search as string, mode: "insensitive" } },
+      { author: { contains: search as string, mode: "insensitive" } },
+      { excerpt: { contains: search as string, mode: "insensitive" } },
+    ];
     const [data, total] = await Promise.all([
       prisma.news.findMany({
+        where,
         include: { team: { select: { name: true, slug: true } } },
         skip, take: limit,
         orderBy: { publishedAt: "desc" },
       }),
-      prisma.news.count(),
+      prisma.news.count({ where }),
     ]);
     res.json(paginatedResponse(data, total, page, limit));
   } catch (error) {
@@ -632,9 +657,14 @@ export const updateSponsor = async (req: Request, res: Response, next: NextFunct
   }
 };
 
-export const getSponsors = async (_req: Request, res: Response, next: NextFunction) => {
+export const getSponsors = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const sponsors = await prisma.sponsor.findMany({ orderBy: { tier: "asc" } });
+    const { search } = req.query;
+    const where: any = {};
+    if (search) where.OR = [
+      { name: { contains: search as string, mode: "insensitive" } },
+    ];
+    const sponsors = await prisma.sponsor.findMany({ where, orderBy: { tier: "asc" } });
     res.json({ data: sponsors });
   } catch (error) {
     next(error);
@@ -718,9 +748,15 @@ export const updateUserRole = async (req: Request, res: Response, next: NextFunc
 
 export const getDashboardStats = async (_req: Request, res: Response, next: NextFunction) => {
   try {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
     const [
       totalUsers, totalBookings, totalTeams, totalPlayers,
       totalFixtures, totalRevenue, activeBookings, recentFixtures,
+      todayFixtures, recentBookings, activity, venues,
     ] = await Promise.all([
       prisma.user.count(),
       prisma.booking.count(),
@@ -734,6 +770,29 @@ export const getDashboardStats = async (_req: Request, res: Response, next: Next
         orderBy: { matchDate: "desc" },
         include: { homeTeam: true, awayTeam: true },
       }),
+      prisma.fixture.findMany({
+        where: { matchDate: { gte: todayStart, lte: todayEnd } },
+        orderBy: { matchDate: "asc" },
+        include: { homeTeam: true, awayTeam: true },
+      }),
+      prisma.booking.findMany({
+        take: 10,
+        orderBy: { createdAt: "desc" },
+        include: {
+          user: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+          turf: { include: { venue: { select: { name: true } } } },
+          payments: true,
+        },
+      }),
+      prisma.activityLog.findMany({
+        take: 20,
+        include: { user: { select: { firstName: true, lastName: true } } },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.venue.findMany({
+        include: { turfs: { where: { isActive: true } }, _count: { select: { turfs: true } } },
+        orderBy: { name: "asc" },
+      }),
     ]);
 
     res.json({
@@ -743,6 +802,10 @@ export const getDashboardStats = async (_req: Request, res: Response, next: Next
         activeBookings,
       },
       recentFixtures,
+      todayFixtures,
+      recentBookings,
+      activity,
+      venues,
     });
   } catch (error) {
     next(error);
@@ -771,7 +834,14 @@ export const getActivityLogs = async (req: Request, res: Response, next: NextFun
 
 export const getVenues = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const { search } = req.query;
+    const where: any = {};
+    if (search) where.OR = [
+      { name: { contains: search as string, mode: "insensitive" } },
+      { city: { contains: search as string, mode: "insensitive" } },
+    ];
     const venues = await prisma.venue.findMany({
+      where,
       include: { turfs: { where: { isActive: true } }, _count: { select: { turfs: true } } },
       orderBy: { name: "asc" },
     });
@@ -1385,3 +1455,49 @@ async function recalcScore(fixtureId: string) {
     data: { homeScore: homeGoals, awayScore: awayGoals },
   });
 }
+
+export const adminSearch = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const q = String(req.query.q || "").trim();
+    if (!q) return res.json({ data: [] });
+
+    const [teams, players, venues, bookings, fixtures, news, sponsors, users] = await Promise.all([
+      prisma.team.findMany({ where: { name: { contains: q, mode: "insensitive" } }, take: 5 }),
+      prisma.player.findMany({
+        where: { OR: [{ firstName: { contains: q, mode: "insensitive" } }, { lastName: { contains: q, mode: "insensitive" } }] },
+        include: { team: { select: { name: true } } }, take: 5,
+      }),
+      prisma.venue.findMany({ where: { name: { contains: q, mode: "insensitive" } }, take: 5 }),
+      prisma.booking.findMany({
+        where: { bookingNumber: { contains: q, mode: "insensitive" } },
+        include: { user: { select: { firstName: true, lastName: true } }, turf: { include: { venue: { select: { name: true } } } } },
+        take: 5,
+      }),
+      prisma.fixture.findMany({
+        where: { OR: [{ homeTeam: { name: { contains: q, mode: "insensitive" } } }, { awayTeam: { name: { contains: q, mode: "insensitive" } } }] },
+        include: { homeTeam: { select: { shortName: true } }, awayTeam: { select: { shortName: true } } },
+        take: 5,
+      }),
+      prisma.news.findMany({ where: { title: { contains: q, mode: "insensitive" } }, take: 5 }),
+      prisma.sponsor.findMany({ where: { name: { contains: q, mode: "insensitive" } }, take: 5 }),
+      prisma.user.findMany({
+        where: { OR: [{ firstName: { contains: q, mode: "insensitive" } }, { lastName: { contains: q, mode: "insensitive" } }, { email: { contains: q, mode: "insensitive" } }] },
+        take: 5,
+      }),
+    ]);
+
+    const results: any[] = [];
+    teams.forEach((t) => results.push({ id: t.id, label: t.name, description: "Team", type: "team" }));
+    players.forEach((p) => results.push({ id: p.id, label: `${p.firstName} ${p.lastName}`, description: `Player — ${p.team?.name || "No team"}`, type: "player" }));
+    venues.forEach((v) => results.push({ id: v.id, label: v.name, description: "Venue", type: "venue" }));
+    bookings.forEach((b) => results.push({ id: b.id, label: `#${b.bookingNumber}`, description: `${b.turf?.venue?.name || "Venue"} — ${b.user?.firstName || ""} ${b.user?.lastName || ""}`, type: "booking" }));
+    fixtures.forEach((f) => results.push({ id: f.id, label: `${f.homeTeam?.shortName || "?"} vs ${f.awayTeam?.shortName || "?"}`, description: "Fixture", type: "fixture" }));
+    news.forEach((n) => results.push({ id: n.id, label: n.title, description: "News", type: "news" }));
+    sponsors.forEach((s) => results.push({ id: s.id, label: s.name, description: "Sponsor", type: "sponsor" }));
+    users.forEach((u) => results.push({ id: u.id, label: `${u.firstName} ${u.lastName}`, description: `User — ${u.email}`, type: "user" }));
+
+    res.json({ data: results });
+  } catch (error) {
+    next(error);
+  }
+};

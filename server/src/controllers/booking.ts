@@ -288,12 +288,42 @@ export const adminUpdateBookingStatus = async (req: Request, res: Response, next
   }
 };
 
+export const adminUpdateBooking = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { date, startTime, endTime } = req.body;
+    const updateData: any = {};
+    if (date) updateData.date = new Date(date);
+    if (startTime) updateData.startTime = startTime;
+    if (endTime) updateData.endTime = endTime;
+    if (startTime && endTime) {
+      const [sh, sm] = startTime.split(":").map(Number);
+      const [eh, em] = endTime.split(":").map(Number);
+      updateData.duration = (eh + em / 60) - (sh + sm / 60);
+    }
+    const booking = await prisma.booking.update({
+      where: { id: req.params.id },
+      data: updateData,
+    });
+    res.json(booking);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const adminGetAllBookings = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { page, limit, skip } = paginate(req.query);
     const where: any = {};
     if (req.query.status) where.status = req.query.status;
     if (req.query.venueId) where.turf = { venueId: req.query.venueId };
+    if (req.query.search) {
+      const s = req.query.search as string;
+      where.OR = [
+        { bookingNumber: { contains: s, mode: "insensitive" } },
+        { user: { firstName: { contains: s, mode: "insensitive" } } },
+        { user: { lastName: { contains: s, mode: "insensitive" } } },
+      ];
+    }
 
     const [data, total] = await Promise.all([
       prisma.booking.findMany({
