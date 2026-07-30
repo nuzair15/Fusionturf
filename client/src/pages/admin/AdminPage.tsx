@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,8 +12,11 @@ import { Dialog } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { LiveStatsPanel } from "@/components/admin/LiveStatsPanel";
+import { AdminSidebar, SidebarDrawer } from "@/components/admin/AdminSidebar";
+import { AdminDashboard } from "@/components/admin/AdminDashboard";
+import { AdminSearch } from "@/components/admin/AdminSearch";
 import type { DashboardStats, User, Season, Team, Player, Fixture, Award, News, Booking, PaginatedResponse, Venue, Turf, Sponsor, Suspension, ActivityLog, Gallery, Coupon, Advertisement, Faq, ReviewAdmin } from "@/types";
-import { LayoutDashboard, Users, Calendar, CalendarDays, Trophy, Settings, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2, ActivitySquare, ListChecks, AlertTriangle, MessageSquare, HelpCircle, Tag, Monitor } from "lucide-react";
+import { LayoutDashboard, Users, Calendar, CalendarDays, Trophy, Settings, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2, ActivitySquare, ListChecks, AlertTriangle, MessageSquare, HelpCircle, Tag, Monitor, Search, Menu } from "lucide-react";
 import { VenueCalendar } from "@/components/admin/VenueCalendar";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 
@@ -57,6 +60,8 @@ export function AdminPage() {
   const [generating, setGenerating] = useState(false);
   const [liveStatsFixtureId, setLiveStatsFixtureId] = useState<string | null>(null);
   const [selectedSeasonId, setSelectedSeasonId] = useState<string>("");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [winnerSearchTerm, setWinnerSearchTerm] = useState("");
   const [winnerResults, setWinnerResults] = useState<any[]>([]);
   const [winnerLoading, setWinnerLoading] = useState(false);
@@ -133,6 +138,20 @@ export function AdminPage() {
   const { data: seasons } = useQuery({ queryKey: ["admin-seasons"], queryFn: () => api.get<Season[]>("/admin/seasons"), enabled: unlocked });
 
   const currentSeason = (seasons || []).find((s: Season) => s.isCurrent);
+
+  const handleSearchOpen = useCallback(() => setSearchOpen(true), []);
+  const handleSearchClose = useCallback(() => setSearchOpen(false), []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   // Default selected season to current season when seasons load
   useEffect(() => {
@@ -223,85 +242,53 @@ export function AdminPage() {
     );
   }
 
+  const activeTabLabel = adminTabs.find((t) => t.id === activeTab)?.label || "Dashboard";
+
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.12),transparent_34%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--secondary)/0.45))]">
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-        <div className="mb-8 overflow-hidden rounded-2xl border bg-card/90 p-5 shadow-sm backdrop-blur sm:p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <Button variant="ghost" onClick={() => navigate("/")} className="mb-2 gap-1"><ChevronLeft className="h-4 w-4" /> Back to Site</Button>
-            <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
-            <p className="text-muted-foreground">Manage venues, teams, content, and bookings from one tidy console.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="gap-1 text-xs"><CheckCircle2 className="h-3.5 w-3.5 text-primary" /> Admin</Badge>
-            <Button variant="ghost" size="icon" onClick={handleLogout}><LogOut className="h-5 w-5" /></Button>
-          </div>
-          </div>
-        </div>
+    <div className="flex min-h-screen bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.12),transparent_34%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--secondary)/0.45))]">
+      {/* Desktop Sidebar */}
+      <div className="hidden w-64 shrink-0 border-r bg-card/80 backdrop-blur lg:block">
+        <AdminSidebar activeTab={activeTab} onTabChange={setActiveTab} onLogout={handleLogout} />
+      </div>
 
-        <div className="mb-6 flex gap-2 overflow-x-auto rounded-2xl border bg-card/80 p-2 shadow-sm backdrop-blur">
-          {adminTabs.map((tab) => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === tab.id ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-secondary hover:text-foreground"}`}>
-              <tab.icon className="h-4 w-4" /> {tab.label}
-            </button>
-          ))}
-        </div>
+      {/* Mobile Drawer */}
+      <SidebarDrawer open={sidebarOpen} onClose={() => setSidebarOpen(false)}>
+        <AdminSidebar activeTab={activeTab} onTabChange={setActiveTab} onLogout={handleLogout} onClose={() => setSidebarOpen(false)} />
+      </SidebarDrawer>
 
-        {activeTab === "overview" && (
-          <>
-            {!dashboard && <TabSkeleton />}
-            {dashboard && (
-            <div className="space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {[
-                { label: "Total Users", value: stats?.totalUsers || 0, icon: Users, color: "text-blue-500" },
-                { label: "Total Bookings", value: stats?.totalBookings || 0, icon: Calendar, color: "text-green-500" },
-                { label: "Teams", value: stats?.totalTeams || 0, icon: Trophy, color: "text-purple-500" },
-                { label: "Revenue", value: stats?.totalRevenue ? formatCurrency(stats.totalRevenue) : "₹0", icon: DollarSign, color: "text-yellow-500" },
-              ].map((stat) => (
-                <Card key={stat.label}>
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">{stat.label}</p>
-                        <p className="text-2xl font-bold">{stat.value}</p>
-                      </div>
-                      <stat.icon className={`h-8 w-8 ${stat.color}`} />
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+      {/* Search Modal */}
+      <AnimatePresence>
+        {searchOpen && <AdminSearch onClose={handleSearchClose} />}
+      </AnimatePresence>
+
+      {/* Main Content */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-30 border-b bg-card/80 backdrop-blur">
+          <div className="flex items-center justify-between px-4 py-3 sm:px-6">
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)} className="lg:hidden">
+                <Menu className="h-5 w-5" />
+              </Button>
+              <div>
+                <h1 className="text-lg font-bold tracking-tight">{activeTabLabel}</h1>
+                <p className="text-xs text-muted-foreground hidden sm:block">Manage venues, teams, content, and bookings</p>
+              </div>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Card>
-                <CardHeader><CardTitle>Recent Fixtures</CardTitle></CardHeader>
-                <CardContent className="space-y-2">
-                  {dashboard?.recentFixtures?.slice(0, 5).map((f) => (
-                    <div key={f.id} className="flex items-center justify-between rounded-lg border p-2 text-sm">
-                      <span>{f.homeTeam?.shortName || "?"} vs {f.awayTeam?.shortName || "?"}</span>
-                      <Badge variant="secondary">{f.status}</Badge>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader><CardTitle>Quick Actions</CardTitle></CardHeader>
-                <CardContent className="grid gap-2">
-                  {adminTabs.filter(t => t.id !== "overview").map(tab => (
-                    <Button key={tab.id} variant="outline" className="justify-start" onClick={() => setActiveTab(tab.id)}>
-                      <tab.icon className="mr-2 h-4 w-4" /> Manage {tab.label}
-                    </Button>
-                  ))}
-                </CardContent>
-              </Card>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="gap-2 text-xs" onClick={handleSearchOpen}>
+                <Search className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Search</span>
+                <kbd className="hidden rounded border bg-muted px-1 text-[10px] font-medium text-muted-foreground sm:inline">Ctrl+K</kbd>
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="gap-1 text-xs">
+                <ChevronLeft className="h-3.5 w-3.5" /> Site
+              </Button>
             </div>
-            </div>
-            )}
-          </>
-        )}
+          </div>
+        </header>
+
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+          {activeTab === "overview" && <AdminDashboard />}
 
         {activeTab === "seasons" && (
           <>
@@ -1836,9 +1823,9 @@ export function AdminPage() {
             </CardContent>
           </Card>
         )}
-      </motion.div>
       {liveStatsFixtureId && <LiveStatsPanel fixtureId={liveStatsFixtureId} onClose={() => setLiveStatsFixtureId(null)} />}
-    </div>
+        </main>
+      </div>
     </div>
   );
 }
