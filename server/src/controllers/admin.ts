@@ -448,7 +448,25 @@ export const updateFixtureScore = async (req: Request, res: Response, next: Next
 
 export const deleteFixture = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const fixture = await prisma.fixture.findUnique({
+      where: { id: req.params.id },
+      select: { seasonId: true },
+    });
+    if (!fixture) throw new AppError("Fixture not found", 404);
+
     await prisma.fixture.delete({ where: { id: req.params.id } });
+
+    // Deleting removes the fixture (and its goals/cards/subs via cascade), so
+    // recompute standings, player stats and awards for the season so the
+    // deleted result stops counting in the league table.
+    await leagueSystem.recalculateStandings(fixture.seasonId);
+    try {
+      await leagueSystem.recalculatePlayerStats(fixture.seasonId);
+      await leagueSystem.autoDetectAwards(fixture.seasonId);
+    } catch (error) {
+      console.error("Failed to recalculate player stats/awards after fixture delete:", error);
+    }
+
     res.status(204).end();
   } catch (error) {
     next(error);
