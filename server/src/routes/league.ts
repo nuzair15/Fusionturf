@@ -5,6 +5,7 @@ import {
   getStandings, getTopScorers, getTopAssists, getPlayerStats, getTeamStats,
   getAwards, getAwardBySlug, voteForAward, getNews, getGallery, getSponsors,
   getMatchdaySquad, getSuspensions, getPlayerSuspensions, getAwardLeaderboard,
+  getFixtureLineups,
 } from "../controllers/league.js";
 import { authenticate, optionalAuth } from "../middleware/auth.js";
 
@@ -25,6 +26,7 @@ router.get("/players/:slug", getPlayerBySlug);
 // Fixtures
 router.get("/fixtures", getFixtures);
 router.get("/fixtures/:id", getFixtureById);
+router.get("/fixtures/:id/lineups", getFixtureLineups);
 
 // Standings
 router.get("/standings", getStandings);

@@ -7,7 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { formatDate, getMatchStatusColor } from "@/lib/utils";
-import type { Fixture } from "@/types";
+import { useLineup } from "@/hooks/useLineup";
+import { FootballPitch } from "@/components/league/FootballPitch";
+import { BenchPlayers } from "@/components/league/BenchPlayers";
+import { FormationBadge } from "@/components/league/FormationBadge";
+import type { Fixture, Team } from "@/types";
 import { ChevronLeft, ChevronRight, Swords } from "lucide-react";
 
 function AnimatedScore({ value }: { value: number }) {
@@ -38,6 +42,63 @@ function PlayerLink({ player, children }: { player: { id: string; slug?: string;
     <span className="cursor-pointer transition-colors hover:text-primary" onClick={() => navigate(`/league/players/${player.slug || player.id}`)}>
       {children}
     </span>
+  );
+}
+
+const HOME_COLOR = "#22c55e";
+const AWAY_COLOR = "#38bdf8";
+
+function MatchLineupsSection({ fixtureId, homeTeam, awayTeam }: { fixtureId: string; homeTeam: Team; awayTeam: Team }) {
+  const { data: lineups, isLoading } = useLineup(fixtureId);
+
+  const hasAny =
+    !!lineups &&
+    (lineups.home.starters.length > 0 ||
+      lineups.home.bench.length > 0 ||
+      lineups.away.starters.length > 0 ||
+      lineups.away.bench.length > 0);
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>Match Lineups</CardTitle></CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">Loading lineups…</p>
+        ) : !hasAny ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">No lineup has been announced.</p>
+        ) : (
+          <div className="space-y-4">
+            {/* Team headers + formations */}
+            <div className="flex items-center justify-between gap-2 text-sm">
+              <div className="flex min-w-0 items-center gap-2">
+                {homeTeam.logoUrl && <img src={homeTeam.logoUrl} alt="" className="h-7 w-7 rounded-full bg-muted object-cover" />}
+                <span className="truncate font-semibold">{homeTeam.shortName || homeTeam.name}</span>
+                <FormationBadge formation={lineups?.home.formation ?? null} />
+              </div>
+              <div className="flex min-w-0 items-center gap-2">
+                <FormationBadge formation={lineups?.away.formation ?? null} />
+                <span className="truncate font-semibold">{awayTeam.shortName || awayTeam.name}</span>
+                {awayTeam.logoUrl && <img src={awayTeam.logoUrl} alt="" className="h-7 w-7 rounded-full bg-muted object-cover" />}
+              </div>
+            </div>
+
+            <FootballPitch
+              homePlayers={lineups?.home.starters ?? []}
+              awayPlayers={lineups?.away.starters ?? []}
+              readonly
+              homeColor={HOME_COLOR}
+              awayColor={AWAY_COLOR}
+              className="mx-auto max-w-sm"
+            />
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <BenchPlayers players={lineups?.home.bench ?? []} color={HOME_COLOR} />
+              <BenchPlayers players={lineups?.away.bench ?? []} color={AWAY_COLOR} />
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -166,36 +227,7 @@ export function FixtureDetailPage() {
             )}
 
             {/* Lineups */}
-            {fixture.lineups && fixture.lineups.length > 0 && (
-              <Card>
-                <CardHeader><CardTitle>Lineups</CardTitle></CardHeader>
-                <CardContent>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {["home", "away"].map((side) => {
-                      const isHome = side === "home";
-                      const team = isHome ? fixture.homeTeam : fixture.awayTeam;
-                      const starters = fixture.lineups!.filter((l) => l.isStarter && l.player.teamId === (isHome ? fixture.homeTeamId : fixture.awayTeamId));
-                      return (
-                        <div key={side}>
-                          <h4 className="mb-2 text-sm font-semibold">{team.shortName || team.name}</h4>
-                          <div className="space-y-1">
-                            {starters.map((l) => (
-                              <div key={l.id} className="flex items-center gap-2 rounded border px-2 py-1 text-xs">
-                                <span className="w-4 text-muted-foreground">{l.jerseyNumber}</span>
-                                <PlayerLink player={l.player}>
-                                  <span>{l.player.firstName} {l.player.lastName}</span>
-                                </PlayerLink>
-                                <span className="ml-auto text-muted-foreground">{l.position}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            <MatchLineupsSection fixtureId={fixture.id} homeTeam={fixture.homeTeam} awayTeam={fixture.awayTeam} />
 
             {/* Player Ratings */}
             {fixture.matchPlayerRatings && fixture.matchPlayerRatings.length > 0 && (

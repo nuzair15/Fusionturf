@@ -202,6 +202,11 @@ export interface Lineup {
   isStarter: boolean;
   position?: string;
   jerseyNumber?: number;
+  role?: string;
+  xPosition?: number;
+  yPosition?: number;
+  isCaptain?: boolean;
+  isGoalkeeper?: boolean;
 }
 
 export interface MatchPlayerRating {

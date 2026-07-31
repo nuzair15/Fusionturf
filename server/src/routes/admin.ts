@@ -41,6 +41,7 @@ router.patch("/fixtures/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTI
 router.patch("/fixtures/:id/status", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.updateFixtureStatus);
 router.patch("/fixtures/:id/score", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.updateFixtureScore);
 router.delete("/fixtures/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.deleteFixture);
+router.put("/fixtures/:id/lineups", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.updateFixtureLineups);
 
 // Awards
 router.get("/awards", admin.getAwards);

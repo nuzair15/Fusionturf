@@ -3,6 +3,7 @@ import { z } from "zod";
 import prisma from "../config/database.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { paginate, paginatedResponse, calculateMatchStats, searchPlayerIds } from "../utils/helpers.js";
+import { LineupRow, serializeTeamLineup } from "../utils/lineup.js";
 
 // ─── Seasons ───
 
@@ -222,6 +223,38 @@ export const getFixtureById = async (req: Request, res: Response, next: NextFunc
     });
     if (!fixture) throw new AppError("Fixture not found", 404);
     res.json(fixture);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── Lineups ───
+
+export const getFixtureLineups = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const fixture = await prisma.fixture.findUnique({
+      where: { id: req.params.id },
+      include: {
+        homeTeam: { select: { id: true, name: true, shortName: true, logoUrl: true } },
+        awayTeam: { select: { id: true, name: true, shortName: true, logoUrl: true } },
+        lineups: {
+          include: {
+            player: { select: { id: true, firstName: true, lastName: true, photoUrl: true, jerseyNumber: true, position: true } },
+          },
+          orderBy: [{ isStarter: "desc" }, { position: "asc" }],
+        },
+      },
+    });
+    if (!fixture) throw new AppError("Fixture not found", 404);
+
+    const homeRows = fixture.lineups.filter((l) => l.teamId === fixture.homeTeamId) as LineupRow[];
+    const awayRows = fixture.lineups.filter((l) => l.teamId === fixture.awayTeamId) as LineupRow[];
+
+    res.json({
+      fixtureId: fixture.id,
+      home: serializeTeamLineup(fixture.homeTeam, homeRows, true),
+      away: serializeTeamLineup(fixture.awayTeam, awayRows, false),
+    });
   } catch (error) {
     next(error);
   }

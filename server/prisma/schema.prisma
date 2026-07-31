@@ -722,7 +722,15 @@ model Lineup {
   isStarter Boolean @default(true)
   position  String?
   jerseyNumber Int?
+  // Field role the player occupies in this fixture (e.g. "GK", "CB", "ST").
+  role      String?
+  // Normalised pitch coordinates (0-100). x = left-right, y = top-bottom.
+  xPosition Float   @default(50)
+  yPosition Float   @default(50)
+  isCaptain Boolean  @default(false)
+  isGoalkeeper Boolean @default(false)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([fixtureId])
   @@index([teamId])

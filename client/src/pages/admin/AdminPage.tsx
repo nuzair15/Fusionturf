@@ -13,6 +13,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { LiveStatsPanel } from "@/components/admin/LiveStatsPanel";
+import { LineupEditor } from "@/components/admin/LineupEditor";
 import { AdminSidebar, SidebarDrawer } from "@/components/admin/AdminSidebar";
 import { AdminDashboard } from "@/components/admin/AdminDashboard";
 import { AdminSearch } from "@/components/admin/AdminSearch";
@@ -67,6 +68,7 @@ export function AdminPage() {
   const [fixtureOptions, setFixtureOptions] = useState({ teamCount: 6, leagueWeeks: 7, matchesPerPair: 2, startDate: "", fixtureDays: ["Friday", "Saturday", "Sunday"] as string[] });
   const [generating, setGenerating] = useState(false);
   const [liveStatsFixtureId, setLiveStatsFixtureId] = useState<string | null>(null);
+  const [lineupFixture, setLineupFixture] = useState<Fixture | null>(null);
   const [selectedSeasonId, setSelectedSeasonId] = useState<string>("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -627,9 +629,14 @@ export function AdminPage() {
                 { key: "date", label: "Date", sortable: true, render: (f) => <span className="text-muted-foreground">{formatDate(f.matchDate)}</span> },
                 { key: "status", label: "Status", render: (f) => <Badge variant="secondary">{f.status}</Badge> },
                 { key: "manage", label: "Manage", render: (f) => (
-                  <Button size="sm" variant={f.status === "LIVE" ? "default" : "outline"} onClick={() => setLiveStatsFixtureId(f.id)}>
-                    <Activity className="h-3.5 w-3.5" /> Live
-                  </Button>
+                  <div className="flex items-center justify-end gap-1">
+                    <Button size="sm" variant="outline" onClick={() => setLineupFixture(f)}>
+                      <Users className="h-3.5 w-3.5" /> Lineups
+                    </Button>
+                    <Button size="sm" variant={f.status === "LIVE" ? "default" : "outline"} onClick={() => setLiveStatsFixtureId(f.id)}>
+                      <Activity className="h-3.5 w-3.5" /> Live
+                    </Button>
+                  </div>
                 ) },
               ]}
               data={fixtures?.data || []}
@@ -1795,6 +1802,13 @@ export function AdminPage() {
           />
         )}
       {liveStatsFixtureId && <LiveStatsPanel fixtureId={liveStatsFixtureId} onClose={() => setLiveStatsFixtureId(null)} />}
+      {lineupFixture && (
+        <LineupEditor
+          fixture={lineupFixture}
+          onClose={() => setLineupFixture(null)}
+          onSaved={() => { queryClient.invalidateQueries({ queryKey: ["admin-fixtures"] }); setLineupFixture(null); }}
+        />
+      )}
       <AnimatePresence>
         {selectedBooking && <BookingDrawer booking={selectedBooking} onClose={() => setSelectedBooking(null)} />}
       </AnimatePresence>

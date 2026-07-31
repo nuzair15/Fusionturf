@@ -455,6 +455,124 @@ export const deleteFixture = async (req: Request, res: Response, next: NextFunct
   }
 };
 
+// ─── Fixture Lineups ───
+
+interface LineupEntryInput {
+  playerId: string;
+  isStarter?: boolean;
+  isCaptain?: boolean;
+  isGoalkeeper?: boolean;
+  role?: string | null;
+  xPosition?: number;
+  yPosition?: number;
+}
+
+const clampCoord = (value: number | undefined): number => {
+  if (typeof value !== "number" || Number.isNaN(value)) return 50;
+  return Math.max(0, Math.min(100, value));
+};
+
+/**
+ * Replaces the full lineup for a fixture. Each team's list is validated
+ * server-side: players must belong to that team, must not be duplicated, and
+ * only one captain and one goalkeeper are allowed per team.
+ */
+export const updateFixtureLineups = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const fixture = await prisma.fixture.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, homeTeamId: true, awayTeamId: true },
+    });
+    if (!fixture) throw new AppError("Fixture not found", 404);
+
+    const { home, away } = req.body || {};
+    if (!Array.isArray(home) || !Array.isArray(away)) {
+      throw new AppError("home and away lineup arrays are required", 400);
+    }
+
+    const buildEntries = async (teamId: string, raw: unknown[]): Promise<LineupEntryInput[]> => {
+      const entries = raw.filter((e): e is Record<string, any> => !!e && typeof e === "object");
+      if (entries.some((e) => typeof e.playerId !== "string" || !e.playerId)) {
+        throw new AppError("Each lineup entry requires a valid playerId", 400);
+      }
+
+      const playerIds = entries.map((e) => e.playerId);
+      if (new Set(playerIds).size !== playerIds.length) {
+        throw new AppError("Duplicate players are not allowed in a lineup", 400);
+      }
+
+      const players = await prisma.player.findMany({
+        where: { id: { in: playerIds } },
+        select: { id: true, teamId: true },
+      });
+      if (players.length !== playerIds.length) {
+        throw new AppError("One or more players were not found", 400);
+      }
+      const wrongTeam = players.find((p) => p.teamId !== teamId);
+      if (wrongTeam) {
+        throw new AppError("A player does not belong to the selected team", 400);
+      }
+
+      const captains = entries.filter((e) => !!e.isCaptain).length;
+      const keepers = entries.filter((e) => !!e.isGoalkeeper).length;
+      if (captains > 1) throw new AppError("Only one captain is allowed per team", 400);
+      if (keepers > 1) throw new AppError("Only one goalkeeper is allowed per team", 400);
+
+      return entries.map((e) => {
+        const role = typeof e.role === "string" && e.role.trim() ? e.role.trim() : null;
+        return {
+          playerId: e.playerId,
+          isStarter: e.isStarter !== false,
+          isCaptain: !!e.isCaptain,
+          isGoalkeeper: !!e.isGoalkeeper,
+          role: role || (e.isGoalkeeper ? "GK" : null),
+          xPosition: clampCoord(e.xPosition),
+          yPosition: clampCoord(e.yPosition),
+        };
+      });
+    };
+
+    const homeEntries = await buildEntries(fixture.homeTeamId, home);
+    const awayEntries = await buildEntries(fixture.awayTeamId, away);
+
+    await prisma.$transaction([
+      prisma.lineup.deleteMany({ where: { fixtureId: fixture.id } }),
+      prisma.lineup.createMany({
+        data: [
+          ...homeEntries.map((e) => ({
+            fixtureId: fixture.id,
+            teamId: fixture.homeTeamId,
+            playerId: e.playerId,
+            isStarter: e.isStarter ?? true,
+            isCaptain: e.isCaptain ?? false,
+            isGoalkeeper: e.isGoalkeeper ?? false,
+            role: e.role ?? null,
+            position: e.role ?? null,
+            xPosition: e.xPosition ?? 50,
+            yPosition: e.yPosition ?? 50,
+          })),
+          ...awayEntries.map((e) => ({
+            fixtureId: fixture.id,
+            teamId: fixture.awayTeamId,
+            playerId: e.playerId,
+            isStarter: e.isStarter ?? true,
+            isCaptain: e.isCaptain ?? false,
+            isGoalkeeper: e.isGoalkeeper ?? false,
+            role: e.role ?? null,
+            position: e.role ?? null,
+            xPosition: e.xPosition ?? 50,
+            yPosition: e.yPosition ?? 50,
+          })),
+        ],
+      }),
+    ]);
+
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
 async function updateStanding(seasonId: string, teamId: string, goalsFor: number, goalsAgainst: number, result: string) {
   const standing = await prisma.standing.findUnique({
     where: { seasonId_teamId: { seasonId, teamId } },
