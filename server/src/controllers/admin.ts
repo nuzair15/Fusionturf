@@ -1275,6 +1275,7 @@ export const getLiveStats = async (req: Request, res: Response, next: NextFuncti
       include: {
         homeTeam: { select: { id: true, name: true, shortName: true, logoUrl: true } },
         awayTeam: { select: { id: true, name: true, shortName: true, logoUrl: true } },
+        competition: { select: { name: true } },
       },
     });
     if (!fixture) throw new AppError("Fixture not found", 404);
@@ -1297,10 +1298,11 @@ export const getLiveStats = async (req: Request, res: Response, next: NextFuncti
       orderBy: { jerseyNumber: "asc" },
     });
 
-      const goals = await prisma.goal.findMany({ where: { fixtureId: fixture.id }, include: { player: { select: { id: true, firstName: true, lastName: true } } } });
-    const assists = await prisma.assist.findMany({ where: { fixtureId: fixture.id }, include: { player: { select: { id: true, firstName: true, lastName: true } } } });
-    const cards = await prisma.card.findMany({ where: { fixtureId: fixture.id }, include: { player: { select: { id: true, firstName: true, lastName: true } } } });
-    const substitutions = await prisma.substitution.findMany({ where: { fixtureId: fixture.id }, include: { playerOff: { select: { id: true, firstName: true, lastName: true } }, playerOn: { select: { id: true, firstName: true, lastName: true } } }, orderBy: { minute: "asc" } });
+      const goals = await prisma.goal.findMany({ where: { fixtureId: fixture.id }, include: { player: { select: { id: true, firstName: true, lastName: true, photoUrl: true, jerseyNumber: true, position: true, teamId: true } } } });
+    const assists = await prisma.assist.findMany({ where: { fixtureId: fixture.id }, include: { player: { select: { id: true, firstName: true, lastName: true, photoUrl: true, jerseyNumber: true, position: true, teamId: true } } } });
+    const cards = await prisma.card.findMany({ where: { fixtureId: fixture.id }, include: { player: { select: { id: true, firstName: true, lastName: true, photoUrl: true, jerseyNumber: true, position: true, teamId: true } } } });
+    const substitutions = await prisma.substitution.findMany({ where: { fixtureId: fixture.id }, include: { playerOff: { select: { id: true, firstName: true, lastName: true, photoUrl: true, jerseyNumber: true, position: true, teamId: true } }, playerOn: { select: { id: true, firstName: true, lastName: true, photoUrl: true, jerseyNumber: true, position: true, teamId: true } } }, orderBy: { minute: "asc" } });
+    const notes = await prisma.matchNote.findMany({ where: { fixtureId: fixture.id }, include: { player: { select: { id: true, firstName: true, lastName: true, photoUrl: true, jerseyNumber: true, position: true, teamId: true } } }, orderBy: { minute: "asc" } });
 
     const formatPlayer = (p: any) => ({
       id: p.id,
@@ -1319,10 +1321,34 @@ export const getLiveStats = async (req: Request, res: Response, next: NextFuncti
     });
 
     res.json({
-      fixture: { id: fixture.id, matchDate: fixture.matchDate, status: fixture.status, homeScore: fixture.homeScore, awayScore: fixture.awayScore },
+      fixture: {
+        id: fixture.id,
+        matchDate: fixture.matchDate,
+        status: fixture.status,
+        kickoffTime: fixture.kickoffTime,
+        round: fixture.round,
+        stadium: fixture.stadium,
+        competition: fixture.competition,
+        homeScore: fixture.homeScore,
+        awayScore: fixture.awayScore,
+        homePossession: fixture.homePossession,
+        awayPossession: fixture.awayPossession,
+        homeShots: fixture.homeShots,
+        awayShots: fixture.awayShots,
+        homeShotsOnTarget: fixture.homeShotsOnTarget,
+        awayShotsOnTarget: fixture.awayShotsOnTarget,
+        homeCorners: fixture.homeCorners,
+        awayCorners: fixture.awayCorners,
+        homeFouls: fixture.homeFouls,
+        awayFouls: fixture.awayFouls,
+        homeOffsides: fixture.homeOffsides,
+        awayOffsides: fixture.awayOffsides,
+        homeExpectedGoals: fixture.homeExpectedGoals,
+        awayExpectedGoals: fixture.awayExpectedGoals,
+      },
       homeTeam: { ...fixture.homeTeam, players: homePlayers.map(formatPlayer) },
       awayTeam: { ...fixture.awayTeam, players: awayPlayers.map(formatPlayer) },
-      matchStats: { goals, assists, cards, substitutions },
+      matchStats: { goals, assists, cards, substitutions, notes },
     });
   } catch (error) {
     next(error);
@@ -1331,7 +1357,7 @@ export const getLiveStats = async (req: Request, res: Response, next: NextFuncti
 
 export const updateLiveStat = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { playerId, statType, teamId, action } = req.body;
+    const { playerId, statType, teamId, action, minute } = req.body;
     if (!playerId || !statType || !teamId || !action) throw new AppError("playerId, statType, teamId, action required", 400);
 
     const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id } });
@@ -1342,12 +1368,13 @@ export const updateLiveStat = async (req: Request, res: Response, next: NextFunc
     }
 
     const isIncrement = action === "increment";
+    const eventMinute = Math.max(0, Number(minute) || 0);
 
     if (statType === "goal") {
       const existing = await prisma.goal.findFirst({ where: { fixtureId: fixture.id, playerId }, orderBy: { createdAt: "desc" } });
       if (isIncrement) {
         const goal = await prisma.goal.create({
-          data: { fixtureId: fixture.id, playerId, minute: 0 },
+          data: { fixtureId: fixture.id, playerId, minute: eventMinute },
         });
         const goalCount = await prisma.goal.count({ where: { fixtureId: fixture.id, playerId } });
         await recalcScore(fixture.id);
@@ -1364,7 +1391,7 @@ export const updateLiveStat = async (req: Request, res: Response, next: NextFunc
       const existing = await prisma.assist.findFirst({ where: { fixtureId: fixture.id, playerId }, orderBy: { createdAt: "desc" } });
       if (isIncrement) {
         const assist = await prisma.assist.create({
-          data: { fixtureId: fixture.id, playerId, minute: 0 },
+          data: { fixtureId: fixture.id, playerId, minute: eventMinute },
         });
         const count = await prisma.assist.count({ where: { fixtureId: fixture.id, playerId } });
         res.json({ action: "added", assist, count });
@@ -1380,7 +1407,7 @@ export const updateLiveStat = async (req: Request, res: Response, next: NextFunc
       const existing = await prisma.card.findFirst({ where: { fixtureId: fixture.id, playerId, type: cardType }, orderBy: { createdAt: "desc" } });
       if (isIncrement) {
         const card = await prisma.card.create({
-          data: { fixtureId: fixture.id, playerId, type: cardType, minute: 0 },
+          data: { fixtureId: fixture.id, playerId, type: cardType, minute: eventMinute },
         });
         const count = await prisma.card.count({ where: { fixtureId: fixture.id, playerId, type: cardType } });
         res.json({ action: "added", card, count });
@@ -1403,7 +1430,7 @@ export const updateLiveStat = async (req: Request, res: Response, next: NextFunc
 
 export const addGoal = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { teamId, scorerId, assistId, minute } = req.body;
+    const { teamId, scorerId, assistId, minute, isOwnGoal, isPenalty } = req.body;
     if (!teamId || !scorerId) throw new AppError("teamId and scorerId required", 400);
 
     const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id } });
@@ -1418,12 +1445,12 @@ export const addGoal = async (req: Request, res: Response, next: NextFunction) =
     }
 
     const goal = await prisma.goal.create({
-      data: { fixtureId: fixture.id, playerId: scorerId, minute: minute || 0 },
+      data: { fixtureId: fixture.id, playerId: scorerId, minute: minute || 0, isOwnGoal: !!isOwnGoal, isPenalty: !!isPenalty },
     });
 
     if (assistId) {
       await prisma.assist.create({
-        data: { fixtureId: fixture.id, playerId: assistId, minute: minute || 0 },
+        data: { fixtureId: fixture.id, playerId: assistId, minute: minute || 0, goalId: goal.id },
       });
     }
 
@@ -1472,6 +1499,86 @@ export const addSubstitution = async (req: Request, res: Response, next: NextFun
       data: { fixtureId: req.params.id, playerOffId, playerOnId, minute: minute || 0 },
     });
     res.status(201).json(sub);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Generic event removal used by Undo / Delete from the live timeline.
+// `type` must be one of: goal, assist, card, substitution, note.
+export const removeMatchEvent = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { type, id } = req.body;
+    if (!type || !id) throw new AppError("type and id required", 400);
+    const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!fixture) throw new AppError("Fixture not found", 404);
+
+    if (type === "goal") {
+      const goal = await prisma.goal.findUnique({ where: { id } });
+      if (!goal) throw new AppError("Goal not found", 404);
+      // Remove the linked assist (if created with the goal) then the goal.
+      await prisma.assist.deleteMany({ where: { goalId: goal.id } });
+      await prisma.goal.delete({ where: { id: goal.id } });
+      await recalcScore(fixture.id);
+    } else if (type === "assist") {
+      await prisma.assist.delete({ where: { id } });
+    } else if (type === "card") {
+      await prisma.card.delete({ where: { id } });
+    } else if (type === "substitution") {
+      await prisma.substitution.delete({ where: { id } });
+    } else if (type === "note") {
+      await prisma.matchNote.delete({ where: { id } });
+    } else {
+      throw new AppError("Invalid event type", 400);
+    }
+
+    res.json({ message: "Event removed" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const addMatchNote = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { teamId, playerId, type, minute, note } = req.body;
+    if (!type) throw new AppError("type required", 400);
+    const noteTypes = ["VAR", "MISSED_PENALTY", "INFO"];
+    if (!noteTypes.includes(type)) throw new AppError("type must be VAR, MISSED_PENALTY, or INFO", 400);
+    const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!fixture) throw new AppError("Fixture not found", 404);
+
+    if (playerId) {
+      const player = await prisma.player.findUnique({ where: { id: playerId }, select: { teamId: true } });
+      if (!player) throw new AppError("Player not found", 400);
+    }
+
+    const created = await prisma.matchNote.create({
+      data: { fixtureId: fixture.id, teamId: teamId || null, playerId: playerId || null, type, minute: minute || 0, note: note || null },
+    });
+    res.status(201).json(created);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Update fixture-level team stats (possession, shots, corners, ...).
+export const updateTeamStats = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const statFields = [
+      "homePossession", "awayPossession", "homeShots", "awayShots",
+      "homeShotsOnTarget", "awayShotsOnTarget", "homeCorners", "awayCorners",
+      "homeFouls", "awayFouls", "homeOffsides", "awayOffsides",
+      "homeExpectedGoals", "awayExpectedGoals",
+    ] as const;
+    const data: any = {};
+    for (const field of statFields) {
+      if (req.body[field] !== undefined) {
+        data[field] = req.body[field];
+      }
+    }
+    if (Object.keys(data).length === 0) throw new AppError("No stats to update", 400);
+    const fixture = await prisma.fixture.update({ where: { id: req.params.id }, data });
+    res.json(fixture);
   } catch (error) {
     next(error);
   }
@@ -1743,12 +1850,23 @@ export const searchPlayers = async (req: Request, res: Response, next: NextFunct
 async function recalcScore(fixtureId: string) {
   const fixture = await prisma.fixture.findUnique({ where: { id: fixtureId }, select: { homeTeamId: true, awayTeamId: true } });
   if (!fixture) return;
-  const homeGoals = await prisma.goal.count({
-    where: { fixtureId, player: { teamId: fixture.homeTeamId } },
+  const goals = await prisma.goal.findMany({
+    where: { fixtureId },
+    include: { player: { select: { teamId: true } } },
   });
-  const awayGoals = await prisma.goal.count({
-    where: { fixtureId, player: { teamId: fixture.awayTeamId } },
-  });
+  let homeGoals = 0;
+  let awayGoals = 0;
+  for (const g of goals) {
+    const scorerIsHome = g.player.teamId === fixture.homeTeamId;
+    if (g.isOwnGoal) {
+      // Own goals count for the opposing team.
+      if (scorerIsHome) awayGoals += 1;
+      else homeGoals += 1;
+    } else {
+      if (scorerIsHome) homeGoals += 1;
+      else awayGoals += 1;
+    }
+  }
   await prisma.fixture.update({
     where: { id: fixtureId },
     data: { homeScore: homeGoals, awayScore: awayGoals },

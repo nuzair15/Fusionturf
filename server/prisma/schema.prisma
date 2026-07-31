@@ -544,6 +544,7 @@ model Player {
   suspensions       Suspension[]
   subsOff           Substitution[] @relation("PlayerOff")
   subsOn            Substitution[] @relation("PlayerOn")
+  matchNotes        MatchNote[]
   previousWinners   PreviousWinner[]
   matchPlayerRatings MatchPlayerRating[]
   lineups           Lineup[]
@@ -635,6 +636,7 @@ model Fixture {
   assists         Assist[]
   cards           Card[]
   substitutions   Substitution[]
+  notes           MatchNote[]
   lineups         Lineup[]
   matchPlayerRatings MatchPlayerRating[]
   comments        MatchComment[]
@@ -709,6 +711,22 @@ model Substitution {
 
   @@index([fixtureId])
   @@map("substitutions")
+}
+
+model MatchNote {
+  id        String   @id @default(uuid())
+  fixtureId String
+  fixture   Fixture  @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
+  teamId    String?
+  playerId  String?
+  player    Player?  @relation(fields: [playerId], references: [id])
+  type      String   // VAR, MISSED_PENALTY, INFO
+  minute    Int
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([fixtureId])
+  @@map("match_notes")
 }
 
 model Lineup {

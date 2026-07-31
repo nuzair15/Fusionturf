@@ -12,7 +12,7 @@ import { Select } from "@/components/ui/select";
 import { Dialog } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { formatDate, formatCurrency } from "@/lib/utils";
-import { LiveStatsPanel } from "@/components/admin/LiveStatsPanel";
+import { MatchControlCenter } from "@/components/live/MatchControlCenter";
 import { LineupEditor } from "@/components/admin/LineupEditor";
 import { AdminSidebar, SidebarDrawer } from "@/components/admin/AdminSidebar";
 import { AdminDashboard } from "@/components/admin/AdminDashboard";
@@ -1801,7 +1801,7 @@ export function AdminPage() {
             onSearch={setUserSearch}
           />
         )}
-      {liveStatsFixtureId && <LiveStatsPanel fixtureId={liveStatsFixtureId} onClose={() => setLiveStatsFixtureId(null)} />}
+      {liveStatsFixtureId && <MatchControlCenter fixtureId={liveStatsFixtureId} onClose={() => setLiveStatsFixtureId(null)} />}
       {lineupFixture && (
         <LineupEditor
           fixture={lineupFixture}
