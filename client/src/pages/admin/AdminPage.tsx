@@ -626,6 +626,11 @@ export function AdminPage() {
                 { key: "away", label: "Away", sortable: true, render: (f) => <span className="font-medium">{f.awayTeam?.name || "?"}</span> },
                 { key: "date", label: "Date", sortable: true, render: (f) => <span className="text-muted-foreground">{formatDate(f.matchDate)}</span> },
                 { key: "status", label: "Status", render: (f) => <Badge variant="secondary">{f.status}</Badge> },
+                { key: "manage", label: "Manage", render: (f) => (
+                  <Button size="sm" variant={f.status === "LIVE" ? "default" : "outline"} onClick={() => setLiveStatsFixtureId(f.id)}>
+                    <Activity className="h-3.5 w-3.5" /> Live
+                  </Button>
+                ) },
               ]}
               data={fixtures?.data || []}
               keyExtractor={(f) => f.id}
@@ -633,6 +638,10 @@ export function AdminPage() {
               onSearch={setFixtureSearch}
               onAdd={() => { setEditingItem(null); openForm("fixture", { homeTeamId: "", awayTeamId: "", matchDate: "", kickoffTime: "", seasonId: seasons?.[0]?.id || "" }); }}
               onEdit={(f) => { setEditingItem(f); openForm("fixture", { homeTeamId: f.homeTeamId, awayTeamId: f.awayTeamId, matchDate: f.matchDate, kickoffTime: f.kickoffTime || "", seasonId: f.seasonId, stadium: f.stadium || "", referee: (f as any).referee || "", referee2: (f as any).referee2 || "", matchReport: (f as any).matchReport || "" }); }}
+              onDelete={(f) => { if (confirm(`Delete fixture ${f.homeTeam?.name} vs ${f.awayTeam?.name}?`)) api.delete(`/admin/fixtures/${f.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-fixtures"] })).catch((e: any) => setActionError(e.message)); }}
+              bulkActions={[
+                { label: "Delete", icon: <Trash2 className="h-4 w-4" />, variant: "destructive", confirmMessage: (count) => `Delete ${count} selected fixture(s)?`, onClick: async (items) => { for (const f of items) { try { await api.delete(`/admin/fixtures/${f.id}`); } catch {} } queryClient.invalidateQueries({ queryKey: ["admin-fixtures"] }); } },
+              ]}
             />
             <Dialog open={showForm === "fixture"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Fixture" : "Add Fixture"}>
               <div className="space-y-4">

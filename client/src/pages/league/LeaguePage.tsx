@@ -50,7 +50,7 @@ export function LeaguePage() {
             { label: "Live matches", value: liveFixtures.length },
             { label: "Upcoming", value: upcomingFixtures.length },
             { label: "Teams", value: teamList.length },
-            { label: "Top scorer", value: standingsList[0]?.team?.name || "TBD" },
+            { label: "Top team", value: standingsList[0]?.team?.name || "TBD" },
           ]}
         />
       </div>
