@@ -8,6 +8,11 @@ export interface LivePlayer {
   position?: string;
   photoUrl?: string;
   squadType?: string;
+  inLineup?: boolean;
+  isStarter?: boolean;
+  isCaptain?: boolean;
+  isGoalkeeper?: boolean;
+  role?: string | null;
   stats: {
     goals: number;
     assists: number;

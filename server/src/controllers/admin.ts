@@ -1303,22 +1303,38 @@ export const getLiveStats = async (req: Request, res: Response, next: NextFuncti
     const cards = await prisma.card.findMany({ where: { fixtureId: fixture.id }, include: { player: { select: { id: true, firstName: true, lastName: true, photoUrl: true, jerseyNumber: true, position: true, teamId: true } } } });
     const substitutions = await prisma.substitution.findMany({ where: { fixtureId: fixture.id }, include: { playerOff: { select: { id: true, firstName: true, lastName: true, photoUrl: true, jerseyNumber: true, position: true, teamId: true } }, playerOn: { select: { id: true, firstName: true, lastName: true, photoUrl: true, jerseyNumber: true, position: true, teamId: true } } }, orderBy: { minute: "asc" } });
     const notes = await prisma.matchNote.findMany({ where: { fixtureId: fixture.id }, include: { player: { select: { id: true, firstName: true, lastName: true, photoUrl: true, jerseyNumber: true, position: true, teamId: true } } }, orderBy: { minute: "asc" } });
+    const lineups = await prisma.lineup.findMany({ where: { fixtureId: fixture.id } });
+    const lineupByPlayer = new Map(lineups.map((l) => [l.playerId, l]));
+    const hasLineup = lineups.length > 0;
 
-    const formatPlayer = (p: any) => ({
+    const inMatchSquad = (p: any) => !hasLineup || lineupByPlayer.has(p.id);
+
+    const formatPlayer = (p: any) => {
+      const lu = lineupByPlayer.get(p.id);
+      return {
       id: p.id,
       firstName: p.firstName,
       lastName: p.lastName,
-      jerseyNumber: p.jerseyNumber,
-      position: p.position,
+      jerseyNumber: lu?.jerseyNumber ?? p.jerseyNumber,
+      position: lu?.role ?? p.position,
       photoUrl: p.photoUrl,
       squadType: p.squadType,
+      inLineup: !!lu,
+      isStarter: hasLineup ? !!lu?.isStarter : (p.squadType ? p.squadType === "STARTER" : true),
+      isCaptain: lu?.isCaptain ?? false,
+      isGoalkeeper: lu?.isGoalkeeper ?? (p.position === "GK"),
+      role: lu?.role ?? null,
       stats: {
         goals: goals.filter((g: any) => g.playerId === p.id).length,
         assists: assists.filter((a: any) => a.playerId === p.id).length,
         yellowCards: cards.filter((c: any) => c.playerId === p.id && c.type === "YELLOW").length,
         redCards: cards.filter((c: any) => c.playerId === p.id && (c.type === "RED" || c.type === "SECOND_YELLOW")).length,
       },
-    });
+      };
+    };
+
+    const homeSquad = homePlayers.filter(inMatchSquad);
+    const awaySquad = awayPlayers.filter(inMatchSquad);
 
     res.json({
       fixture: {
@@ -1346,8 +1362,8 @@ export const getLiveStats = async (req: Request, res: Response, next: NextFuncti
         homeExpectedGoals: fixture.homeExpectedGoals,
         awayExpectedGoals: fixture.awayExpectedGoals,
       },
-      homeTeam: { ...fixture.homeTeam, players: homePlayers.map(formatPlayer) },
-      awayTeam: { ...fixture.awayTeam, players: awayPlayers.map(formatPlayer) },
+      homeTeam: { ...fixture.homeTeam, players: homeSquad.map(formatPlayer) },
+      awayTeam: { ...fixture.awayTeam, players: awaySquad.map(formatPlayer) },
       matchStats: { goals, assists, cards, substitutions, notes },
     });
   } catch (error) {

@@ -32,7 +32,7 @@ export function SubstitutionDialog({ open, home, away, minute, subbedOffIds, sub
     // Starters still on the pitch, plus players brought on who are still on.
     return team.players.filter((p) =>
       !subbedOffIds.has(p.id) &&
-      (p.squadType === "STARTER" || subbedOnIds.has(p.id))
+      (p.isStarter === true || subbedOnIds.has(p.id))
     );
   }, [team, subbedOffIds, subbedOnIds]);
 
@@ -43,7 +43,7 @@ export function SubstitutionDialog({ open, home, away, minute, subbedOffIds, sub
       p.id !== offId &&
       !subbedOnIds.has(p.id) &&
       !subbedOffIds.has(p.id) &&
-      (p.squadType === "SUBSTITUTE" || p.squadType === "RESERVE" || p.squadType == null)
+      p.isStarter !== true
     );
   }, [team, subbedOnIds, subbedOffIds, offId]);
 
