@@ -27,17 +27,20 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
 
     const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
 
-    if (decoded.userId === "admin-panel" && decoded.role === "SUPER_ADMIN") {
-      req.user = decoded;
-      return next();
-    }
-
+    // Every token — including tokens issued by the admin-panel password login —
+    // must correspond to a real, active user row. There is no bypass: this is
+    // what lets an admin account be deactivated/revoked and keeps activity
+    // logging attributable to a real user id.
     const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
     if (!user || !user.isActive) {
       return res.status(401).json({ error: "User not found or inactive" });
     }
 
-    req.user = decoded;
+    // Trust the role currently stored on the user record rather than the
+    // (potentially stale, up to 7 days old) role embedded in the JWT, so a
+    // role change/demotion or deactivation takes effect immediately instead
+    // of waiting for the token to expire.
+    req.user = { userId: user.id, role: user.role };
     next();
   } catch (error) {
     return res.status(401).json({ error: "Invalid or expired token" });

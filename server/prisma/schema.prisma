@@ -621,6 +621,13 @@ model Fixture {
   manOfTheMatchId String?
   manOfTheMatch  Player?       @relation(fields: [manOfTheMatchId], references: [id])
   isFeatured     Boolean       @default(false)
+  // Tracks whether serveSuspension()/processSuspensions() have successfully
+  // run for this fixture, independent of `status`. Gating that step on
+  // `status === COMPLETED` alone meant a partial-failure retry (e.g. the
+  // pipeline throws after the fixture is already marked COMPLETED) would
+  // silently skip suspension processing forever, since status would no
+  // longer look "newly completed" on retry.
+  suspensionsProcessedAt DateTime?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 

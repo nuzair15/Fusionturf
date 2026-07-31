@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authenticate, authorize } from "../middleware/auth.js";
+import { activityLogger } from "../middleware/activityLogger.js";
 import * as admin from "../controllers/admin.js";
 import * as bookingAdmin from "../controllers/booking.js";
 
@@ -8,6 +9,7 @@ const router = Router();
 // All admin routes require authentication and admin role
 router.use(authenticate);
 router.use(authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "BOOKING_MANAGER", "CONTENT_EDITOR"));
+router.use(activityLogger);
 
 // Dashboard
 router.get("/dashboard", admin.getDashboardStats);
@@ -96,7 +98,7 @@ router.get("/users", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.getUsers);
 router.patch("/users/:id/role", authorize("SUPER_ADMIN"), admin.updateUserRole);
 
 // Booking Admin
-router.get("/bookings", bookingAdmin.adminGetAllBookings);
+router.get("/bookings", authorize("SUPER_ADMIN", "BOOKING_MANAGER", "LEAGUE_ADMIN"), bookingAdmin.adminGetAllBookings);
 router.post("/bookings/block-date", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), bookingAdmin.adminBlockDate);
 router.patch("/bookings/:id/status", authorize("SUPER_ADMIN", "BOOKING_MANAGER", "LEAGUE_ADMIN"), bookingAdmin.adminUpdateBookingStatus);
 router.patch("/bookings/:id", authorize("SUPER_ADMIN", "BOOKING_MANAGER", "LEAGUE_ADMIN"), bookingAdmin.adminUpdateBooking);

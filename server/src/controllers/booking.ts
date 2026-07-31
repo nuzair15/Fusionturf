@@ -1,10 +1,15 @@
 import { Request, Response, NextFunction } from "express";
 import { z } from "zod";
+import { randomBytes } from "crypto";
+import { Prisma } from "@prisma/client";
 import prisma from "../config/database.js";
+import { config } from "../config/index.js";
+import { getStripeClient } from "../lib/stripe.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { paginate, paginatedResponse, generateBookingNumber } from "../utils/helpers.js";
 import bcrypt from "bcryptjs";
 import { sendBookingConfirmation } from "../services/email.js";
+import { createNotification } from "../services/notification.js";
 
 const createBookingSchema = z.object({
   body: z.object({
@@ -138,18 +143,6 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
       if (blocked) throw new AppError(`This date is blocked: ${blocked.reason || "No reason given"}`, 400);
     }
 
-    // Check for duplicate/overlapping booking
-    const overlap = await prisma.booking.findFirst({
-      where: {
-        turfId: data.turfId,
-        date: matchDate,
-        status: { not: "CANCELLED" },
-        startTime: { lt: data.endTime },
-        endTime: { gt: data.startTime },
-      },
-    });
-    if (overlap) throw new AppError("This time slot is already booked. Please choose a different time.", 409);
-
     let hourlyPrice = turf.basePrice;
     const dayOfWeek = matchDate.getDay();
 
@@ -166,11 +159,18 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
       (parseInt(data.startTime.slice(0, 2), 10) * 60 + parseInt(data.startTime.slice(3), 10));
     const totalAmount = hourlyPrice * Math.ceil(duration / 60);
 
-    // Create or find guest user for walk-in bookings
+    // Create or find guest user for walk-in bookings. IMPORTANT: this must
+    // never use a predictable/shared password. An earlier version hashed the
+    // literal string "guest" here, which meant anyone who knew (or guessed)
+    // a real person's email could book as a guest using that email and then
+    // log in as them with password "guest" — full account takeover. A random
+    // password means the account is created but simply isn't loginable
+    // until the owner goes through a real password-reset flow.
     const guestEmail = data.customerEmail || `guest-${Date.now()}@fusionturf.com`;
     let guest = await prisma.user.findUnique({ where: { email: guestEmail } });
     if (!guest) {
-      const hashed = await bcrypt.hash("guest", 10);
+      const randomPassword = randomBytes(32).toString("hex");
+      const hashed = await bcrypt.hash(randomPassword, 10);
       guest = await prisma.user.create({
         data: {
           email: guestEmail,
@@ -184,39 +184,147 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
       });
     }
 
-    const customerInfo = JSON.stringify({ name: data.customerName, phone: data.customerPhone, email: data.customerEmail || "" });
-    const bookingNotes = data.notes ? `${data.notes} | Customer: ${customerInfo}` : `Customer: ${customerInfo}`;
-
     const bookingNumber = generateBookingNumber();
-    const booking = await prisma.booking.create({
-      data: {
-        bookingNumber,
-        userId: guest.id,
-        turfId: data.turfId,
-        date: matchDate,
-        startTime: data.startTime,
-        endTime: data.endTime,
-        duration,
-        totalAmount,
-        notes: bookingNotes,
-        status: "PENDING",
-        payments: {
-          create: {
-            userId: guest.id,
-            amount: totalAmount,
-            currency: "INR",
-            status: "PENDING",
-            method: "CASH",
-          },
-        },
-      },
-      include: { turf: { include: { venue: true } }, user: { select: { firstName: true, lastName: true, email: true, phone: true } }, payments: true },
-    });
+
+    // The overlap check and the insert must be atomic. Previously these were
+    // two separate round-trips with no transaction and no DB-level guarantee,
+    // so two requests for the same turf/time arriving close together could
+    // both pass the overlap check before either had committed — double-
+    // booking the slot. SERIALIZABLE isolation makes Postgres detect that
+    // conflict and abort one of the transactions (P2034), which we retry a
+    // few times before surfacing a real 409 to the loser.
+    let booking;
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        booking = await prisma.$transaction(async (tx) => {
+          const overlap = await tx.booking.findFirst({
+            where: {
+              turfId: data.turfId,
+              date: matchDate,
+              status: { not: "CANCELLED" },
+              startTime: { lt: data.endTime },
+              endTime: { gt: data.startTime },
+            },
+          });
+          if (overlap) throw new AppError("This time slot is already booked. Please choose a different time.", 409);
+
+          return tx.booking.create({
+            data: {
+              bookingNumber,
+              userId: guest!.id,
+              turfId: data.turfId,
+              date: matchDate,
+              startTime: data.startTime,
+              endTime: data.endTime,
+              duration,
+              totalAmount,
+              notes: data.notes || null,
+              status: "PENDING",
+              payments: {
+                create: {
+                  userId: guest!.id,
+                  amount: totalAmount,
+                  currency: "INR",
+                  status: "PENDING",
+                },
+              },
+            },
+            include: { turf: { include: { venue: true } }, user: { select: { firstName: true, lastName: true, email: true, phone: true } }, payments: true },
+          });
+        }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+        break;
+      } catch (err: any) {
+        const isSerializationConflict = err?.code === "P2034";
+        if (isSerializationConflict && attempt < maxAttempts) continue;
+        throw err;
+      }
+    }
 
     res.status(201).json(booking);
 
     // Send confirmation email (non-blocking)
     if (guest.email) sendBookingConfirmation(guest.email, booking).catch(() => {});
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── Payments (Stripe) ───
+//
+// Bookings were previously created with a Payment row that stayed PENDING
+// forever — nothing in the codebase ever called Stripe, so there was no way
+// to actually collect money online. These two endpoints implement the
+// minimum real flow: create a PaymentIntent for a pending payment, and
+// confirm it via a signature-verified webhook (never trust a client-side
+// "it succeeded" call for this). The client still needs to be wired up to
+// Stripe Elements/Checkout using the returned clientSecret — that's a
+// frontend task tracked separately.
+
+export const createPaymentIntent = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const stripe = getStripeClient();
+    if (!stripe) throw new AppError("Online payments are not configured", 503);
+
+    const payment = await prisma.payment.findFirst({
+      where: { bookingId: req.params.id },
+      include: { booking: true },
+    });
+    if (!payment) throw new AppError("Payment not found for this booking", 404);
+    if (payment.status === "PAID") throw new AppError("This booking has already been paid", 400);
+
+    const intent = await stripe.paymentIntents.create({
+      amount: payment.amount,
+      currency: (payment.currency || "inr").toLowerCase(),
+      metadata: { bookingId: payment.bookingId, paymentId: payment.id },
+    });
+
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: { stripePaymentId: intent.id },
+    });
+
+    res.json({ clientSecret: intent.client_secret });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const stripeWebhook = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const stripe = getStripeClient();
+    if (!stripe || !config.stripe.webhookSecret) throw new AppError("Online payments are not configured", 503);
+
+    const signature = req.headers["stripe-signature"];
+    if (!signature) throw new AppError("Missing Stripe signature", 400);
+
+    let event;
+    try {
+      // req.body must be the raw, unparsed request body for signature
+      // verification to work — see the express.raw() wiring in index.ts.
+      event = stripe.webhooks.constructEvent(req.body, signature, config.stripe.webhookSecret);
+    } catch (err: any) {
+      throw new AppError(`Webhook signature verification failed: ${err.message}`, 400);
+    }
+
+    if (event.type === "payment_intent.succeeded" || event.type === "payment_intent.payment_failed") {
+      const intent = event.data.object as { id: string; metadata?: Record<string, string> };
+      const paymentId = intent.metadata?.paymentId;
+      if (paymentId) {
+        const succeeded = event.type === "payment_intent.succeeded";
+        await prisma.$transaction([
+          prisma.payment.update({
+            where: { id: paymentId },
+            data: { status: succeeded ? "PAID" : "FAILED", transactionId: intent.id },
+          }),
+          ...(succeeded && intent.metadata?.bookingId
+            ? [prisma.booking.update({ where: { id: intent.metadata.bookingId }, data: { status: "CONFIRMED" } })]
+            : []),
+        ]);
+      }
+    }
+
+    res.json({ received: true });
   } catch (error) {
     next(error);
   }
@@ -276,12 +384,20 @@ export const adminUpdateBookingStatus = async (req: Request, res: Response, next
     if (!["PENDING", "CONFIRMED", "CANCELLED", "COMPLETED"].includes(status)) {
       throw new AppError("Invalid status", 400);
     }
-    const booking = await prisma.booking.findUnique({ where: { id: req.params.id }, select: { status: true } });
+    const booking = await prisma.booking.findUnique({ where: { id: req.params.id }, select: { status: true, userId: true, bookingNumber: true } });
     if (!booking) throw new AppError("Booking not found", 404);
     const updated = await prisma.booking.update({
       where: { id: req.params.id },
       data: { status },
     });
+    if (status !== booking.status) {
+      createNotification(
+        booking.userId,
+        "Booking status updated",
+        `Your booking ${booking.bookingNumber} is now ${status.toLowerCase()}.`,
+        "booking"
+      ).catch(() => {});
+    }
     res.json(updated);
   } catch (error) {
     next(error);

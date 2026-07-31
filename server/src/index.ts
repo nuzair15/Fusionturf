@@ -8,6 +8,7 @@ import cloudinary from "./lib/cloudinary.js";
 import { config } from "./config/index.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import { authenticate, authorize } from "./middleware/auth.js";
+import { stripeWebhook } from "./controllers/booking.js";
 import routes from "./routes/index.js";
 
 if (config.nodeEnv === "production") {
@@ -16,13 +17,31 @@ if (config.nodeEnv === "production") {
   if (missing.length > 0) throw new Error(`Missing required production environment variables: ${missing.join(", ")}`);
 }
 
+// SVG is deliberately NOT in this list. SVG is XML and can carry
+// <script>/event-handler payloads — allowing it here would let a
+// trusted-but-compromised uploader account (or a mismatched-content file
+// smuggled past extension checks) plant a stored-XSS payload served from
+// this origin/Cloudinary.
+const ALLOWED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif", ".webp"];
+
+// Real file-content signatures ("magic bytes") for the same set of formats.
+// Extension checks alone can be bypassed by simply renaming any file, so
+// every upload is also sniffed by its actual bytes before it's accepted.
+function detectImageType(buffer: Buffer): string | null {
+  if (buffer.length < 4) return null;
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "jpg";
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return "png";
+  if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) return "gif";
+  if (buffer.length >= 12 && buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP") return "webp";
+  return null;
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    const allowed = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"];
-    const ext = file.originalname.toLowerCase().split(".").pop();
-    cb(null, allowed.includes("." + ext));
+    const ext = "." + file.originalname.toLowerCase().split(".").pop();
+    cb(null, ALLOWED_IMAGE_EXTENSIONS.includes(ext));
   },
 });
 
@@ -46,7 +65,11 @@ const corsOptions: cors.CorsOptions = {
 };
 app.use(cors(corsOptions));
 
-// Rate limiting
+// Global rate limit — a coarse backstop. Endpoints that are meaningfully
+// more sensitive (auth, admin login, booking creation) get their own
+// tighter limiter below, since a 500-req/15min global ceiling does very
+// little to slow down a credential-stuffing or double-booking script that
+// targets one specific route.
 app.use(
   rateLimit({
     windowMs: config.rateLimit.windowMs,
@@ -54,6 +77,19 @@ app.use(
     message: { error: "Too many requests, please try again later" },
   })
 );
+
+const authRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many attempts, please try again later" },
+});
+
+// Stripe webhook must receive the raw, unparsed request body for signature
+// verification — it has to be registered before express.json() below, and
+// excluded from that JSON body-parsing entirely.
+app.post("/api/webhooks/stripe", express.raw({ type: "application/json" }), stripeWebhook);
 
 // Body parsing
 app.use(express.json({ limit: "10mb" }));
@@ -64,10 +100,17 @@ if (config.nodeEnv !== "test") {
   app.use(morgan("dev"));
 }
 
+app.use("/api/auth/login", authRateLimit);
+app.use("/api/auth/register", authRateLimit);
+app.use("/api/admin/login", authRateLimit);
+
 // Upload endpoint
 app.post("/api/upload", authenticate, authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "CONTENT_EDITOR"), upload.single("file"), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    if (!detectImageType(req.file.buffer)) {
+      return res.status(400).json({ error: "File content does not match a supported image format" });
+    }
     const result = await new Promise<any>((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         { folder: "fusion-turf", resource_type: "image" },

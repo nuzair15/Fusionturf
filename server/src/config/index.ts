@@ -28,6 +28,7 @@ export const config = {
 
   adminPanel: {
     password: process.env.ADMIN_PANEL_PASSWORD || "",
+    bootstrapEmail: process.env.ADMIN_PANEL_EMAIL || "super-admin@fusionturf.internal",
   },
 
   stripe: {

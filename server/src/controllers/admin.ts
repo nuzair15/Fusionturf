@@ -1,10 +1,12 @@
 import { Request, Response, NextFunction } from "express";
 import { v4 as uuidv4 } from "uuid";
 import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
 import prisma from "../config/database.js";
 import { config } from "../config/index.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { paginate, paginatedResponse, searchPlayerIds } from "../utils/helpers.js";
+import { pick } from "../utils/pick.js";
 import * as leagueSystem from "../services/league-system.js";
 
 export const loginAdmin = async (req: Request, res: Response, next: NextFunction) => {
@@ -14,7 +16,31 @@ export const loginAdmin = async (req: Request, res: Response, next: NextFunction
     if (typeof password !== "string" || password.length === 0 || password !== config.adminPanel.password) {
       throw new AppError("Invalid admin credentials", 401);
     }
-    const token = jwt.sign({ userId: "admin-panel", role: "SUPER_ADMIN" }, config.jwt.secret, {
+
+    // Resolve to a real, deactivatable User row (created once, on first use)
+    // instead of minting a token for a fake user id that bypassed the
+    // database lookup in the auth middleware. This means: deactivating this
+    // user immediately revokes admin-panel access, and every action taken
+    // through this login is attributable to a real userId in ActivityLog.
+    let bootstrapAdmin = await prisma.user.findUnique({ where: { email: config.adminPanel.bootstrapEmail } });
+    if (!bootstrapAdmin) {
+      const randomPassword = uuidv4() + uuidv4();
+      bootstrapAdmin = await prisma.user.create({
+        data: {
+          email: config.adminPanel.bootstrapEmail,
+          passwordHash: await bcrypt.hash(randomPassword, 12),
+          firstName: "Super",
+          lastName: "Admin",
+          role: "SUPER_ADMIN",
+          isActive: true,
+          emailVerified: true,
+        },
+      });
+    } else if (!bootstrapAdmin.isActive) {
+      throw new AppError("Admin account has been deactivated", 403);
+    }
+
+    const token = jwt.sign({ userId: bootstrapAdmin.id, role: bootstrapAdmin.role }, config.jwt.secret, {
       expiresIn: config.jwt.expiresIn,
     } as jwt.SignOptions);
     res.json({ token });
@@ -43,14 +69,15 @@ export const createSeason = async (req: Request, res: Response, next: NextFuncti
     if (!name || !slug || !startDate || !endDate) {
       throw new AppError("name, slug, startDate, endDate are required", 400);
     }
-    const id = uuidv4();
-    const now = new Date();
-    await prisma.$executeRawUnsafe(
-      `INSERT INTO "seasons" ("id","name","slug","startDate","endDate","isActive","isCurrent","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      id, name, slug, new Date(startDate), new Date(endDate), !!isActive, !!isCurrent, now, now
-    );
-    const [season] = await prisma.$queryRawUnsafe(`SELECT * FROM "seasons" WHERE "id" = $1`, id) as any[];
-    res.status(201).json(season);
+    try {
+      const season = await prisma.season.create({
+        data: { name, slug, startDate: new Date(startDate), endDate: new Date(endDate), isActive: !!isActive, isCurrent: !!isCurrent },
+      });
+      res.status(201).json(season);
+    } catch (err: any) {
+      if (err.code === "P2002") throw new AppError("A season with that slug already exists", 409);
+      throw err;
+    }
   } catch (error) {
     next(error);
   }
@@ -58,23 +85,17 @@ export const createSeason = async (req: Request, res: Response, next: NextFuncti
 
 export const updateSeason = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name, slug, startDate, endDate, isActive, isCurrent } = req.body;
-    const sets: string[] = [];
-    const values: any[] = [];
-    let idx = 1;
-    if (name !== undefined) { sets.push(`"name" = $${idx++}`); values.push(name); }
-    if (slug !== undefined) { sets.push(`"slug" = $${idx++}`); values.push(slug); }
-    if (startDate !== undefined) { sets.push(`"startDate" = $${idx++}`); values.push(new Date(startDate)); }
-    if (endDate !== undefined) { sets.push(`"endDate" = $${idx++}`); values.push(new Date(endDate)); }
-    if (isActive !== undefined) { sets.push(`"isActive" = $${idx++}`); values.push(!!isActive); }
-    if (isCurrent !== undefined) { sets.push(`"isCurrent" = $${idx++}`); values.push(!!isCurrent); }
-    if (sets.length === 0) return res.status(400).json({ error: "Nothing to update" });
-    values.push(req.params.id);
-    const [season] = await prisma.$queryRawUnsafe(
-      `UPDATE "seasons" SET ${sets.join(", ")}, "updatedAt" = NOW() WHERE "id" = $${idx} RETURNING *`,
-      ...values
-    ) as any[];
-    res.json(season);
+    const data = pick(req.body, ["name", "slug", "startDate", "endDate", "isActive", "isCurrent"] as const) as any;
+    if (Object.keys(data).length === 0) return res.status(400).json({ error: "Nothing to update" });
+    if (data.startDate) data.startDate = new Date(data.startDate);
+    if (data.endDate) data.endDate = new Date(data.endDate);
+    try {
+      const season = await prisma.season.update({ where: { id: req.params.id }, data });
+      res.json(season);
+    } catch (err: any) {
+      if (err.code === "P2002") throw new AppError("A season with that slug already exists", 409);
+      throw err;
+    }
   } catch (error) {
     next(error);
   }
@@ -115,11 +136,20 @@ export const getTeams = async (req: Request, res: Response, next: NextFunction) 
 export const createTeam = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { name, slug, shortName, logoUrl, city, seasonId, status } = req.body;
-    const teamSlug = slug || name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-    const [team] = await prisma.$queryRawUnsafe(
-      `INSERT INTO "teams" ("id", "name", "slug", "shortName", "logoUrl", "city", "seasonId", "status", "isActive", "createdAt", "updatedAt") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW()) RETURNING *`,
-      uuidv4(), name, teamSlug, shortName || null, logoUrl || null, city || null, seasonId, status || "active", status !== "inactive"
-    ) as any[];
+    if (!name || !seasonId) throw new AppError("name and seasonId are required", 400);
+    const baseSlug = (slug || name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    let teamSlug = baseSlug;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const existing = await prisma.team.findFirst({ where: { seasonId, slug: teamSlug } });
+      if (!existing) break;
+      teamSlug = `${baseSlug}-${attempt + 2}`;
+    }
+    const team = await prisma.team.create({
+      data: {
+        name, slug: teamSlug, shortName: shortName || null, logoUrl: logoUrl || null,
+        city: city || null, seasonId, status: status || "active", isActive: status !== "inactive",
+      },
+    });
     res.status(201).json(team);
   } catch (error) {
     next(error);
@@ -128,24 +158,17 @@ export const createTeam = async (req: Request, res: Response, next: NextFunction
 
 export const updateTeam = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name, slug, shortName, logoUrl, city, seasonId, status } = req.body;
-    const sets: string[] = [];
-    const values: any[] = [];
-    let idx = 1;
-    if (name !== undefined) { sets.push(`"name" = $${idx++}`); values.push(name); }
-    if (slug !== undefined) { sets.push(`"slug" = $${idx++}`); values.push(slug); }
-    if (shortName !== undefined) { sets.push(`"shortName" = $${idx++}`); values.push(shortName); }
-    if (logoUrl !== undefined) { sets.push(`"logoUrl" = $${idx++}`); values.push(logoUrl); }
-    if (city !== undefined) { sets.push(`"city" = $${idx++}`); values.push(city); }
-    if (seasonId !== undefined) { sets.push(`"seasonId" = $${idx++}`); values.push(seasonId); }
-    if (status !== undefined) { sets.push(`"status" = $${idx++}`, `"isActive" = $${idx++}`); values.push(status, status !== "inactive"); }
-    if (sets.length === 0) return res.status(400).json({ error: "Nothing to update" });
-    values.push(req.params.id);
-    const [team] = await prisma.$queryRawUnsafe(
-      `UPDATE "teams" SET ${sets.join(", ")}, "updatedAt" = NOW() WHERE "id" = $${idx} RETURNING *`,
-      ...values
-    ) as any[];
-    res.json(team);
+    const { status } = req.body;
+    const data = pick(req.body, ["name", "slug", "shortName", "logoUrl", "city", "seasonId", "status"] as const) as any;
+    if (Object.keys(data).length === 0) return res.status(400).json({ error: "Nothing to update" });
+    if (status !== undefined) data.isActive = status !== "inactive";
+    try {
+      const team = await prisma.team.update({ where: { id: req.params.id }, data });
+      res.json(team);
+    } catch (err: any) {
+      if (err.code === "P2002") throw new AppError("A team with that slug already exists in this season", 409);
+      throw err;
+    }
   } catch (error) {
     next(error);
   }
@@ -202,14 +225,20 @@ export const createPlayer = async (req: Request, res: Response, next: NextFuncti
   try {
     const { firstName, lastName, position, teamId, jerseyNumber, squadType, photoUrl, nationality, age, height, weight, preferredFoot, biography } = req.body;
     if (!firstName || !teamId) return res.status(400).json({ error: "firstName and teamId are required" });
+    const team = await prisma.team.findUnique({ where: { id: teamId }, select: { seasonId: true } });
+    if (!team) return res.status(400).json({ error: "Team not found or has no season" });
     const slug = `${firstName.toLowerCase()}-${(lastName || "player").toLowerCase()}-${Date.now()}`.replace(/[^a-z0-9-]+/g, "-");
-    const seasonRow = await prisma.$queryRawUnsafe<{ seasonId: string }[]>(`SELECT "seasonId" FROM "teams" WHERE "id" = $1`, teamId);
-    const seasonId = seasonRow[0]?.seasonId;
-    if (!seasonId) return res.status(400).json({ error: "Team not found or has no season" });
-    const [player] = await prisma.$queryRawUnsafe(
-      `INSERT INTO "players" ("id", "firstName", "lastName", "slug", "position", "jerseyNumber", "squadType", "teamId", "seasonId", "photoUrl", "nationality", "age", "height", "weight", "preferredFoot", "biography", "isActive", "createdAt", "updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7::"SquadType",$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW(),NOW()) RETURNING *`,
-      uuidv4(), firstName, lastName || "", slug, position || null, jerseyNumber ? parseInt(jerseyNumber) : null, squadType || null, teamId, seasonId, photoUrl || null, nationality || null, age ? parseInt(age) : null, height ? parseInt(height) : null, weight ? parseInt(weight) : null, preferredFoot || null, biography || null, true
-    ) as any[];
+    const player = await prisma.player.create({
+      data: {
+        firstName, lastName: lastName || "", slug,
+        position: position || null, jerseyNumber: jerseyNumber ? parseInt(jerseyNumber) : null,
+        squadType: squadType || null, teamId, seasonId: team.seasonId,
+        photoUrl: photoUrl || null, nationality: nationality || null,
+        age: age ? parseInt(age) : null, height: height ? parseInt(height) : null,
+        weight: weight ? parseInt(weight) : null, preferredFoot: preferredFoot || null,
+        biography: biography || null, isActive: true,
+      } as any,
+    });
     res.status(201).json(player);
   } catch (error) {
     next(error);
@@ -227,36 +256,26 @@ export const updatePlayer = async (req: Request, res: Response, next: NextFuncti
         throw new AppError("Transfer window is closed. Cannot change player team.", 400);
       }
     }
-    const sets: string[] = [];
-    const values: any[] = [];
-    let idx = 1;
-    if (firstName !== undefined) { sets.push(`"firstName" = $${idx++}`); values.push(firstName); }
-    if (lastName !== undefined) { sets.push(`"lastName" = $${idx++}`); values.push(lastName); }
-    if (position !== undefined) { sets.push(`"position" = $${idx++}`); values.push(position); }
-    if (jerseyNumber !== undefined && jerseyNumber !== "") { sets.push(`"jerseyNumber" = $${idx++}`); values.push(parseInt(jerseyNumber)); }
-    if (squadType !== undefined && squadType !== "") { sets.push(`"squadType" = $${idx++}::"SquadType"`); values.push(squadType); }
+    const data: any = {};
+    if (firstName !== undefined) data.firstName = firstName;
+    if (lastName !== undefined) data.lastName = lastName;
+    if (position !== undefined) data.position = position;
+    if (jerseyNumber !== undefined && jerseyNumber !== "") data.jerseyNumber = parseInt(jerseyNumber);
+    if (squadType !== undefined && squadType !== "") data.squadType = squadType;
     if (teamId !== undefined) {
-      sets.push(`"teamId" = $${idx++}`);
-      values.push(teamId);
-      const seasonRow = await prisma.$queryRawUnsafe<{ seasonId: string }[]>(`SELECT "seasonId" FROM "teams" WHERE "id" = $1`, teamId);
-      if (seasonRow[0]?.seasonId) {
-        sets.push(`"seasonId" = $${idx++}`);
-        values.push(seasonRow[0].seasonId);
-      }
+      data.teamId = teamId;
+      const newTeam = await prisma.team.findUnique({ where: { id: teamId }, select: { seasonId: true } });
+      if (newTeam?.seasonId) data.seasonId = newTeam.seasonId;
     }
-    if (photoUrl !== undefined) { sets.push(`"photoUrl" = $${idx++}`); values.push(photoUrl); }
-    if (nationality !== undefined) { sets.push(`"nationality" = $${idx++}`); values.push(nationality); }
-    if (age !== undefined) { sets.push(`"age" = $${idx++}`); values.push(age ? parseInt(age) : null); }
-    if (height !== undefined) { sets.push(`"height" = $${idx++}`); values.push(height ? parseInt(height) : null); }
-    if (weight !== undefined) { sets.push(`"weight" = $${idx++}`); values.push(weight ? parseInt(weight) : null); }
-    if (preferredFoot !== undefined) { sets.push(`"preferredFoot" = $${idx++}`); values.push(preferredFoot); }
-    if (biography !== undefined) { sets.push(`"biography" = $${idx++}`); values.push(biography); }
-    if (sets.length === 0) return res.status(400).json({ error: "Nothing to update" });
-    values.push(req.params.id);
-    const [player] = await prisma.$queryRawUnsafe(
-      `UPDATE "players" SET ${sets.join(", ")}, "updatedAt" = NOW() WHERE "id" = $${idx} RETURNING *`,
-      ...values
-    ) as any[];
+    if (photoUrl !== undefined) data.photoUrl = photoUrl;
+    if (nationality !== undefined) data.nationality = nationality;
+    if (age !== undefined) data.age = age ? parseInt(age) : null;
+    if (height !== undefined) data.height = height ? parseInt(height) : null;
+    if (weight !== undefined) data.weight = weight ? parseInt(weight) : null;
+    if (preferredFoot !== undefined) data.preferredFoot = preferredFoot;
+    if (biography !== undefined) data.biography = biography;
+    if (Object.keys(data).length === 0) return res.status(400).json({ error: "Nothing to update" });
+    const player = await prisma.player.update({ where: { id: req.params.id }, data });
     res.json(player);
   } catch (error) {
     next(error);
@@ -298,18 +317,25 @@ export const copyPlayersFromSeason = async (req: Request, res: Response, next: N
 
     let copied = 0;
     let skipped = 0;
+    const rows: any[] = [];
 
     for (const p of sourcePlayers) {
       const targetTeamId = p.teamId ? teamSlugMap.get(p.teamId) : null;
       if (p.teamId && !targetTeamId) { skipped++; continue; }
 
       const slug = `${p.firstName.toLowerCase()}-${(p.lastName || "player").toLowerCase()}-${Date.now()}-${copied}`.replace(/[^a-z0-9-]+/g, "-");
-
-      await prisma.$executeRawUnsafe(
-        `INSERT INTO "players" ("id","firstName","lastName","slug","position","jerseyNumber","squadType","teamId","seasonId","photoUrl","nationality","age","height","weight","preferredFoot","biography","isActive","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7::"SquadType",$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW(),NOW())`,
-        uuidv4(), p.firstName, p.lastName || "", slug, p.position, p.jerseyNumber, p.squadType, targetTeamId, seasonId, p.photoUrl, p.nationality, p.age, p.height, p.weight, p.preferredFoot, p.biography, true
-      );
+      rows.push({
+        firstName: p.firstName, lastName: p.lastName || "", slug,
+        position: p.position, jerseyNumber: p.jerseyNumber, squadType: p.squadType,
+        teamId: targetTeamId, seasonId, photoUrl: p.photoUrl, nationality: p.nationality,
+        age: p.age, height: p.height, weight: p.weight, preferredFoot: p.preferredFoot,
+        biography: p.biography, isActive: true,
+      });
       copied++;
+    }
+
+    if (rows.length > 0) {
+      await prisma.player.createMany({ data: rows });
     }
 
     res.json({ message: `Copied ${copied} players${skipped > 0 ? `, ${skipped} skipped (missing team in target season)` : ""}`, copied, skipped });
@@ -345,9 +371,27 @@ export const getFixtures = async (req: Request, res: Response, next: NextFunctio
   }
 };
 
+const FIXTURE_WRITABLE_FIELDS = [
+  "seasonId", "competitionId", "homeTeamId", "awayTeamId", "venueId",
+  "matchDate", "kickoffTime", "round", "leagueWeek",
+  "isGrandFinal", "isRelegationPlayoff", "referee", "referee2",
+  "attendance", "stadium", "matchReport", "highlights", "isFeatured",
+] as const;
+// Deliberately excluded: status, homeScore, awayScore, and every live-match
+// stat (homePossession, homeShots, ...). Those must be set through
+// updateFixtureStatus / updateFixtureScore / the live-stats endpoints, which
+// route through leagueSystem.processMatchResult so standings, suspensions,
+// player stats, and awards get recalculated. Allowing them here let a caller
+// mark a fixture COMPLETED with a score and silently skip that entire
+// pipeline.
+
 export const createFixture = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const fixture = await prisma.fixture.create({ data: req.body });
+    const data = pick(req.body, FIXTURE_WRITABLE_FIELDS);
+    if (!data.seasonId || !data.homeTeamId || !data.awayTeamId || !data.matchDate) {
+      throw new AppError("seasonId, homeTeamId, awayTeamId, and matchDate are required", 400);
+    }
+    const fixture = await prisma.fixture.create({ data: { ...data, matchDate: new Date(data.matchDate) } as any });
     res.status(201).json(fixture);
   } catch (error) {
     next(error);
@@ -356,9 +400,11 @@ export const createFixture = async (req: Request, res: Response, next: NextFunct
 
 export const updateFixture = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const data: any = pick(req.body, FIXTURE_WRITABLE_FIELDS);
+    if (data.matchDate) data.matchDate = new Date(data.matchDate);
     const fixture = await prisma.fixture.update({
       where: { id: req.params.id },
-      data: req.body,
+      data,
     });
     res.json(fixture);
   } catch (error) {
@@ -469,11 +515,27 @@ export const getAwards = async (_req: Request, res: Response, next: NextFunction
   }
 };
 
+const AWARD_WRITABLE_FIELDS = [
+  "seasonId", "name", "slug", "description", "trophyImageUrl", "rules",
+  "eligibilityCriteria", "votingEnabled", "votingType", "voteFrequency",
+  "allowAnonymous", "requireOTP", "requireEmailVerification", "requireCaptcha",
+  "ipProtection", "deviceFingerprint", "voteModeration", "manualApproval",
+  "hiddenVoteMode", "hideResultsUntil", "votingStartDate", "votingEndDate",
+  "autoCloseVoting", "autoAnnounceWinner", "isActive", "type",
+] as const;
+// Deliberately excluded: winnerAnnounced, winnerId, winnerTeamId — those may
+// only be set through announceWinner(), which also records a PreviousWinner
+// entry consistently.
+
 export const createAward = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const userId = req.user!.userId === "admin-panel" ? undefined : req.user!.userId;
+    const userId = req.user!.userId;
+    const data = pick(req.body, AWARD_WRITABLE_FIELDS);
+    if (!data.seasonId || !data.name || !data.slug) {
+      throw new AppError("seasonId, name, and slug are required", 400);
+    }
     const award = await prisma.award.create({
-      data: { ...req.body, ...(userId ? { managedById: userId } : {}) },
+      data: { ...data, managedById: userId } as any,
     });
     res.status(201).json(award);
   } catch (error) {
@@ -485,7 +547,7 @@ export const updateAward = async (req: Request, res: Response, next: NextFunctio
   try {
     const award = await prisma.award.update({
       where: { id: req.params.id },
-      data: req.body,
+      data: pick(req.body, AWARD_WRITABLE_FIELDS) as any,
     });
     res.json(award);
   } catch (error) {
@@ -516,7 +578,9 @@ export const toggleVoting = async (req: Request, res: Response, next: NextFuncti
 
 export const addNomination = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const nomination = await prisma.awardNomination.create({ data: req.body });
+    const data = pick(req.body, ["awardId", "playerId", "reason"] as const);
+    if (!data.awardId || !data.playerId) throw new AppError("awardId and playerId are required", 400);
+    const nomination = await prisma.awardNomination.create({ data: data as any });
     res.status(201).json(nomination);
   } catch (error) {
     next(error);
@@ -586,9 +650,17 @@ export const getNews = async (req: Request, res: Response, next: NextFunction) =
   }
 };
 
+const NEWS_WRITABLE_FIELDS = [
+  "seasonId", "teamId", "title", "slug", "excerpt", "content", "imageUrl",
+  "author", "isFeatured", "isPublished", "publishedAt",
+] as const;
+
 export const createNews = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const news = await prisma.news.create({ data: req.body });
+    const data: any = pick(req.body, NEWS_WRITABLE_FIELDS);
+    if (!data.title || !data.slug) throw new AppError("title and slug are required", 400);
+    if (data.publishedAt) data.publishedAt = new Date(data.publishedAt);
+    const news = await prisma.news.create({ data });
     res.status(201).json(news);
   } catch (error) {
     next(error);
@@ -597,9 +669,11 @@ export const createNews = async (req: Request, res: Response, next: NextFunction
 
 export const updateNews = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const data: any = pick(req.body, NEWS_WRITABLE_FIELDS);
+    if (data.publishedAt) data.publishedAt = new Date(data.publishedAt);
     const news = await prisma.news.update({
       where: { id: req.params.id },
-      data: req.body,
+      data,
     });
     res.json(news);
   } catch (error) {
@@ -628,9 +702,15 @@ export const getGalleryItems = async (req: Request, res: Response, next: NextFun
   }
 };
 
+const GALLERY_WRITABLE_FIELDS = [
+  "seasonId", "teamId", "playerId", "fixtureId", "awardId", "title", "imageUrl", "videoUrl", "isActive",
+] as const;
+
 export const manageGallery = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const item = await prisma.gallery.create({ data: req.body });
+    const data: any = pick(req.body, GALLERY_WRITABLE_FIELDS);
+    if (!data.title || !data.imageUrl) throw new AppError("title and imageUrl are required", 400);
+    const item = await prisma.gallery.create({ data });
     res.status(201).json(item);
   } catch (error) {
     next(error);
@@ -646,9 +726,13 @@ export const deleteGalleryItem = async (req: Request, res: Response, next: NextF
   }
 };
 
+const SPONSOR_WRITABLE_FIELDS = ["teamId", "name", "logoUrl", "website", "tier", "isActive"] as const;
+
 export const manageSponsor = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const sponsor = await prisma.sponsor.create({ data: req.body });
+    const data: any = pick(req.body, SPONSOR_WRITABLE_FIELDS);
+    if (!data.name || !data.logoUrl) throw new AppError("name and logoUrl are required", 400);
+    const sponsor = await prisma.sponsor.create({ data });
     res.status(201).json(sponsor);
   } catch (error) {
     next(error);
@@ -659,7 +743,7 @@ export const updateSponsor = async (req: Request, res: Response, next: NextFunct
   try {
     const sponsor = await prisma.sponsor.update({
       where: { id: req.params.id },
-      data: req.body,
+      data: pick(req.body, SPONSOR_WRITABLE_FIELDS) as any,
     });
     res.json(sponsor);
   } catch (error) {
@@ -741,11 +825,18 @@ export const getUsers = async (req: Request, res: Response, next: NextFunction) 
   }
 };
 
+const VALID_USER_ROLES = [
+  "SUPER_ADMIN", "LEAGUE_ADMIN", "BOOKING_MANAGER", "CONTENT_EDITOR",
+  "REFEREE", "STATISTICIAN", "VIEWER", "CUSTOMER",
+] as const;
+
 export const updateUserRole = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const { role } = req.body;
+    if (!VALID_USER_ROLES.includes(role)) throw new AppError("Invalid role", 400);
     const user = await prisma.user.update({
       where: { id: req.params.id },
-      data: { role: req.body.role },
+      data: { role },
       select: { id: true, email: true, firstName: true, lastName: true, role: true },
     });
     res.json(user);
@@ -901,9 +992,19 @@ export const getVenues = async (req: Request, res: Response, next: NextFunction)
   }
 };
 
+const VENUE_WRITABLE_FIELDS = [
+  "name", "slug", "description", "address", "city", "state", "country", "zipCode",
+  "latitude", "longitude", "phone", "email", "coverImage", "logo", "rules", "faqs",
+  "isActive", "openingTime", "closingTime",
+] as const;
+
 export const createVenue = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const venue = await prisma.venue.create({ data: req.body });
+    const data: any = pick(req.body, VENUE_WRITABLE_FIELDS);
+    if (!data.name || !data.slug || !data.address || !data.city || !data.state) {
+      throw new AppError("name, slug, address, city, and state are required", 400);
+    }
+    const venue = await prisma.venue.create({ data });
     res.status(201).json(venue);
   } catch (error) {
     next(error);
@@ -912,7 +1013,7 @@ export const createVenue = async (req: Request, res: Response, next: NextFunctio
 
 export const updateVenue = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const venue = await prisma.venue.update({ where: { id: req.params.id }, data: req.body });
+    const venue = await prisma.venue.update({ where: { id: req.params.id }, data: pick(req.body, VENUE_WRITABLE_FIELDS) as any });
     res.json(venue);
   } catch (error) {
     next(error);
@@ -930,9 +1031,16 @@ export const deleteVenue = async (req: Request, res: Response, next: NextFunctio
 
 // ─── Turf Management ───
 
+const TURF_WRITABLE_FIELDS = [
+  "venueId", "name", "description", "size", "surface", "isActive",
+  "basePrice", "peakPrice", "weekendPrice", "imageUrl", "capacity",
+] as const;
+
 export const createTurf = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const turf = await prisma.turf.create({ data: req.body });
+    const data: any = pick(req.body, TURF_WRITABLE_FIELDS);
+    if (!data.venueId || !data.name) throw new AppError("venueId and name are required", 400);
+    const turf = await prisma.turf.create({ data });
     res.status(201).json(turf);
   } catch (error) {
     next(error);
@@ -941,7 +1049,7 @@ export const createTurf = async (req: Request, res: Response, next: NextFunction
 
 export const updateTurf = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const turf = await prisma.turf.update({ where: { id: req.params.id }, data: req.body });
+    const turf = await prisma.turf.update({ where: { id: req.params.id }, data: pick(req.body, TURF_WRITABLE_FIELDS) as any });
     res.json(turf);
   } catch (error) {
     next(error);
@@ -1322,12 +1430,18 @@ export const adminDeleteSuspension = async (req: Request, res: Response, next: N
 
 export const updateGalleryItem = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const item = await prisma.gallery.update({ where: { id: req.params.id }, data: req.body });
+    const item = await prisma.gallery.update({ where: { id: req.params.id }, data: pick(req.body, GALLERY_WRITABLE_FIELDS) as any });
     res.json(item);
   } catch (error) {
     next(error);
   }
 };
+
+const COUPON_WRITABLE_FIELDS = [
+  "code", "discountType", "discountValue", "maxUses", "minAmount", "expiresAt", "isActive",
+] as const;
+// usedCount is deliberately excluded — it must only ever be incremented by
+// the coupon-redemption logic itself, never set directly by an admin request.
 
 export const getCoupons = async (_req: Request, res: Response, next: NextFunction) => {
   try {
@@ -1340,7 +1454,12 @@ export const getCoupons = async (_req: Request, res: Response, next: NextFunctio
 
 export const createCoupon = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const item = await prisma.coupon.create({ data: req.body });
+    const data: any = pick(req.body, COUPON_WRITABLE_FIELDS);
+    if (!data.code || !data.discountType || data.discountValue === undefined) {
+      throw new AppError("code, discountType, and discountValue are required", 400);
+    }
+    if (data.expiresAt) data.expiresAt = new Date(data.expiresAt);
+    const item = await prisma.coupon.create({ data });
     res.status(201).json(item);
   } catch (error) {
     next(error);
@@ -1349,7 +1468,9 @@ export const createCoupon = async (req: Request, res: Response, next: NextFuncti
 
 export const updateCoupon = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const item = await prisma.coupon.update({ where: { id: req.params.id }, data: req.body });
+    const data: any = pick(req.body, COUPON_WRITABLE_FIELDS);
+    if (data.expiresAt) data.expiresAt = new Date(data.expiresAt);
+    const item = await prisma.coupon.update({ where: { id: req.params.id }, data });
     res.json(item);
   } catch (error) {
     next(error);
@@ -1365,6 +1486,8 @@ export const deleteCoupon = async (req: Request, res: Response, next: NextFuncti
   }
 };
 
+const AD_WRITABLE_FIELDS = ["title", "imageUrl", "linkUrl", "position", "isActive", "startsAt", "endsAt"] as const;
+
 export const getAdvertisements = async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const items = await prisma.advertisement.findMany({ orderBy: { createdAt: "desc" } });
@@ -1376,7 +1499,11 @@ export const getAdvertisements = async (_req: Request, res: Response, next: Next
 
 export const createAdvertisement = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const item = await prisma.advertisement.create({ data: req.body });
+    const data: any = pick(req.body, AD_WRITABLE_FIELDS);
+    if (!data.title || !data.imageUrl) throw new AppError("title and imageUrl are required", 400);
+    if (data.startsAt) data.startsAt = new Date(data.startsAt);
+    if (data.endsAt) data.endsAt = new Date(data.endsAt);
+    const item = await prisma.advertisement.create({ data });
     res.status(201).json(item);
   } catch (error) {
     next(error);
@@ -1385,7 +1512,10 @@ export const createAdvertisement = async (req: Request, res: Response, next: Nex
 
 export const updateAdvertisement = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const item = await prisma.advertisement.update({ where: { id: req.params.id }, data: req.body });
+    const data: any = pick(req.body, AD_WRITABLE_FIELDS);
+    if (data.startsAt) data.startsAt = new Date(data.startsAt);
+    if (data.endsAt) data.endsAt = new Date(data.endsAt);
+    const item = await prisma.advertisement.update({ where: { id: req.params.id }, data });
     res.json(item);
   } catch (error) {
     next(error);
@@ -1401,6 +1531,8 @@ export const deleteAdvertisement = async (req: Request, res: Response, next: Nex
   }
 };
 
+const FAQ_WRITABLE_FIELDS = ["question", "answer", "category", "order", "isActive"] as const;
+
 export const getFaqs = async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const items = await prisma.faq.findMany({ orderBy: { order: "asc" } });
@@ -1412,7 +1544,9 @@ export const getFaqs = async (_req: Request, res: Response, next: NextFunction) 
 
 export const createFaq = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const item = await prisma.faq.create({ data: req.body });
+    const data: any = pick(req.body, FAQ_WRITABLE_FIELDS);
+    if (!data.question || !data.answer) throw new AppError("question and answer are required", 400);
+    const item = await prisma.faq.create({ data });
     res.status(201).json(item);
   } catch (error) {
     next(error);
@@ -1421,7 +1555,7 @@ export const createFaq = async (req: Request, res: Response, next: NextFunction)
 
 export const updateFaq = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const item = await prisma.faq.update({ where: { id: req.params.id }, data: req.body });
+    const item = await prisma.faq.update({ where: { id: req.params.id }, data: pick(req.body, FAQ_WRITABLE_FIELDS) as any });
     res.json(item);
   } catch (error) {
     next(error);

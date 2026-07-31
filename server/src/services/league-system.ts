@@ -230,7 +230,6 @@ function calculateHeadToHead(fixtures: Array<{ homeTeamId: string; awayTeamId: s
 export async function processMatchResult(fixtureId: string, homeScore: number, awayScore: number): Promise<void> {
   const fixture = await prisma.fixture.findUnique({ where: { id: fixtureId }, include: { season: true } });
   if (!fixture) throw new Error("Fixture not found");
-  const newlyCompleted = fixture.status !== "COMPLETED";
 
   await prisma.fixture.update({
     where: { id: fixtureId },
@@ -239,9 +238,18 @@ export async function processMatchResult(fixtureId: string, homeScore: number, a
 
   await recalculateStandings(fixture.seasonId);
 
-  if (newlyCompleted) {
+  // Gate suspension processing on a persisted flag rather than "was the
+  // fixture already COMPLETED before this call" — the latter is only true
+  // the very first time processMatchResult runs for a fixture. If a later
+  // step in this pipeline (player stats / awards) throws and the caller
+  // retries, the fixture is by then already COMPLETED, so that check would
+  // silently skip suspension processing forever even though it never
+  // actually ran. This flag is only set after serveSuspension/
+  // processSuspensions both succeed, so a retry correctly re-attempts them.
+  if (!fixture.suspensionsProcessedAt) {
     await serveSuspension(fixtureId);
     await processSuspensions(fixtureId);
+    await prisma.fixture.update({ where: { id: fixtureId }, data: { suspensionsProcessedAt: new Date() } });
   }
 
   await recalculatePlayerStats(fixture.seasonId);
@@ -484,23 +492,25 @@ export async function serveSuspension(fixtureId: string): Promise<void> {
   const activeSuspensions = await prisma.suspension.findMany({
     where: { seasonId: fixture.seasonId, isActive: true },
   });
+  if (activeSuspensions.length === 0) return;
 
-  for (const suspension of activeSuspensions) {
-    const player = await prisma.player.findUnique({ where: { id: suspension.playerId }, select: { teamId: true } });
-    if (!player || (player.teamId !== fixture.homeTeamId && player.teamId !== fixture.awayTeamId)) continue;
+  const players = await prisma.player.findMany({
+    where: { id: { in: activeSuspensions.map((s) => s.playerId) } },
+    select: { id: true, teamId: true },
+  });
+  const teamByPlayerId = new Map(players.map((p) => [p.id, p.teamId]));
+
+  const relevantSuspensions = activeSuspensions.filter((s) => {
+    const teamId = teamByPlayerId.get(s.playerId);
+    return teamId === fixture.homeTeamId || teamId === fixture.awayTeamId;
+  });
+
+  await Promise.all(relevantSuspensions.map((suspension) => {
     const newServed = suspension.served + 1;
-    if (newServed >= suspension.matchBan) {
-      await prisma.suspension.update({
-        where: { id: suspension.id },
-        data: { isActive: false, served: suspension.matchBan, endDate: new Date() },
-      });
-    } else {
-      await prisma.suspension.update({
-        where: { id: suspension.id },
-        data: { served: newServed },
-      });
-    }
-  }
+    return newServed >= suspension.matchBan
+      ? prisma.suspension.update({ where: { id: suspension.id }, data: { isActive: false, served: suspension.matchBan, endDate: new Date() } })
+      : prisma.suspension.update({ where: { id: suspension.id }, data: { served: newServed } });
+  }));
 }
 
 export async function recalculatePlayerStats(seasonId: string): Promise<void> {
@@ -570,7 +580,8 @@ export async function autoDetectAwards(seasonId: string): Promise<void> {
   });
 
   await autoCreateAward(seasonId, "Golden Boot", "Most goals scored", stats, (a, b) => (b.goals - a.goals) || (b.assists - a.assists));
-  await autoCreateAward(seasonId, "Golden Glove", "Best goalkeeper (most clean sheets)", stats, (a, b) => (b.cleanSheets || 0) - (a.cleanSheets || 0) || (a.goalsConceded || 0) - (b.goalsConceded || 0));
+  const goalkeeperStats = stats.filter((s) => s.player?.position === "GK");
+  await autoCreateAward(seasonId, "Golden Glove", "Best goalkeeper (most clean sheets)", goalkeeperStats, (a, b) => (b.cleanSheets || 0) - (a.cleanSheets || 0) || (a.goalsConceded || 0) - (b.goalsConceded || 0));
   await autoCreateAward(seasonId, "MVP", "Most valuable player", stats, (a, b) => (b.goals + b.assists) - (a.goals + a.assists));
   await autoCreateAward(seasonId, "League Champion", "Season champion", await getChampionTeam(seasonId));
   await autoCreateAward(seasonId, "Runner-up", "Season runner-up", await getRunnerUpTeam(seasonId));
