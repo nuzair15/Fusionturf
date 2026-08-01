@@ -87,9 +87,12 @@ export function AdminAnalytics() {
   const periodBookings = useMemo(() => filterByPeriod(allBookings, revenuePeriod), [allBookings, revenuePeriod]);
   const chartBookings = useMemo(() => filterByPeriod(allBookings, bookingPeriod), [allBookings, bookingPeriod]);
 
+  // Revenue only counts bookings that weren't cancelled
+  const revenueBookings = useMemo(() => periodBookings.filter((b) => b.status !== "CANCELLED"), [periodBookings]);
+
   const totalRevenue = useMemo(() =>
-    periodBookings.reduce((sum, b) => sum + b.totalAmount, 0),
-    [periodBookings]
+    revenueBookings.reduce((sum, b) => sum + b.totalAmount, 0),
+    [revenueBookings]
   );
 
   const totalBookingsCount = periodBookings.length;
@@ -113,7 +116,7 @@ export function AdminAnalytics() {
       const name = b.turf?.venue?.name || "Unknown";
       const existing = map.get(name) || { name, count: 0, revenue: 0 };
       existing.count++;
-      existing.revenue += b.totalAmount;
+      if (b.status !== "CANCELLED") existing.revenue += b.totalAmount;
       map.set(name, existing);
     });
     return Array.from(map.values()).sort((a, b) => b.count - a.count);
@@ -137,7 +140,7 @@ export function AdminAnalytics() {
     chartBookings.forEach((b) => {
       const key = b.date.split("T")[0];
       const existing = map.get(key) || { date: key, revenue: 0, bookings: 0 };
-      existing.revenue += b.totalAmount;
+      if (b.status !== "CANCELLED") existing.revenue += b.totalAmount;
       existing.bookings++;
       map.set(key, existing);
     });
@@ -164,7 +167,7 @@ export function AdminAnalytics() {
       const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
       const label = MONTHS[d.getMonth()].slice(0, 3);
       const existing = map.get(key) || { month: label, revenue: 0, bookings: 0 };
-      existing.revenue += b.totalAmount;
+      if (b.status !== "CANCELLED") existing.revenue += b.totalAmount;
       existing.bookings++;
       map.set(key, existing);
     });

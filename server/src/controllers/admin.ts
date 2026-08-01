@@ -1024,7 +1024,10 @@ export const getDashboardStats = async (req: Request, res: Response, next: NextF
       prisma.team.count(),
       prisma.player.count(),
       prisma.fixture.count(),
-      prisma.payment.aggregate({ _sum: { amount: true } }),
+      prisma.payment.aggregate({
+        _sum: { amount: true },
+        where: { status: "PAID", booking: { status: { not: "CANCELLED" } } },
+      }),
       prisma.booking.count({ where: { status: "CONFIRMED" } }),
       prisma.fixture.findMany({
         take: 5,
@@ -1059,7 +1062,10 @@ export const getDashboardStats = async (req: Request, res: Response, next: NextF
       }),
       prisma.payment.aggregate({
         _sum: { amount: true },
-        where: { booking: { date: { gte: periodStart, lte: periodEnd } } },
+        where: {
+          status: "PAID",
+          booking: { date: { gte: periodStart, lte: periodEnd }, status: { not: "CANCELLED" } },
+        },
       }),
       prisma.booking.count({
         where: { date: { gte: periodStart, lte: periodEnd }, status: "CANCELLED" },

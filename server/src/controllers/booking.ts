@@ -481,7 +481,10 @@ export const adminRevenueAnalytics = async (_req: Request, res: Response, next: 
   try {
     const [totalBookings, totalRevenue, recentBookings] = await Promise.all([
       prisma.booking.count(),
-      prisma.payment.aggregate({ _sum: { amount: true } }),
+      prisma.payment.aggregate({
+        _sum: { amount: true },
+        where: { status: "PAID", booking: { status: { not: "CANCELLED" } } },
+      }),
       prisma.booking.findMany({
         take: 5,
         orderBy: { createdAt: "desc" },
