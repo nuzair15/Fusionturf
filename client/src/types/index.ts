@@ -316,6 +316,7 @@ export interface Booking {
   notes?: string;
   payments?: Payment[];
   services?: BookingService[];
+  bookingServices?: BookingService[];
   createdAt: string;
   updatedAt: string;
 }

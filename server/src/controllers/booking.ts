@@ -448,6 +448,7 @@ export const adminGetAllBookings = async (req: Request, res: Response, next: Nex
           user: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
           turf: { include: { venue: { select: { name: true, bookingMessageTemplate: true, lastBookingTime: true } } } },
           payments: true,
+          bookingServices: { include: { additionalService: { select: { id: true, name: true, price: true } } } },
         },
         skip,
         take: limit,

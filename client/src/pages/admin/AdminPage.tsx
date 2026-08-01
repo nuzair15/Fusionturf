@@ -24,7 +24,7 @@ import { BookingDrawer } from "@/components/admin/BookingDrawer";
 import { BottomSheet } from "@/components/admin/BottomSheet";
 import { DataTable, ColumnDef, BulkAction } from "@/components/admin/DataTable";
 import type { DashboardStats, User, Season, Team, Player, Fixture, Award, News, Booking, PaginatedResponse, Venue, Turf, Sponsor, Suspension, ActivityLog, Gallery, Coupon, Advertisement, Faq, ReviewAdmin } from "@/types";
-import { LayoutDashboard, Users, Calendar, CalendarDays, Trophy, Settings, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2, XCircle, ListChecks, AlertTriangle, MessageSquare, HelpCircle, Tag, Monitor, Search, Menu, TrendingUp, MoreHorizontal, MessageCircle } from "lucide-react";
+import { LayoutDashboard, Users, Calendar, CalendarDays, Trophy, Settings, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2, XCircle, ListChecks, AlertTriangle, MessageSquare, HelpCircle, Tag, Monitor, Search, Menu, TrendingUp, MoreHorizontal, MessageCircle, QrCode } from "lucide-react";
 import { VenueCalendar } from "@/components/admin/VenueCalendar";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 
@@ -201,7 +201,7 @@ export function AdminPage() {
 
   const { data: venues } = useQuery({ queryKey: ["admin-venues"], queryFn: () => api.get<{ data: Venue[] }>("/admin/venues"), enabled: tabEnabled("venues") });
 
-  const { data: settings } = useQuery({ queryKey: ["admin-settings"], queryFn: () => api.get<Record<string, string>>("/admin/settings"), enabled: tabEnabled("settings") });
+  const { data: settings } = useQuery({ queryKey: ["admin-settings"], queryFn: () => api.get<Record<string, string>>("/admin/settings"), enabled: unlocked });
 
   const { data: sponsors } = useQuery({ queryKey: ["admin-sponsors", sponsorSearch], queryFn: () => api.get<{ data: Sponsor[] }>("/admin/sponsors", { ...(sponsorSearch ? { search: sponsorSearch } : {}) }), enabled: tabEnabled("sponsors") });
 
@@ -1761,6 +1761,46 @@ export function AdminPage() {
                 </CardContent>
               </Card>
 
+              {/* Invoice Settings */}
+              <Card>
+                <CardHeader><CardTitle>Invoice Settings</CardTitle></CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">UPI QR Code</p>
+                    {settings?.invoice_upi_qr ? (
+                      <div className="flex flex-wrap items-center gap-4 border p-4">
+                        <img src={settings.invoice_upi_qr} alt="UPI QR" className="h-24 w-24 rounded-lg border object-contain" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs text-muted-foreground">This QR will appear on every printed invoice so customers can scan and pay.</p>
+                          <div className="mt-2 flex gap-2">
+                            <Button variant="outline" size="sm" onClick={() => openForm("editSetting", { key: "invoice_upi_qr", value: settings.invoice_upi_qr })}>Change QR</Button>
+                            <Button variant="ghost" size="sm" onClick={async () => {
+                              try {
+                                await api.patch("/admin/settings", { invoice_upi_qr: "" });
+                                queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
+                              } catch (e: any) { setActionError(e.message); }
+                            }}>Remove</Button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-2 border border-dashed p-6">
+                        <QrCode className="h-8 w-8 text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">No UPI QR set — invoices will not show a QR code.</p>
+                        <Button variant="outline" size="sm" onClick={() => openForm("editSetting", { key: "invoice_upi_qr", value: "" })}>Upload UPI QR</Button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Invoice Terms &amp; Conditions</p>
+                    <div className="border p-4">
+                      <p className="max-h-32 overflow-y-auto whitespace-pre-line text-xs text-muted-foreground">{settings?.invoice_terms || "No custom terms set. Default terms will be used on invoices."}</p>
+                      <Button variant="outline" size="sm" className="mt-2" onClick={() => openForm("editSetting", { key: "invoice_terms", value: settings?.invoice_terms || "" })}>Edit Terms</Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* All Settings */}
               <Card>
                 <CardHeader><CardTitle>All Settings</CardTitle></CardHeader>
@@ -1793,8 +1833,20 @@ export function AdminPage() {
               <div className="space-y-4">
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">Setting: <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{formData.key}</code></p>
-                  {["site_logo_url", "site_hero_url", "site_favicon_url"].includes(formData.key) ? (
-                    <ImageUploadField label="Image" value={formData.value || ""} onChange={(value) => handleFormChange("value", value)} />
+                  {["site_logo_url", "site_hero_url", "site_favicon_url", "invoice_upi_qr"].includes(formData.key) ? (
+                    <ImageUploadField label={formData.key === "invoice_upi_qr" ? "UPI QR Code" : "Image"} value={formData.value || ""} onChange={(value) => handleFormChange("value", value)} />
+                  ) : formData.key === "invoice_terms" ? (
+                    <>
+                      <Label>Terms &amp; Conditions</Label>
+                      <textarea
+                        value={formData.value || ""}
+                        onChange={(e) => handleFormChange("value", e.target.value)}
+                        rows={10}
+                        placeholder={"1. Booking confirmation is subject to slot availability.\n2. Full payment must be received to confirm the booking.\n..."}
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/50"
+                      />
+                      <p className="text-xs text-muted-foreground">One term per line. Leave empty to use default terms.</p>
+                    </>
                   ) : (
                     <>
                       <Label>Value</Label>
@@ -1859,7 +1911,7 @@ export function AdminPage() {
         />
       )}
       <AnimatePresence>
-        {selectedBooking && <BookingDrawer booking={selectedBooking} onClose={() => setSelectedBooking(null)} />}
+        {selectedBooking && <BookingDrawer booking={selectedBooking} settings={settings || {}} onClose={() => setSelectedBooking(null)} />}
       </AnimatePresence>
         </main>
       </div>
