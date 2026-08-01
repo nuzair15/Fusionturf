@@ -483,7 +483,7 @@ export const adminRevenueAnalytics = async (_req: Request, res: Response, next: 
       prisma.booking.count(),
       prisma.payment.aggregate({
         _sum: { amount: true },
-        where: { status: "PAID", booking: { status: { not: "CANCELLED" } } },
+        where: { booking: { status: { not: "CANCELLED" } } },
       }),
       prisma.booking.findMany({
         take: 5,
