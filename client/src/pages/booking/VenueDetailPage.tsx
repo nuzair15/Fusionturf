@@ -109,9 +109,21 @@ export function VenueDetailPage() {
     return slots;
   }, [bookedData]);
 
-  const timeSlots = useMemo(() => {
-    return generateSlots(venue?.openingTime || "06:00", venue?.closingTime || "23:00");
-  }, [venue?.openingTime, venue?.closingTime]);
+  const opening = venue?.openingTime || "06:00";
+  const closing = venue?.closingTime || "23:00";
+  const lastBooking = venue?.lastBookingTime || closing;
+  const lastStart = lastBooking < closing ? lastBooking : addMinutes(closing, -30);
+
+  // Start slots: from opening up to and including the last booking time
+  const startTimeSlots = useMemo(() => {
+    return generateSlots(opening, addMinutes(lastStart, 30));
+  }, [opening, lastStart]);
+
+  // End slots: from start+30min up to and including closing time
+  const endTimeSlots = useMemo(() => {
+    if (!startSlot) return [];
+    return generateSlots(addMinutes(startSlot, 30), addMinutes(closing, 30));
+  }, [startSlot, closing]);
 
   const isSlotBooked = (slot: string) => bookedSlots.includes(slot);
 
@@ -123,16 +135,14 @@ export function VenueDetailPage() {
 
   const validEndSlots = useMemo(() => {
     if (!startSlot) return [];
-    const idx = timeSlots.indexOf(startSlot);
-    if (idx === -1) return [];
-    return timeSlots.slice(idx + 1).filter((s) => !isEndSlotInvalid(s));
-  }, [startSlot, timeSlots, bookedData]);
+    return endTimeSlots.filter((s) => !isEndSlotInvalid(s));
+  }, [startSlot, endTimeSlots, bookedData]);
 
   useEffect(() => {
-    if (endSlot && (!startSlot || timeSlots.indexOf(endSlot) <= timeSlots.indexOf(startSlot) || isEndSlotInvalid(endSlot))) {
+    if (endSlot && (!startSlot || !endTimeSlots.includes(endSlot) || isEndSlotInvalid(endSlot))) {
       setEndSlot("");
     }
-  }, [startSlot, endSlot, timeSlots, bookedData]);
+  }, [startSlot, endSlot, endTimeSlots, bookedData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -194,7 +204,7 @@ export function VenueDetailPage() {
                 <p className="flex items-center gap-2 text-sm text-muted-foreground"><MapPin className="h-4 w-4" /> {venue.address}, {venue.city}</p>
                 {venue.phone && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Phone className="h-4 w-4" /> {venue.phone}</p>}
                 {venue.email && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Mail className="h-4 w-4" /> {venue.email}</p>}
-                <p className="flex items-center gap-2 text-sm text-muted-foreground"><Clock className="h-4 w-4" /> {formatAmPm(venue.openingTime)} - {formatAmPm(venue.closingTime)}</p>
+                <p className="flex items-center gap-2 text-sm text-muted-foreground"><Clock className="h-4 w-4" /> {formatAmPm(venue.openingTime)} - {formatAmPm(venue.closingTime)}{venue.lastBookingTime ? <span className="text-xs">(last booking at {formatAmPm(venue.lastBookingTime)})</span> : null}</p>
                 {venue.turfs && venue.turfs.length > 0 && (
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Select Turf</label>
@@ -251,7 +261,7 @@ export function VenueDetailPage() {
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium">Start Time *</label>
                     <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8">
-                      {timeSlots.map((slot) => {
+                      {startTimeSlots.map((slot) => {
                         const booked = isSlotBooked(slot);
                         return (
                           <button
@@ -278,9 +288,7 @@ export function VenueDetailPage() {
                     <div className="space-y-1.5">
                       <label className="text-sm font-medium">End Time *</label>
                       <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8">
-                        {timeSlots
-                          .filter((s) => timeSlots.indexOf(s) > timeSlots.indexOf(startSlot))
-                          .map((slot) => {
+                        {endTimeSlots.map((slot) => {
                             const invalid = isEndSlotInvalid(slot);
                             return (
                               <button

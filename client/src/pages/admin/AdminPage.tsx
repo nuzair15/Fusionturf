@@ -23,7 +23,7 @@ import { BookingDrawer } from "@/components/admin/BookingDrawer";
 import { BottomSheet } from "@/components/admin/BottomSheet";
 import { DataTable, ColumnDef, BulkAction } from "@/components/admin/DataTable";
 import type { DashboardStats, User, Season, Team, Player, Fixture, Award, News, Booking, PaginatedResponse, Venue, Turf, Sponsor, Suspension, ActivityLog, Gallery, Coupon, Advertisement, Faq, ReviewAdmin } from "@/types";
-import { LayoutDashboard, Users, Calendar, CalendarDays, Trophy, Settings, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2, XCircle, ListChecks, AlertTriangle, MessageSquare, HelpCircle, Tag, Monitor, Search, Menu, TrendingUp, MoreHorizontal } from "lucide-react";
+import { LayoutDashboard, Users, Calendar, CalendarDays, Trophy, Settings, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2, XCircle, ListChecks, AlertTriangle, MessageSquare, HelpCircle, Tag, Monitor, Search, Menu, TrendingUp, MoreHorizontal, MessageCircle } from "lucide-react";
 import { VenueCalendar } from "@/components/admin/VenueCalendar";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 
@@ -50,6 +50,21 @@ const adminTabs = [
   { id: "settings", label: "Settings", icon: Settings },
   { id: "users", label: "Users", icon: Users },
 ];
+
+const buildWhatsAppMessage = (b: Booking) => {
+  const template = b.turf?.venue?.bookingMessageTemplate?.trim();
+  if (!template) return "";
+  const replacements: Record<string, string> = {
+    "{customer}": `${b.user?.firstName || ""} ${b.user?.lastName || ""}`.trim(),
+    "{venue}": b.turf?.venue?.name || "",
+    "{date}": formatDate(b.date),
+    "{startTime}": b.startTime,
+    "{endTime}": b.endTime,
+    "{amount}": (b.totalAmount / 100).toFixed(2),
+    "{bookingNumber}": b.bookingNumber,
+  };
+  return template.replace(/\{(\w+)\}/g, (m) => replacements[m] ?? m);
+};
 
 export function AdminPage() {
   const navigate = useNavigate();
@@ -993,14 +1008,14 @@ export function AdminPage() {
                       </div>
                       <div>
                         <CardTitle className="text-lg">{v.name}</CardTitle>
-                        <p className="text-xs text-muted-foreground">{v.city}, {v.state} • {v.openingTime} - {v.closingTime}</p>
+                        <p className="text-xs text-muted-foreground">{v.city}, {v.state} • {v.openingTime} - {v.closingTime}{v.lastBookingTime ? ` • Last booking: ${v.lastBookingTime}` : ""}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
                       <Button variant="ghost" size="sm" onClick={() => openForm("venueCalendar", { venueId: v.id })}>
                         <CalendarDays className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => openForm("venueEdit", { id: v.id, slug: v.slug, name: v.name, city: v.city, state: v.state, address: v.address || "", description: v.description || "", coverImage: v.coverImage || "", openingTime: v.openingTime, closingTime: v.closingTime })}>
+                      <Button variant="ghost" size="sm" onClick={() => openForm("venueEdit", { id: v.id, slug: v.slug, name: v.name, city: v.city, state: v.state, address: v.address || "", description: v.description || "", coverImage: v.coverImage || "", openingTime: v.openingTime, closingTime: v.closingTime, lastBookingTime: v.lastBookingTime || "", bookingMessageTemplate: v.bookingMessageTemplate || "" })}>
                         <Edit2 className="h-4 w-4" />
                       </Button>
                       <Button variant="ghost" size="sm" onClick={() => {
@@ -1075,6 +1090,22 @@ export function AdminPage() {
                     <Input type="time" value={formData.closingTime || "23:00"} onChange={(e) => handleFormChange("closingTime", e.target.value)} />
                   </div>
                 </div>
+                <div className="space-y-1.5">
+                  <Label>Last Booking Time</Label>
+                  <Input type="time" value={formData.lastBookingTime || ""} onChange={(e) => handleFormChange("lastBookingTime", e.target.value)} />
+                  <p className="text-[11px] text-muted-foreground">Latest time customers can start a booking. Leave empty to use closing time.</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>WhatsApp Booking Message Template</Label>
+                  <textarea
+                    value={formData.bookingMessageTemplate || ""}
+                    onChange={(e) => handleFormChange("bookingMessageTemplate", e.target.value)}
+                    rows={4}
+                    placeholder={"Hi {customer}, your booking at {venue} is confirmed!\nDate: {date}\nTime: {startTime} - {endTime}\nAmount: Rs {amount}\nBooking ID: {bookingNumber}"}
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/50"
+                  />
+                  <p className="text-[11px] text-muted-foreground">Placeholders: {"{customer}"} {"{venue}"} {"{date}"} {"{startTime}"} {"{endTime}"} {"{amount}"} {"{bookingNumber}"}</p>
+                </div>
                 {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                 <Button className="w-full" onClick={() => submitForm("venue", "/admin/venues", "admin-venues")}
                   disabled={!formData.name}>Create Venue</Button>
@@ -1115,10 +1146,26 @@ export function AdminPage() {
                     <Input type="time" value={formData.closingTime || "23:00"} onChange={(e) => handleFormChange("closingTime", e.target.value)} />
                   </div>
                 </div>
+                <div className="space-y-1.5">
+                  <Label>Last Booking Time</Label>
+                  <Input type="time" value={formData.lastBookingTime || ""} onChange={(e) => handleFormChange("lastBookingTime", e.target.value)} />
+                  <p className="text-[11px] text-muted-foreground">Latest time customers can start a booking. Leave empty to use closing time.</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>WhatsApp Booking Message Template</Label>
+                  <textarea
+                    value={formData.bookingMessageTemplate || ""}
+                    onChange={(e) => handleFormChange("bookingMessageTemplate", e.target.value)}
+                    rows={4}
+                    placeholder={"Hi {customer}, your booking at {venue} is confirmed!\nDate: {date}\nTime: {startTime} - {endTime}\nAmount: Rs {amount}\nBooking ID: {bookingNumber}"}
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/50"
+                  />
+                  <p className="text-[11px] text-muted-foreground">Placeholders: {"{customer}"} {"{venue}"} {"{date}"} {"{startTime}"} {"{endTime}"} {"{amount}"} {"{bookingNumber}"}</p>
+                </div>
                 {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                 <Button className="w-full" onClick={async () => {
                   try {
-                    await api.patch(`/admin/venues/${formData.id}`, { name: formData.name, city: formData.city, state: formData.state, address: formData.address, description: formData.description, coverImage: formData.coverImage, openingTime: formData.openingTime, closingTime: formData.closingTime });
+                    await api.patch(`/admin/venues/${formData.id}`, { name: formData.name, city: formData.city, state: formData.state, address: formData.address, description: formData.description, coverImage: formData.coverImage, openingTime: formData.openingTime, closingTime: formData.closingTime, lastBookingTime: formData.lastBookingTime || null, bookingMessageTemplate: formData.bookingMessageTemplate || null });
                     setShowForm(null);
                     queryClient.invalidateQueries({ queryKey: ["admin-venues"] });
                   } catch (err: any) { setFormErrors(err.message); }
@@ -1237,6 +1284,22 @@ export function AdminPage() {
                 { key: "time", label: "Time", render: (b) => <>{b.startTime} - {b.endTime}</> },
                 { key: "amount", label: "Amount", sortable: true, render: (b) => <>₹{(b.totalAmount / 100).toFixed(2)}</> },
                 { key: "status", label: "Status", render: (b) => <Badge variant={b.status === "CONFIRMED" ? "default" : b.status === "CANCELLED" ? "destructive" : "secondary"}>{b.status}</Badge> },
+                { key: "whatsapp", label: "", render: (b) => {
+                  const phone = b.user?.phone?.replace(/[^0-9]/g, "");
+                  const msg = buildWhatsAppMessage(b);
+                  if (!phone || !msg) return null;
+                  return (
+                    <a
+                      href={`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Send WhatsApp"
+                      className="inline-flex items-center justify-center rounded-lg border p-1.5 text-primary transition-colors hover:bg-primary/10"
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                    </a>
+                  );
+                } },
               ]}
               data={bookings?.data || []}
               keyExtractor={(b) => b.id}

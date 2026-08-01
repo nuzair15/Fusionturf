@@ -255,6 +255,8 @@ export interface Venue {
   longitude?: number;
   openingTime: string;
   closingTime: string;
+  lastBookingTime?: string;
+  bookingMessageTemplate?: string;
   turfs?: Turf[];
   gallery?: VenueGallery[];
   reviews?: Review[];
@@ -301,7 +303,7 @@ export interface Booking {
   userId: string;
   user?: { id: string; firstName: string; lastName: string; email: string; phone?: string };
   turfId: string;
-  turf: Turf & { venue: { name: string; slug: string } };
+  turf: Turf & { venue: { name: string; slug: string; bookingMessageTemplate?: string } };
   date: string;
   startTime: string;
   endTime: string;

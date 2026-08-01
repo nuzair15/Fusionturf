@@ -192,6 +192,8 @@ model Venue {
   isActive        Boolean  @default(true)
   openingTime     String   @default("06:00")
   closingTime     String   @default("22:00")
+  lastBookingTime String?  // latest time a booking can start; defaults to closingTime when null
+  bookingMessageTemplate String? // WhatsApp message template for bookings
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

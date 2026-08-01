@@ -1131,7 +1131,7 @@ export const getVenues = async (req: Request, res: Response, next: NextFunction)
 const VENUE_WRITABLE_FIELDS = [
   "name", "slug", "description", "address", "city", "state", "country", "zipCode",
   "latitude", "longitude", "phone", "email", "coverImage", "logo", "rules", "faqs",
-  "isActive", "openingTime", "closingTime",
+  "isActive", "openingTime", "closingTime", "lastBookingTime", "bookingMessageTemplate",
 ] as const;
 
 export const createVenue = async (req: Request, res: Response, next: NextFunction) => {

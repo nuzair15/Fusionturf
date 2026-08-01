@@ -8,7 +8,7 @@ import type { Booking, Payment } from "@/types";
 import {
   X, User, Phone, MapPin, DollarSign, CreditCard,
   FileText, Clock, Calendar, Edit2, Ban, Undo2, Printer,
-  AlertTriangle, CheckCircle2,
+  AlertTriangle, CheckCircle2, MessageCircle,
 } from "lucide-react";
 
 function relativeTime(dateStr: string): string {
@@ -232,6 +232,26 @@ export function BookingDrawer({ booking, onClose }: { booking: Booking; onClose:
               <Button variant="outline" onClick={handlePrintInvoice}>
                 <Printer className="mr-1.5 h-4 w-4" /> Print Invoice
               </Button>
+              {(() => {
+                const phone = booking.user?.phone?.replace(/[^0-9]/g, "");
+                const template = booking.turf?.venue?.bookingMessageTemplate?.trim();
+                if (!phone || !template) return null;
+                const msg = template
+                  .replace("{customer}", `${booking.user?.firstName || ""} ${booking.user?.lastName || ""}`.trim())
+                  .replace("{venue}", booking.turf?.venue?.name || "")
+                  .replace("{date}", formatDate(booking.date))
+                  .replace("{startTime}", booking.startTime)
+                  .replace("{endTime}", booking.endTime)
+                  .replace("{amount}", formatCurrency(booking.totalAmount))
+                  .replace("{bookingNumber}", booking.bookingNumber);
+                return (
+                  <a href={`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer" className="w-full">
+                    <Button variant="outline" className="w-full">
+                      <MessageCircle className="mr-1.5 h-4 w-4" /> Send WhatsApp
+                    </Button>
+                  </a>
+                );
+              })()}
             </div>
           </div>
         </div>
