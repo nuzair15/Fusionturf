@@ -1,5 +1,5 @@
 import type { Booking } from "@/types";
-import { formatTime } from "./utils";
+import { formatTime, getDisplayName } from "./utils";
 
 const inr = (paise: number): string =>
   new Intl.NumberFormat("en-IN", {
@@ -46,9 +46,7 @@ export function openBookingInvoice(booking: Booking, settings: Record<string, st
   const businessEmail = settings.contact_email || "";
   const businessPhone = settings.contact_phone || "";
 
-  const customerName = `${booking.user?.firstName || ""} ${booking.user?.lastName || ""}`.trim() || "Guest";
-  const customerPhone = booking.user?.phone || "";
-  const customerEmail = booking.user?.email || "";
+  const customerName = getDisplayName(booking.user?.firstName, booking.user?.lastName);
 
   const hours = Math.ceil((booking.duration || 0) / 60) || 1;
   const services = booking.bookingServices || [];
@@ -106,8 +104,8 @@ export function openBookingInvoice(booking: Booking, settings: Record<string, st
   .brand img { max-height: 64px; max-width: 180px; object-fit: contain; }
   .brand .name { font-size: 22px; font-weight: 700; color: #0b5e46; letter-spacing: 0.5px; }
   .brand .tagline { font-size: 12px; color: #66707e; }
-  .invoice-title { text-align: right; }
-  .invoice-title h1 { font-size: 28px; letter-spacing: 4px; color: #1a2332; }
+  .invoice-title { text-align: right; max-width: 55%; }
+  .invoice-title h1 { font-size: 19px; letter-spacing: 1.5px; color: #1a2332; }
   .invoice-title p { font-size: 12px; color: #66707e; }
   .meta { display: flex; justify-content: space-between; gap: 24px; margin: 24px 0; }
   .meta .col h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #8a93a0; margin-bottom: 8px; }
@@ -139,7 +137,7 @@ export function openBookingInvoice(booking: Booking, settings: Record<string, st
         ${logo ? `<img src="${logo}" alt="${businessName}" />` : `<div><div class="name">${businessName}</div></div>`}
       </div>
       <div class="invoice-title">
-        <h1>INVOICE</h1>
+        <h1>BOOKING DETAILS &amp; INVOICE</h1>
         <p>Invoice No: ${invoiceNumber}</p>
         <p>Invoice Date: ${fmtDate(booking.createdAt || new Date())}</p>
         <p>Booking ID: ${booking.bookingNumber}</p>
@@ -151,7 +149,7 @@ export function openBookingInvoice(booking: Booking, settings: Record<string, st
     <div class="meta">
       <div class="col">
         <h3>Billed To</h3>
-        <p><strong>${customerName}</strong><br/>${customerPhone ? `Phone: ${customerPhone}<br/>` : ""}${customerEmail ? `Email: ${customerEmail}` : ""}</p>
+        <p><strong>${customerName}</strong></p>
       </div>
       <div class="col right">
         <h3>${businessName}</h3>

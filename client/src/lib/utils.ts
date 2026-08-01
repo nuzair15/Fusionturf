@@ -44,6 +44,16 @@ export const getInitials = (firstName: string, lastName: string): string => {
   return `${firstName[0]}${lastName[0]}`.toUpperCase();
 };
 
+export const getDisplayName = (firstName?: string | null, lastName?: string | null): string => {
+  const first = (firstName || "").trim();
+  const last = (lastName || "").trim();
+  if (!first && !last) return "Guest";
+  // A walk-in guest's lastName may hold a phone number or the placeholder "User"
+  // — never append it to the displayed name.
+  if (!last || /^[0-9+\s().-]{6,}$/.test(last) || /^(user|guest|n\/?a)$/i.test(last)) return first;
+  return `${first} ${last}`;
+};
+
 export const getMatchStatusColor = (status: string): string => {
   const colors: Record<string, string> = {
     SCHEDULED: "bg-blue-500",
