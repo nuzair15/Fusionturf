@@ -12,6 +12,7 @@ import { Select } from "@/components/ui/select";
 import { Dialog } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { formatDate, formatCurrency } from "@/lib/utils";
+import { buildBookingMessage } from "@/lib/bookingMessage";
 import { MatchControlCenter } from "@/components/live/MatchControlCenter";
 import { LineupEditor } from "@/components/admin/LineupEditor";
 import { AdminSidebar, SidebarDrawer } from "@/components/admin/AdminSidebar";
@@ -50,21 +51,6 @@ const adminTabs = [
   { id: "settings", label: "Settings", icon: Settings },
   { id: "users", label: "Users", icon: Users },
 ];
-
-const buildWhatsAppMessage = (b: Booking) => {
-  const template = b.turf?.venue?.bookingMessageTemplate?.trim();
-  if (!template) return "";
-  const replacements: Record<string, string> = {
-    "{customer}": `${b.user?.firstName || ""} ${b.user?.lastName || ""}`.trim(),
-    "{venue}": b.turf?.venue?.name || "",
-    "{date}": formatDate(b.date),
-    "{startTime}": b.startTime,
-    "{endTime}": b.endTime,
-    "{amount}": (b.totalAmount / 100).toFixed(2),
-    "{bookingNumber}": b.bookingNumber,
-  };
-  return template.replace(/\{(\w+)\}/g, (m) => replacements[m] ?? m);
-};
 
 export function AdminPage() {
   const navigate = useNavigate();
@@ -1286,7 +1272,7 @@ export function AdminPage() {
                 { key: "status", label: "Status", render: (b) => <Badge variant={b.status === "CONFIRMED" ? "default" : b.status === "CANCELLED" ? "destructive" : "secondary"}>{b.status}</Badge> },
                 { key: "whatsapp", label: "", render: (b) => {
                   const phone = b.user?.phone?.replace(/[^0-9]/g, "");
-                  const msg = buildWhatsAppMessage(b);
+                  const msg = buildBookingMessage(b);
                   if (!phone || !msg) return null;
                   return (
                     <a

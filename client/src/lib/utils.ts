@@ -31,6 +31,15 @@ export const formatTime = (time: string): string => {
   return `${hour12}:${m} ${ampm}`;
 };
 
+export const formatBookingDate = (date: string | Date): string => {
+  return new Date(date).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+};
+
+
 export const getInitials = (firstName: string, lastName: string): string => {
   return `${firstName[0]}${lastName[0]}`.toUpperCase();
 };

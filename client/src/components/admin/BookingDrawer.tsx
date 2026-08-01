@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { formatDate, formatTime, formatCurrency } from "@/lib/utils";
+import { buildBookingMessage } from "@/lib/bookingMessage";
 import type { Booking, Payment } from "@/types";
 import {
   X, User, Phone, MapPin, DollarSign, CreditCard,
@@ -234,16 +235,8 @@ export function BookingDrawer({ booking, onClose }: { booking: Booking; onClose:
               </Button>
               {(() => {
                 const phone = booking.user?.phone?.replace(/[^0-9]/g, "");
-                const template = booking.turf?.venue?.bookingMessageTemplate?.trim();
-                if (!phone || !template) return null;
-                const msg = template
-                  .replace("{customer}", `${booking.user?.firstName || ""} ${booking.user?.lastName || ""}`.trim())
-                  .replace("{venue}", booking.turf?.venue?.name || "")
-                  .replace("{date}", formatDate(booking.date))
-                  .replace("{startTime}", booking.startTime)
-                  .replace("{endTime}", booking.endTime)
-                  .replace("{amount}", formatCurrency(booking.totalAmount))
-                  .replace("{bookingNumber}", booking.bookingNumber);
+                const msg = buildBookingMessage(booking);
+                if (!phone || !msg) return null;
                 return (
                   <a href={`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer" className="w-full">
                     <Button variant="outline" className="w-full">
