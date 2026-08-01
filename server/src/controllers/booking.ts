@@ -184,8 +184,6 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
       });
     }
 
-    const bookingNumber = generateBookingNumber();
-
     // The overlap check and the insert must be atomic. Previously these were
     // two separate round-trips with no transaction and no DB-level guarantee,
     // so two requests for the same turf/time arriving close together could
@@ -193,10 +191,14 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
     // booking the slot. SERIALIZABLE isolation makes Postgres detect that
     // conflict and abort one of the transactions (P2034), which we retry a
     // few times before surfacing a real 409 to the loser.
+    // The sequential booking number is generated inside the loop: concurrent
+    // requests could observe the same count and pick the same sequence, so a
+    // unique-constraint hit (P2002) triggers a retry with a fresh number.
     let booking;
-    const maxAttempts = 3;
+    const maxAttempts = 5;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
+        const bookingNumber = await generateBookingNumber();
         booking = await prisma.$transaction(async (tx) => {
           const overlap = await tx.booking.findFirst({
             where: {
@@ -236,7 +238,8 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
         break;
       } catch (err: any) {
         const isSerializationConflict = err?.code === "P2034";
-        if (isSerializationConflict && attempt < maxAttempts) continue;
+        const isDuplicateBookingNumber = err?.code === "P2002" && Array.isArray(err?.meta?.target) && err.meta.target.includes("bookingNumber");
+        if ((isSerializationConflict || isDuplicateBookingNumber) && attempt < maxAttempts) continue;
         throw err;
       }
     }

@@ -110,10 +110,13 @@ export const generateSlug = (text: string): string => {
     .trim();
 };
 
-export const generateBookingNumber = (): string => {
-  const timestamp = Date.now().toString(36).toUpperCase();
-  const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-  return `FL-${timestamp}-${random}`;
+export const generateBookingNumber = async (): Promise<string> => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const start = new Date(Date.UTC(year, 0, 1));
+  const end = new Date(Date.UTC(year + 1, 0, 1));
+  const count = await prisma.booking.count({ where: { createdAt: { gte: start, lt: end } } });
+  return `FUSIONRK-BK-${year}-${String(count + 1).padStart(6, "0")}`;
 };
 
 export const calculateMatchStats = (homeScore: number, awayScore: number) => {

@@ -29,13 +29,18 @@ export const DEFAULT_INVOICE_TERMS = [
   "5. Any damage to venue property or equipment will be billed to the customer.",
   "6. The venue is not responsible for loss or damage of personal belongings.",
   "7. All players must follow the venue rules and safety guidelines during their slot.",
-  "8. For any queries regarding this invoice, contact us using the details above.",
+  "8. If the slot is extended on the spot beyond the booked duration, different (extended) pricing will apply and will be billed accordingly.",
+  "9. For any queries regarding this invoice, contact us using the details above.",
 ].join("\n");
 
 export function openBookingInvoice(booking: Booking, settings: Record<string, string>) {
   const logo = resolveUrl(settings.site_logo_url || "/logo.png");
   const upiQr = resolveUrl(settings.invoice_upi_qr);
   const terms = settings.invoice_terms?.trim() || DEFAULT_INVOICE_TERMS;
+
+  const invoiceNumber = booking.bookingNumber.startsWith("FUSIONRK-BK-")
+    ? `FUSIONRK-INV-${booking.bookingNumber.slice("FUSIONRK-BK-".length)}`
+    : booking.bookingNumber;
 
   const businessName = settings.site_name || "Fusion Turf";
   const businessEmail = settings.contact_email || "";
@@ -91,7 +96,7 @@ export function openBookingInvoice(booking: Booking, settings: Record<string, st
 <html>
 <head>
 <meta charset="utf-8" />
-<title>Invoice #${booking.bookingNumber}</title>
+<title>Invoice #${invoiceNumber}</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Segoe UI', Arial, sans-serif; color: #1a2332; background: #f2f4f7; padding: 24px; }
@@ -135,7 +140,7 @@ export function openBookingInvoice(booking: Booking, settings: Record<string, st
       </div>
       <div class="invoice-title">
         <h1>INVOICE</h1>
-        <p>Invoice No: ${booking.bookingNumber}</p>
+        <p>Invoice No: ${invoiceNumber}</p>
         <p>Invoice Date: ${fmtDate(booking.createdAt || new Date())}</p>
         <p>Booking ID: ${booking.bookingNumber}</p>
         <p>Booking Date: ${fmtLongDate(booking.date)} (${formatTime(booking.startTime)} - ${formatTime(booking.endTime)})</p>
@@ -161,7 +166,7 @@ export function openBookingInvoice(booking: Booking, settings: Record<string, st
           <strong>${booking.turf?.venue?.name || "Venue"}</strong> — ${booking.turf?.name || "Turf"}<br/>
           Date: ${fmtLongDate(booking.date)}<br/>
           Time: ${formatTime(booking.startTime)} to ${formatTime(booking.endTime)}<br/>
-          Duration: ${booking.duration} min • Players: ${booking.numPlayers}<br/>
+          Duration: ${booking.duration} min<br/>
           Status: <strong>${booking.status}</strong>
         </p>
       </div>
