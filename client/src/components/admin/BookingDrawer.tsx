@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,7 +11,7 @@ import type { Booking, Payment } from "@/types";
 import {
   X, User, Phone, MapPin, DollarSign, CreditCard,
   FileText, Clock, Calendar, Edit2, Ban, Undo2, Printer,
-  AlertTriangle, CheckCircle2, MessageCircle,
+  AlertTriangle, CheckCircle2, MessageCircle, Copy,
 } from "lucide-react";
 
 function relativeTime(dateStr: string): string {
@@ -29,6 +30,7 @@ function relativeTime(dateStr: string): string {
 
 export function BookingDrawer({ booking, settings, onClose }: { booking: Booking; settings?: Record<string, string>; onClose: () => void }) {
   const queryClient = useQueryClient();
+  const [copied, setCopied] = useState(false);
   const statusColor = booking.status === "CONFIRMED" ? "bg-blue-500" :
     booking.status === "COMPLETED" ? "bg-green-500" :
     booking.status === "CANCELLED" ? "bg-red-500" :
@@ -153,6 +155,43 @@ export function BookingDrawer({ booking, settings, onClose }: { booking: Booking
               </div>
             </div>
           )}
+
+          {/* WhatsApp Message */}
+          {(() => {
+            const msg = buildBookingMessage(booking);
+            if (!msg) return null;
+            const phone = booking.user?.phone?.replace(/[^0-9]/g, "");
+            const copy = async () => {
+              try {
+                await navigator.clipboard.writeText(msg);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              } catch {}
+            };
+            return (
+              <div className="rounded-lg border p-4">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                    <MessageCircle className="h-3 w-3" /> WhatsApp Message
+                  </p>
+                  <div className="flex items-center gap-2">
+                    {copied && <span className="text-[11px] text-green-600">Copied!</span>}
+                    <Button variant="outline" size="sm" onClick={copy}>
+                      <Copy className="mr-1 h-3.5 w-3.5" /> Copy
+                    </Button>
+                    {phone && (
+                      <a href={`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer">
+                        <Button variant="outline" size="sm">
+                          <MessageCircle className="mr-1 h-3.5 w-3.5" /> Open
+                        </Button>
+                      </a>
+                    )}
+                  </div>
+                </div>
+                <div className="max-h-52 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-sm">{msg}</div>
+              </div>
+            );
+          })()}
 
           {/* Booking History Timeline */}
           <div className="rounded-lg border p-4">

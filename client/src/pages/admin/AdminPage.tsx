@@ -24,7 +24,7 @@ import { BookingDrawer } from "@/components/admin/BookingDrawer";
 import { BottomSheet } from "@/components/admin/BottomSheet";
 import { DataTable, ColumnDef, BulkAction } from "@/components/admin/DataTable";
 import type { DashboardStats, User, Season, Team, Player, Fixture, Award, News, Booking, PaginatedResponse, Venue, Turf, Sponsor, Suspension, ActivityLog, Gallery, Coupon, Advertisement, Faq, ReviewAdmin } from "@/types";
-import { LayoutDashboard, Users, Calendar, CalendarDays, Trophy, Settings, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2, XCircle, ListChecks, AlertTriangle, MessageSquare, HelpCircle, Tag, Monitor, Search, Menu, TrendingUp, MoreHorizontal, MessageCircle, QrCode } from "lucide-react";
+import { LayoutDashboard, Users, Calendar, CalendarDays, Trophy, Settings, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2, XCircle, ListChecks, AlertTriangle, MessageSquare, HelpCircle, Tag, Monitor, Search, Menu, TrendingUp, MoreHorizontal, MessageCircle, QrCode, Copy } from "lucide-react";
 import { VenueCalendar } from "@/components/admin/VenueCalendar";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 
@@ -78,6 +78,7 @@ export function AdminPage() {
   const [winnerLoading, setWinnerLoading] = useState(false);
   const [selectedWinner, setSelectedWinner] = useState<any>(null);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [copiedBookingId, setCopiedBookingId] = useState<string | null>(null);
   const [teamSearch, setTeamSearch] = useState("");
   const [playerSearch, setPlayerSearch] = useState("");
   const [fixtureSearch, setFixtureSearch] = useState("");
@@ -1273,17 +1274,37 @@ export function AdminPage() {
                 { key: "whatsapp", label: "", render: (b) => {
                   const phone = b.user?.phone?.replace(/[^0-9]/g, "");
                   const msg = buildBookingMessage(b);
-                  if (!phone || !msg) return null;
+                  if (!msg) return null;
+                  const copy = async () => {
+                    try {
+                      await navigator.clipboard.writeText(msg);
+                      setCopiedBookingId(b.id);
+                      setTimeout(() => setCopiedBookingId((id) => (id === b.id ? null : id)), 1500);
+                    } catch {}
+                  };
                   return (
-                    <a
-                      href={`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      title="Send WhatsApp"
-                      className="inline-flex items-center justify-center rounded-lg border p-1.5 text-primary transition-colors hover:bg-primary/10"
-                    >
-                      <MessageCircle className="h-4 w-4" />
-                    </a>
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        type="button"
+                        onClick={copy}
+                        title="Copy message"
+                        className="inline-flex items-center justify-center rounded-lg border p-1.5 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </button>
+                      {phone && (
+                        <a
+                          href={`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Send WhatsApp"
+                          className="inline-flex items-center justify-center rounded-lg border p-1.5 text-primary transition-colors hover:bg-primary/10"
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                        </a>
+                      )}
+                      {copiedBookingId === b.id && <span className="text-[10px] text-green-600">Copied</span>}
+                    </div>
                   );
                 } },
               ]}
