@@ -137,6 +137,9 @@ export function openBookingInvoice(booking: Booking, settings: Record<string, st
         <h1>INVOICE</h1>
         <p>Invoice No: ${booking.bookingNumber}</p>
         <p>Invoice Date: ${fmtDate(booking.createdAt || new Date())}</p>
+        <p>Booking ID: ${booking.bookingNumber}</p>
+        <p>Booking Date: ${fmtLongDate(booking.date)} (${formatTime(booking.startTime)} - ${formatTime(booking.endTime)})</p>
+        <p>Venue: ${booking.turf?.venue?.name || ""}${booking.turf?.name ? ` — ${booking.turf.name}` : ""}</p>
       </div>
     </div>
 
