@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
 import { formatDate, formatTime, formatCurrency } from "@/lib/utils";
 import { buildBookingMessage } from "@/lib/bookingMessage";
@@ -31,6 +32,12 @@ function relativeTime(dateStr: string): string {
 export function BookingDrawer({ booking, settings, onClose }: { booking: Booking; settings?: Record<string, string>; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState("CASH");
+  const [payments, setPayments] = useState<Payment[]>(booking.payments || []);
+  const [totalAmount, setTotalAmount] = useState(booking.totalAmount);
+  const [discountAmount, setDiscountAmount] = useState(booking.discountAmount || 0);
+  const [discountInput, setDiscountInput] = useState(String((booking.discountAmount || 0) / 100 || ""));
+  const [savingDiscount, setSavingDiscount] = useState(false);
   const statusColor = booking.status === "CONFIRMED" ? "bg-blue-500" :
     booking.status === "COMPLETED" ? "bg-green-500" :
     booking.status === "CANCELLED" ? "bg-red-500" :
@@ -40,13 +47,36 @@ export function BookingDrawer({ booking, settings, onClose }: { booking: Booking
     try {
       if (action === "confirm") await api.patch(`/admin/bookings/${booking.id}/status`, { status: "CONFIRMED" });
       else if (action === "cancel") await api.patch(`/admin/bookings/${booking.id}/status`, { status: "CANCELLED" });
-      else if (action === "refund") await api.patch(`/admin/bookings/${booking.id}/status`, { status: "REFUNDED" });
+      else if (action === "refund") await api.patch(`/admin/bookings/${booking.id}/refund`);
       queryClient.invalidateQueries({ queryKey: ["admin-bookings"] });
       onClose();
     } catch {}
   };
 
-  const payments = booking.payments || [];
+  const markPaid = async () => {
+    try {
+      await api.patch(`/admin/bookings/${booking.id}/payment`, { method: paymentMethod });
+      setPayments((prev) => prev.map((p) => (p.status === "PENDING" ? { ...p, status: "PAID", method: paymentMethod } : p)));
+      queryClient.invalidateQueries({ queryKey: ["admin-bookings"] });
+    } catch {}
+  };
+
+  const pendingCount = payments.filter((p) => p.status === "PENDING").length;
+
+  const applyDiscount = async () => {
+    const paise = Math.round((parseFloat(discountInput) || 0) * 100);
+    setSavingDiscount(true);
+    try {
+      const res = await api.patch(`/admin/bookings/${booking.id}/discount`, { discountAmount: paise });
+      const updated = (res as { data: { discountAmount?: number; totalAmount: number } }).data;
+      setDiscountAmount(updated.discountAmount || 0);
+      setTotalAmount(updated.totalAmount);
+      setPayments((prev) => prev.map((p) => (p.status === "PENDING" ? { ...p, amount: updated.totalAmount } : p)));
+      queryClient.invalidateQueries({ queryKey: ["admin-bookings"] });
+    } catch {} finally {
+      setSavingDiscount(false);
+    }
+  };
 
   return (
     <>
@@ -108,19 +138,35 @@ export function BookingDrawer({ booking, settings, onClose }: { booking: Booking
             <DollarSign className="mt-0.5 h-5 w-5 text-muted-foreground shrink-0" />
             <div className="flex-1">
               <div className="flex items-center justify-between">
-                <p className="font-semibold text-lg">{formatCurrency(booking.totalAmount)}</p>
+                <p className="font-semibold text-lg">{formatCurrency(totalAmount)}</p>
                 {payments.length > 0 && (
                   <Badge variant={payments[0].status === "PAID" ? "default" : payments[0].status === "REFUNDED" ? "secondary" : "outline"}>
                     {payments[0].status}
                   </Badge>
                 )}
               </div>
-              {booking.discountAmount > 0 && (
-                <p className="text-sm text-green-600">Discount: –{formatCurrency(booking.discountAmount)}</p>
+              {discountAmount > 0 && (
+                <p className="text-sm text-green-600">Discount: –{formatCurrency(discountAmount)}</p>
               )}
               {booking.couponCode && (
                 <p className="text-xs text-muted-foreground">Coupon: {booking.couponCode}</p>
               )}
+
+              <div className="mt-2 flex items-center gap-2">
+                <div className="flex-1">
+                  <Input
+                    type="number"
+                    min={0}
+                    value={discountInput}
+                    onChange={(e) => setDiscountInput(e.target.value)}
+                    placeholder="Discount (₹)"
+                    className="h-8"
+                  />
+                </div>
+                <Button size="sm" variant="outline" onClick={applyDiscount} disabled={savingDiscount}>
+                  Apply Discount
+                </Button>
+              </div>
 
               {/* Payment History */}
               {payments.length > 0 && (
@@ -228,6 +274,27 @@ export function BookingDrawer({ booking, settings, onClose }: { booking: Booking
           {/* Actions */}
           <div className="space-y-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Actions</p>
+            {pendingCount > 0 && (
+              <div className="flex items-end gap-2">
+                <div className="flex-1 space-y-1">
+                  <p className="text-xs text-muted-foreground">Payment Method</p>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                  >
+                    <option value="CASH">Cash</option>
+                    <option value="UPI">UPI</option>
+                    <option value="CARD">Card</option>
+                    <option value="NETBANKING">Net Banking</option>
+                    <option value="WALLET">Wallet</option>
+                  </select>
+                </div>
+                <Button onClick={markPaid} className="bg-green-600 hover:bg-green-700">
+                  <CheckCircle2 className="mr-1.5 h-4 w-4" /> Mark as Paid
+                </Button>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-2">
               {booking.status === "PENDING" && (
                 <Button onClick={() => handleAction("confirm")} className="bg-green-600 hover:bg-green-700">

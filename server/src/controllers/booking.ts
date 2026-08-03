@@ -157,7 +157,7 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
 
     const duration = (parseInt(data.endTime.slice(0, 2), 10) * 60 + parseInt(data.endTime.slice(3), 10)) -
       (parseInt(data.startTime.slice(0, 2), 10) * 60 + parseInt(data.startTime.slice(3), 10));
-    const totalAmount = hourlyPrice * Math.ceil(duration / 60);
+    const totalAmount = hourlyPrice * (Math.ceil(duration / 30) / 2);
 
     // Create or find guest user for walk-in bookings. IMPORTANT: this must
     // never use a predictable/shared password. An earlier version hashed the
@@ -401,6 +401,66 @@ export const adminUpdateBookingStatus = async (req: Request, res: Response, next
         "booking"
       ).catch(() => {});
     }
+    res.json(updated);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const adminMarkBookingPaid = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { method } = req.body;
+    const validMethods = ["CASH", "UPI", "CARD", "NETBANKING", "WALLET"];
+    if (method && !validMethods.includes(method)) {
+      throw new AppError("Invalid payment method", 400);
+    }
+    const booking = await prisma.booking.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!booking) throw new AppError("Booking not found", 404);
+    const updated = await prisma.payment.updateMany({
+      where: { bookingId: booking.id, status: "PENDING" },
+      data: { status: "PAID", ...(method ? { method } : {}) },
+    });
+    res.json({ count: updated.count });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const adminRefundBooking = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const booking = await prisma.booking.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!booking) throw new AppError("Booking not found", 404);
+    const updated = await prisma.payment.updateMany({
+      where: { bookingId: booking.id, status: { in: ["PENDING", "PAID"] } },
+      data: { status: "REFUNDED" },
+    });
+    res.json({ count: updated.count });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const adminUpdateBookingDiscount = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { discountAmount } = req.body;
+    if (typeof discountAmount !== "number" || !Number.isFinite(discountAmount) || discountAmount < 0) {
+      throw new AppError("discountAmount (in paise) must be a non-negative number", 400);
+    }
+    const booking = await prisma.booking.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, totalAmount: true, discountAmount: true },
+    });
+    if (!booking) throw new AppError("Booking not found", 404);
+
+    const gross = Math.max(0, booking.totalAmount + (booking.discountAmount || 0));
+    const discount = Math.min(discountAmount, gross);
+    const newTotal = gross - discount;
+
+    const [updated] = await prisma.$transaction([
+      prisma.booking.update({ where: { id: booking.id }, data: { discountAmount: discount, totalAmount: newTotal } }),
+      prisma.payment.updateMany({ where: { bookingId: booking.id, status: "PENDING" }, data: { amount: newTotal } }),
+    ]);
+
     res.json(updated);
   } catch (error) {
     next(error);

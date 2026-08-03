@@ -102,6 +102,9 @@ router.patch("/users/:id/role", authorize("SUPER_ADMIN"), admin.updateUserRole);
 router.get("/bookings", authorize("SUPER_ADMIN", "BOOKING_MANAGER", "LEAGUE_ADMIN"), bookingAdmin.adminGetAllBookings);
 router.post("/bookings/block-date", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), bookingAdmin.adminBlockDate);
 router.patch("/bookings/:id/status", authorize("SUPER_ADMIN", "BOOKING_MANAGER", "LEAGUE_ADMIN"), bookingAdmin.adminUpdateBookingStatus);
+router.patch("/bookings/:id/payment", authorize("SUPER_ADMIN", "BOOKING_MANAGER", "LEAGUE_ADMIN"), bookingAdmin.adminMarkBookingPaid);
+router.patch("/bookings/:id/refund", authorize("SUPER_ADMIN", "BOOKING_MANAGER", "LEAGUE_ADMIN"), bookingAdmin.adminRefundBooking);
+router.patch("/bookings/:id/discount", authorize("SUPER_ADMIN", "BOOKING_MANAGER", "LEAGUE_ADMIN"), bookingAdmin.adminUpdateBookingDiscount);
 router.patch("/bookings/:id", authorize("SUPER_ADMIN", "BOOKING_MANAGER", "LEAGUE_ADMIN"), bookingAdmin.adminUpdateBooking);
 
 // Venue Management
