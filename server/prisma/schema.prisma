@@ -233,6 +233,7 @@ model Turf {
   basePrice   Int      @default(500)   // price in cents
   peakPrice   Int      @default(1000)
   weekendPrice Int     @default(800)
+  halfHourBilling Boolean @default(false)  // bill in 30-min increments (each = half hourly rate)
   imageUrl    String?
   capacity    Int      @default(22)
   createdAt   DateTime @default(now())

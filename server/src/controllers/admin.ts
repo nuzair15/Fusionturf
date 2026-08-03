@@ -1174,7 +1174,7 @@ export const deleteVenue = async (req: Request, res: Response, next: NextFunctio
 
 const TURF_WRITABLE_FIELDS = [
   "venueId", "name", "description", "size", "surface", "isActive",
-  "basePrice", "peakPrice", "weekendPrice", "imageUrl", "capacity",
+  "basePrice", "peakPrice", "weekendPrice", "halfHourBilling", "imageUrl", "capacity",
 ] as const;
 
 export const createTurf = async (req: Request, res: Response, next: NextFunction) => {

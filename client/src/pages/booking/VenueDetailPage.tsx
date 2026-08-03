@@ -86,9 +86,12 @@ export function VenueDetailPage() {
     if (!startSlot || !endSlot) return 0;
     const startMin = parseInt(startSlot.slice(0, 2), 10) * 60 + parseInt(startSlot.slice(3), 10);
     const endMin = parseInt(endSlot.slice(0, 2), 10) * 60 + parseInt(endSlot.slice(3), 10);
-    const hours = Math.ceil((endMin - startMin) / 60);
+    const duration = endMin - startMin;
+    const hours = turf?.halfHourBilling
+      ? Math.ceil(duration / 30) / 2
+      : Math.ceil(duration / 60);
     return computedPrice * hours;
-  }, [startSlot, endSlot, computedPrice]);
+  }, [startSlot, endSlot, computedPrice, turf?.halfHourBilling]);
 
   const { data: bookedData } = useQuery({
     queryKey: ["booked-slots", selectedTurfId, date],

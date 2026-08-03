@@ -1022,7 +1022,7 @@ export function AdminPage() {
                             </div>
                             <div className="flex items-center gap-3">
                               <span className="font-medium">₹{(t.basePrice / 100).toFixed(0)}/hr</span>
-                              <Button variant="ghost" size="sm" onClick={() => openForm("turfEdit", { id: t.id, venueId: v.id, name: t.name, size: t.size || "5-a-side", surface: t.surface || "Artificial", imageUrl: (t as any).imageUrl || "", basePrice: t.basePrice, peakPrice: (t as any).peakPrice || 0, weekendPrice: (t as any).weekendPrice || 0 })}>
+                              <Button variant="ghost" size="sm" onClick={() => openForm("turfEdit", { id: t.id, venueId: v.id, name: t.name, size: t.size || "5-a-side", surface: t.surface || "Artificial", imageUrl: (t as any).imageUrl || "", basePrice: t.basePrice, peakPrice: (t as any).peakPrice || 0, weekendPrice: (t as any).weekendPrice || 0, halfHourBilling: (t as any).halfHourBilling })}>
                                 <Edit2 className="h-4 w-4" />
                               </Button>
                               <Button variant="ghost" size="sm" onClick={() => {
@@ -1035,7 +1035,7 @@ export function AdminPage() {
                     ) : (
                       <p className="text-sm text-muted-foreground">No turfs yet</p>
                     )}
-                    <Button variant="outline" size="sm" className="mt-3" onClick={() => openForm("turf", { venueId: v.id, name: "", size: "5-a-side", surface: "Artificial", basePrice: 50000, peakPrice: 0, weekendPrice: 0 })}>
+                    <Button variant="outline" size="sm" className="mt-3" onClick={() => openForm("turf", { venueId: v.id, name: "", size: "5-a-side", surface: "Artificial", basePrice: 50000, peakPrice: 0, weekendPrice: 0, halfHourBilling: false })}>
                       <Plus className="mr-1 h-4 w-4" /> Add Turf
                     </Button>
                   </CardContent>
@@ -1195,10 +1195,14 @@ export function AdminPage() {
                     <Label>Weekend Price (₹ per hour, optional)</Label>
                     <Input type="number" min={0} value={formData.weekendPrice ? Math.round(formData.weekendPrice / 100) : ""} onChange={(e) => handleFormChange("weekendPrice", (parseInt(e.target.value) || 0) * 100)} placeholder="e.g. 600" />
                   </div>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={!!formData.halfHourBilling} onChange={(e) => handleFormChange("halfHourBilling", e.target.checked)} />
+                    Half-hour pricing (each 30 min = half the hourly rate)
+                  </label>
                   {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                   <Button className="w-full" onClick={async () => {
                     try {
-                      await api.post("/admin/turfs", { name: formData.name, venueId: formData.venueId, size: formData.size, surface: formData.surface, imageUrl: formData.imageUrl, basePrice: formData.basePrice, peakPrice: formData.peakPrice, weekendPrice: formData.weekendPrice });
+                      await api.post("/admin/turfs", { name: formData.name, venueId: formData.venueId, size: formData.size, surface: formData.surface, imageUrl: formData.imageUrl, basePrice: formData.basePrice, peakPrice: formData.peakPrice, weekendPrice: formData.weekendPrice, halfHourBilling: formData.halfHourBilling });
                     setShowForm(null);
                     queryClient.invalidateQueries({ queryKey: ["admin-venues"] });
                   } catch (err: any) { setFormErrors(err.message); }
@@ -1241,9 +1245,13 @@ export function AdminPage() {
                   <Label>Weekend Price (₹ per hour, optional)</Label>
                   <Input type="number" min={0} value={formData.weekendPrice ? Math.round(formData.weekendPrice / 100) : ""} onChange={(e) => handleFormChange("weekendPrice", (parseInt(e.target.value) || 0) * 100)} placeholder="e.g. 600" />
                 </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={!!formData.halfHourBilling} onChange={(e) => handleFormChange("halfHourBilling", e.target.checked)} />
+                  Half-hour pricing (each 30 min = half the hourly rate)
+                </label>
                 <Button className="w-full" onClick={async () => {
                   try {
-                    await api.patch(`/admin/turfs/${formData.id}`, { name: formData.name, size: formData.size, surface: formData.surface, imageUrl: formData.imageUrl, basePrice: formData.basePrice, peakPrice: formData.peakPrice, weekendPrice: formData.weekendPrice });
+                    await api.patch(`/admin/turfs/${formData.id}`, { name: formData.name, size: formData.size, surface: formData.surface, imageUrl: formData.imageUrl, basePrice: formData.basePrice, peakPrice: formData.peakPrice, weekendPrice: formData.weekendPrice, halfHourBilling: formData.halfHourBilling });
                     setShowForm(null);
                     queryClient.invalidateQueries({ queryKey: ["admin-venues"] });
                   } catch (err: any) { setFormErrors(err.message); }

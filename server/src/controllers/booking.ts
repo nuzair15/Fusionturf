@@ -157,7 +157,9 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
 
     const duration = (parseInt(data.endTime.slice(0, 2), 10) * 60 + parseInt(data.endTime.slice(3), 10)) -
       (parseInt(data.startTime.slice(0, 2), 10) * 60 + parseInt(data.startTime.slice(3), 10));
-    const totalAmount = hourlyPrice * (Math.ceil(duration / 30) / 2);
+    const totalAmount = turf.halfHourBilling
+      ? hourlyPrice * (Math.ceil(duration / 30) / 2)
+      : hourlyPrice * Math.ceil(duration / 60);
 
     // Create or find guest user for walk-in bookings. IMPORTANT: this must
     // never use a predictable/shared password. An earlier version hashed the

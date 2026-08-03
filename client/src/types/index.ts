@@ -275,6 +275,7 @@ export interface Turf {
   basePrice: number;
   peakPrice: number;
   weekendPrice: number;
+  halfHourBilling?: boolean;
   capacity: number;
   imageUrl?: string;
   services?: AdditionalService[];

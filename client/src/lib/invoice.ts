@@ -48,7 +48,10 @@ export function openBookingInvoice(booking: Booking, settings: Record<string, st
 
   const customerName = getDisplayName(booking.user?.firstName, booking.user?.lastName);
 
-  const hours = Math.ceil((booking.duration || 0) / 60) || 1;
+  const halfHourBilling = booking.turf?.halfHourBilling;
+  const hours = halfHourBilling
+    ? Math.ceil((booking.duration || 0) / 30) / 2
+    : Math.ceil((booking.duration || 0) / 60) || 1;
   const services = booking.bookingServices || [];
   const servicesTotal = services.reduce((sum, s) => sum + (s.price || 0) * (s.quantity || 1), 0);
   const baseAmount = Math.max(0, (booking.totalAmount || 0) + (booking.discountAmount || 0) - servicesTotal);
