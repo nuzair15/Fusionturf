@@ -24,10 +24,11 @@ const statCategories = [
 export function StatsPage() {
   const navigate = useNavigate();
   const [activeStat, setActiveStat] = useState("goals");
+  const [friendly, setFriendly] = useState(false);
 
   const { data } = useQuery({
-    queryKey: ["player-stats", activeStat],
-    queryFn: () => api.get<PlayerStat[]>("/league/stats/players", { stat: activeStat }),
+    queryKey: ["player-stats", activeStat, friendly],
+    queryFn: () => api.get<PlayerStat[]>("/league/stats/players", { stat: activeStat, friendly: friendly ? "true" : "false" }),
   });
 
   const stats = data || [];
@@ -40,6 +41,10 @@ export function StatsPage() {
         </Button>
         <h1 className="mb-2 text-3xl font-bold">Statistics</h1>
         <p className="mb-8 text-muted-foreground">League-wide player statistics and rankings</p>
+        <div className="mb-5 flex items-center gap-2 text-sm">
+          <input id="friendly-stats" type="checkbox" checked={friendly} onChange={(e) => setFriendly(e.target.checked)} />
+          <label htmlFor="friendly-stats">Show friendly-match stats</label>
+        </div>
 
         <div className="mb-6 flex flex-wrap gap-2">
           {statCategories.map((cat) => (

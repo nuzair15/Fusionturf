@@ -47,6 +47,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [viewingEvent, setViewingEvent] = useState<TimelineEvent | null>(null);
   const [timerRunning, setTimerRunning] = useState(false);
+  const [clockSeconds, setClockSeconds] = useState(0);
   const fetchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const pushActivity = useCallback((text: string, tone: ActivityItem["tone"] = "info") => {
@@ -61,7 +62,8 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
     if (!silent) setLoading(true);
     try {
       const res = await liveMatchApi.fetchLiveStats(fixtureId);
-      setData(res);
+    setData(res);
+      setClockSeconds(res.fixture.matchClockSeconds || 0);
     } catch (e: any) {
       toast("Failed to load live match", e.message, "error");
     } finally {
@@ -304,7 +306,8 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
           onMinuteChange={setMinute}
           onClose={onClose}
           onTogglePause={() => setStatus(data.fixture.status === "LIVE" ? "PAUSED" : "LIVE")}
-          onResetTimer={() => setMinute(0)}
+          onResetTimer={() => runAction(() => liveMatchApi.resetClock(fixtureId), "Match clock reset").then(() => { setMinute(0); setClockSeconds(0); })}
+          clockSeconds={clockSeconds}
           timerRunning={timerRunning}
         />
 

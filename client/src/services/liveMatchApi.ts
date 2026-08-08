@@ -9,6 +9,7 @@ export const liveMatchApi = {
 
   setStatus: (fixtureId: string, status: MatchStatus) =>
     api.patch(`/admin/fixtures/${fixtureId}/status`, { status }),
+  resetClock: (fixtureId: string) => api.post(`/admin/fixtures/${fixtureId}/live-stats/reset-clock`),
 
   updateLiveStat: (fixtureId: string, body: { playerId: string; statType: StatType; teamId: string; action: "increment" | "decrement" }) =>
     api.post(`/admin/fixtures/${fixtureId}/live-stats/update`, body),

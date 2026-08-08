@@ -81,6 +81,7 @@ export interface LiveFixtureInfo {
   id: string;
   matchDate: string;
   status: MatchStatus;
+  matchClockSeconds?: number;
   kickoffTime?: string;
   competition?: { name: string };
   round?: number;

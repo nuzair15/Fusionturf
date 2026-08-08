@@ -9,21 +9,22 @@ export function formatMatchClock(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-export function MatchTimer({ running, onTogglePause, onReset }: {
+export function MatchTimer({ running, seconds, onTogglePause, onReset }: {
   running: boolean;
+  seconds: number;
   onTogglePause: () => void;
   onReset: () => void;
 }) {
-  const [seconds, setSeconds] = useState(0);
-
+  const [displaySeconds, setDisplaySeconds] = useState(seconds);
+  useEffect(() => setDisplaySeconds(seconds), [seconds]);
   useEffect(() => {
     if (!running) return;
-    const id = setInterval(() => setSeconds((s) => s + 1), 1000);
+    const id = setInterval(() => setDisplaySeconds((s) => s + 1), 1000);
     return () => clearInterval(id);
   }, [running]);
 
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
+  const mins = Math.floor(displaySeconds / 60);
+  const secs = displaySeconds % 60;
   const isHalfTime = mins === 45;
 
   return (
@@ -31,7 +32,7 @@ export function MatchTimer({ running, onTogglePause, onReset }: {
       <div className="flex flex-col items-center">
         <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Clock</span>
         <motion.span
-          key={seconds}
+          key={displaySeconds}
           initial={{ opacity: 0.4 }}
           animate={{ opacity: 1 }}
           className={cn(

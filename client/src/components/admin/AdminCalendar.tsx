@@ -170,9 +170,10 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
       setDropTarget(null);
       return;
     }
-    const duration = dragBooking.duration || 1;
-    const endH = Math.floor(hour + duration);
-    const endM = ((hour + duration) % 1) * 60;
+    const duration = dragBooking.duration || 60;
+    const endTotalMinutes = hour * 60 + duration;
+    const endH = Math.floor(endTotalMinutes / 60);
+    const endM = endTotalMinutes % 60;
     const newStart = `${String(hour).padStart(2, "0")}:00`;
     const newEnd = `${String(endH).padStart(2, "0")}:${String(Math.round(endM)).padStart(2, "0")}`;
     try {
@@ -581,7 +582,7 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
                       <p className="font-medium">{formatDate(selectedBooking.date)}</p>
                       <p className="text-sm text-muted-foreground">
                         {formatTime(selectedBooking.startTime)} – {formatTime(selectedBooking.endTime)}
-                        <span className="ml-2">({selectedBooking.duration} hr{selectedBooking.duration > 1 ? "s" : ""})</span>
+                        <span className="ml-2">({selectedBooking.duration} min)</span>
                       </p>
                     </div>
                   </div>

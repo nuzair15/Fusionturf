@@ -21,6 +21,16 @@ const resolveUrl = (url: string | undefined): string => {
   return `${window.location.origin}${url.startsWith("/") ? "" : "/"}${url}`;
 };
 
+export function calculateInvoiceRental(booking: Pick<Booking, "duration" | "totalAmount" | "discountAmount"> & { turf?: { halfHourBilling?: boolean } }, servicesTotal = 0) {
+  const duration = Math.max(0, booking.duration || 0);
+  const grossRental = Math.max(0, (booking.totalAmount || 0) + (booking.discountAmount || 0) - servicesTotal);
+  const usesHalfHourUnits = booking.turf?.halfHourBilling === true;
+  const quantity = usesHalfHourUnits ? Math.max(1, Math.ceil(duration / 30)) : Math.max(1, Math.ceil(duration / 60));
+  const unitMinutes = usesHalfHourUnits ? 30 : 60;
+  const rate = Math.round(grossRental / quantity);
+  return { grossRental, quantity, unitMinutes, rate, billedDurationMinutes: quantity * unitMinutes, usesHalfHourUnits };
+}
+
 export const DEFAULT_INVOICE_TERMS = [
   "1. Booking confirmation is subject to slot availability at the time of booking.",
   "2. Full payment must be received to confirm and secure the booking.",
@@ -48,14 +58,9 @@ export function openBookingInvoice(booking: Booking, settings: Record<string, st
 
   const customerName = getDisplayName(booking.user?.firstName, booking.user?.lastName);
 
-  const halfHourBilling = booking.turf?.halfHourBilling;
-  const hours = halfHourBilling
-    ? Math.ceil((booking.duration || 0) / 30) / 2
-    : Math.ceil((booking.duration || 0) / 60) || 1;
   const services = booking.bookingServices || [];
   const servicesTotal = services.reduce((sum, s) => sum + (s.price || 0) * (s.quantity || 1), 0);
-  const baseAmount = Math.max(0, (booking.totalAmount || 0) + (booking.discountAmount || 0) - servicesTotal);
-  const ratePerHour = Math.round(baseAmount / hours);
+  const rental = calculateInvoiceRental(booking, servicesTotal);
 
   const paid = (booking.payments || []).filter((p) => p.status === "PAID").reduce((sum, p) => sum + p.amount, 0);
   const balance = (booking.totalAmount || 0) - paid;
@@ -66,10 +71,10 @@ export function openBookingInvoice(booking: Booking, settings: Record<string, st
 
   const itemRows = [
     `<tr>
-      <td>Turf Rental — ${booking.turf?.name || "Turf"} (${hours} hr)</td>
-      <td class="num">${inr(ratePerHour)}</td>
-      <td class="num">${hours}</td>
-      <td class="num">${inr(baseAmount)}</td>
+      <td>Turf Rental — ${booking.turf?.name || "Turf"} (${rental.quantity} × ${rental.unitMinutes} min)</td>
+      <td class="num">${inr(rental.rate)}</td>
+      <td class="num">${rental.quantity}</td>
+      <td class="num">${inr(rental.grossRental)}</td>
     </tr>`,
     ...services.map((s) => `
       <tr>
@@ -125,7 +130,7 @@ export function openBookingInvoice(booking: Booking, settings: Record<string, st
   .paybox { flex: 1; border: 1px solid #e3e7ee; border-radius: 8px; padding: 16px; font-size: 13px; }
   .paybox h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #8a93a0; margin-bottom: 8px; }
   .qrcode { text-align: center; }
-  .qrcode img { width: 150px; height: 150px; object-fit: contain; border: 1px solid #e3e7ee; border-radius: 8px; padding: 8px; background: #fff; }
+  .qrcode img { width: 220px; height: 220px; object-fit: contain; border: 1px solid #e3e7ee; border-radius: 8px; padding: 8px; background: #fff; }
   .qrcode p { font-size: 11px; color: #66707e; margin-top: 6px; }
   .terms { margin-top: 26px; padding-top: 18px; border-top: 1px solid #e3e7ee; }
   .terms h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #8a93a0; margin-bottom: 8px; }
@@ -168,6 +173,7 @@ export function openBookingInvoice(booking: Booking, settings: Record<string, st
           Date: ${fmtLongDate(booking.date)}<br/>
           Time: ${formatTime(booking.startTime)} to ${formatTime(booking.endTime)}<br/>
           Duration: ${booking.duration} min<br/>
+          Billing: ${rental.quantity} × ${rental.unitMinutes} min<br/>
           Status: <strong>${booking.status}</strong>
         </p>
       </div>

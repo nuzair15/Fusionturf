@@ -68,7 +68,7 @@ export function BookingDrawer({ booking, settings, onClose }: { booking: Booking
     setSavingDiscount(true);
     try {
       const res = await api.patch(`/admin/bookings/${booking.id}/discount`, { discountAmount: paise });
-      const updated = (res as { data: { discountAmount?: number; totalAmount: number } }).data;
+      const updated = res as { discountAmount?: number; totalAmount: number };
       setDiscountAmount(updated.discountAmount || 0);
       setTotalAmount(updated.totalAmount);
       setPayments((prev) => prev.map((p) => (p.status === "PENDING" ? { ...p, amount: updated.totalAmount } : p)));
@@ -129,7 +129,7 @@ export function BookingDrawer({ booking, settings, onClose }: { booking: Booking
                 <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />{formatDate(booking.date)}</span>
                 <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{formatTime(booking.startTime)} – {formatTime(booking.endTime)}</span>
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5">Duration: {booking.duration} hr{booking.duration > 1 ? "s" : ""} • {booking.numPlayers} players</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Duration: {booking.duration} min • {booking.numPlayers} players</p>
             </div>
           </div>
 
@@ -311,7 +311,7 @@ export function BookingDrawer({ booking, settings, onClose }: { booking: Booking
                   <Undo2 className="mr-1.5 h-4 w-4" /> Refund
                 </Button>
               )}
-              <Button variant="outline" onClick={() => openBookingInvoice(booking, settings || {})}>
+              <Button variant="outline" onClick={() => openBookingInvoice({ ...booking, totalAmount, discountAmount, payments }, settings || {})}>
                 <Printer className="mr-1.5 h-4 w-4" /> Print Invoice
               </Button>
               {(() => {

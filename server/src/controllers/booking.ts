@@ -10,6 +10,7 @@ import { paginate, paginatedResponse, generateBookingNumber } from "../utils/hel
 import bcrypt from "bcryptjs";
 import { sendBookingConfirmation } from "../services/email.js";
 import { createNotification } from "../services/notification.js";
+import { calculateBookingPrice, calculateDiscount, formatThirtyMinuteSlots, timeToMinutes } from "../utils/booking.js";
 
 const createBookingSchema = z.object({
   body: z.object({
@@ -21,6 +22,7 @@ const createBookingSchema = z.object({
     customerPhone: z.string().min(1),
     customerEmail: z.string().email().optional().or(z.literal("")),
     notes: z.string().optional(),
+    couponCode: z.string().trim().max(50).optional(),
   }).superRefine((body, ctx) => {
     if (body.startTime >= body.endTime) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["endTime"], message: "endTime must be after startTime" });
     if (new Date(`${body.date}T00:00:00`).getTime() < new Date(new Date().toDateString()).getTime()) {
@@ -91,15 +93,15 @@ export const getAvailableSlots = async (req: Request, res: Response, next: NextF
     const { turfId, date } = req.query;
     if (!turfId || !date) throw new AppError("turfId and date are required", 400);
 
-    const slots = await prisma.slotAvailability.findMany({
-      where: {
-        turfId: turfId as string,
-        date: new Date(date as string),
-        isBooked: false,
-      },
-      orderBy: { startTime: "asc" },
+    const turf = await prisma.turf.findUnique({ where: { id: turfId as string }, include: { venue: true } });
+    if (!turf) throw new AppError("Turf not found", 404);
+    const bookings = await prisma.booking.findMany({ where: { turfId: turf.id, date: new Date(date as string), status: { not: "CANCELLED" } }, select: { startTime: true, endTime: true } });
+    const slots = formatThirtyMinuteSlots(turf.venue.openingTime, turf.venue.closingTime).map((startTime) => {
+      const endMinutes = timeToMinutes(startTime) + 30;
+      const endTime = `${String(Math.floor(endMinutes / 60)).padStart(2, "0")}:${String(endMinutes % 60).padStart(2, "0")}`;
+      return { turfId: turf.id, date: new Date(date as string), startTime, endTime, isBooked: bookings.some((b) => startTime < b.endTime && b.startTime < endTime) };
     });
-    res.json(slots);
+    res.json(slots.filter((slot) => !slot.isBooked));
   } catch (error) {
     next(error);
   }
@@ -126,6 +128,22 @@ export const getBookedSlotsForTurf = async (req: Request, res: Response, next: N
   }
 };
 
+export const validateCoupon = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { code, turfId, date, startTime, endTime } = req.body;
+    if (!code || !turfId || !date || !startTime || !endTime) throw new AppError("code, turfId, date, startTime and endTime are required", 400);
+    const turf = await prisma.turf.findUnique({ where: { id: turfId } });
+    const coupon = await prisma.coupon.findUnique({ where: { code: String(code).trim().toUpperCase() } });
+    if (!turf || !coupon || !coupon.isActive || (coupon.expiresAt && coupon.expiresAt < new Date()) || (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses)) throw new AppError("Invalid or expired coupon code", 400);
+    let pricing;
+    try { pricing = calculateBookingPrice(turf, new Date(date), startTime, endTime); }
+    catch (error: any) { throw new AppError(error.message, 400); }
+    if (coupon.minAmount !== null && pricing.totalAmount < coupon.minAmount) throw new AppError(`Minimum booking amount for this coupon is ${coupon.minAmount / 100}`, 400);
+    const discountAmount = calculateDiscount(coupon.discountType, coupon.discountValue, pricing.totalAmount);
+    res.json({ code: coupon.code, discountAmount, totalAmount: pricing.totalAmount - discountAmount });
+  } catch (error) { next(error); }
+};
+
 export const createBooking = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = createBookingSchema.parse(req).body;
@@ -143,23 +161,14 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
       if (blocked) throw new AppError(`This date is blocked: ${blocked.reason || "No reason given"}`, 400);
     }
 
-    let hourlyPrice = turf.basePrice;
-    const dayOfWeek = matchDate.getDay();
-
-    if (dayOfWeek === 0 || dayOfWeek === 6) {
-      hourlyPrice = turf.weekendPrice || turf.basePrice;
+    let pricing;
+    try { pricing = calculateBookingPrice(turf, matchDate, data.startTime, data.endTime); }
+    catch (error: any) { throw new AppError(error.message, 400); }
+    const duration = pricing.duration;
+    const latestStart = turf.venue.lastBookingTime || turf.venue.closingTime;
+    if (timeToMinutes(data.startTime) < timeToMinutes(turf.venue.openingTime) || timeToMinutes(data.endTime) > timeToMinutes(turf.venue.closingTime) || timeToMinutes(data.startTime) > timeToMinutes(latestStart)) {
+      throw new AppError("Selected time is outside the venue booking hours", 400);
     }
-
-    const hour = parseInt(data.startTime.split(":")[0], 10);
-    if ((hour >= 17 && hour <= 21)) {
-      hourlyPrice = turf.peakPrice || hourlyPrice;
-    }
-
-    const duration = (parseInt(data.endTime.slice(0, 2), 10) * 60 + parseInt(data.endTime.slice(3), 10)) -
-      (parseInt(data.startTime.slice(0, 2), 10) * 60 + parseInt(data.startTime.slice(3), 10));
-    const totalAmount = turf.halfHourBilling
-      ? hourlyPrice * (Math.ceil(duration / 30) / 2)
-      : hourlyPrice * Math.ceil(duration / 60);
 
     // Create or find guest user for walk-in bookings. IMPORTANT: this must
     // never use a predictable/shared password. An earlier version hashed the
@@ -213,6 +222,17 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
           });
           if (overlap) throw new AppError("This time slot is already booked. Please choose a different time.", 409);
 
+          let discountAmount = 0;
+          if (data.couponCode) {
+            const coupon = await tx.coupon.findUnique({ where: { code: data.couponCode.toUpperCase() } });
+            if (!coupon || !coupon.isActive || (coupon.expiresAt && coupon.expiresAt < new Date()) || (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses)) throw new AppError("Invalid or expired coupon code", 400);
+            if (coupon.minAmount !== null && pricing.totalAmount < coupon.minAmount) throw new AppError(`Minimum booking amount for this coupon is ${coupon.minAmount / 100}`, 400);
+            discountAmount = calculateDiscount(coupon.discountType, coupon.discountValue, pricing.totalAmount);
+            const claimed = await tx.coupon.updateMany({ where: { id: coupon.id, isActive: true, OR: [{ maxUses: null }, { usedCount: { lt: coupon.maxUses! } }] }, data: { usedCount: { increment: 1 } } });
+            if (claimed.count !== 1) throw new AppError("Coupon is no longer available", 409);
+          }
+          const totalAmount = pricing.totalAmount - discountAmount;
+
           return tx.booking.create({
             data: {
               bookingNumber,
@@ -223,6 +243,8 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
               endTime: data.endTime,
               duration,
               totalAmount,
+              discountAmount,
+              couponCode: data.couponCode ? data.couponCode.toUpperCase() : null,
               notes: data.notes || null,
               status: "PENDING",
               payments: {
@@ -371,10 +393,10 @@ export const cancelBooking = async (req: Request, res: Response, next: NextFunct
       throw new AppError("Booking cannot be cancelled", 400);
     }
 
-    const updated = await prisma.booking.update({
-      where: { id: req.params.id },
-      data: { status: "CANCELLED", cancellationReason: req.body.reason },
-    });
+    const [updated] = await prisma.$transaction([
+      prisma.booking.update({ where: { id: req.params.id }, data: { status: "CANCELLED", cancellationReason: req.body.reason } }),
+      ...(booking.couponCode ? [prisma.coupon.updateMany({ where: { code: booking.couponCode, usedCount: { gt: 0 } }, data: { usedCount: { decrement: 1 } } })] : []),
+    ]);
     res.json(updated);
   } catch (error) {
     next(error);
@@ -389,12 +411,12 @@ export const adminUpdateBookingStatus = async (req: Request, res: Response, next
     if (!["PENDING", "CONFIRMED", "CANCELLED", "COMPLETED"].includes(status)) {
       throw new AppError("Invalid status", 400);
     }
-    const booking = await prisma.booking.findUnique({ where: { id: req.params.id }, select: { status: true, userId: true, bookingNumber: true } });
+    const booking = await prisma.booking.findUnique({ where: { id: req.params.id }, select: { status: true, userId: true, bookingNumber: true, couponCode: true } });
     if (!booking) throw new AppError("Booking not found", 404);
-    const updated = await prisma.booking.update({
-      where: { id: req.params.id },
-      data: { status },
-    });
+    const [updated] = await prisma.$transaction([
+      prisma.booking.update({ where: { id: req.params.id }, data: { status } }),
+      ...(status === "CANCELLED" && booking.status !== "CANCELLED" && booking.couponCode ? [prisma.coupon.updateMany({ where: { code: booking.couponCode, usedCount: { gt: 0 } }, data: { usedCount: { decrement: 1 } } })] : []),
+    ]);
     if (status !== booking.status) {
       createNotification(
         booking.userId,
@@ -416,13 +438,14 @@ export const adminMarkBookingPaid = async (req: Request, res: Response, next: Ne
     if (method && !validMethods.includes(method)) {
       throw new AppError("Invalid payment method", 400);
     }
-    const booking = await prisma.booking.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    const booking = await prisma.booking.findUnique({ where: { id: req.params.id }, select: { id: true, status: true } });
     if (!booking) throw new AppError("Booking not found", 404);
-    const updated = await prisma.payment.updateMany({
-      where: { bookingId: booking.id, status: "PENDING" },
-      data: { status: "PAID", ...(method ? { method } : {}) },
-    });
-    res.json({ count: updated.count });
+    if (booking.status === "CANCELLED") throw new AppError("Cancelled bookings cannot be marked paid", 400);
+    const [updated] = await prisma.$transaction([
+      prisma.payment.updateMany({ where: { bookingId: booking.id, status: "PENDING" }, data: { status: "PAID", ...(method ? { method } : {}) } }),
+      prisma.booking.update({ where: { id: booking.id }, data: { status: "CONFIRMED" } }),
+    ]);
+    res.json({ count: updated.count, status: "CONFIRMED" });
   } catch (error) {
     next(error);
   }
@@ -430,13 +453,14 @@ export const adminMarkBookingPaid = async (req: Request, res: Response, next: Ne
 
 export const adminRefundBooking = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const booking = await prisma.booking.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    const booking = await prisma.booking.findUnique({ where: { id: req.params.id }, select: { id: true, couponCode: true } });
     if (!booking) throw new AppError("Booking not found", 404);
-    const updated = await prisma.payment.updateMany({
-      where: { bookingId: booking.id, status: { in: ["PENDING", "PAID"] } },
-      data: { status: "REFUNDED" },
-    });
-    res.json({ count: updated.count });
+    const [updated] = await prisma.$transaction([
+      prisma.payment.updateMany({ where: { bookingId: booking.id, status: { in: ["PENDING", "PAID"] } }, data: { status: "REFUNDED" } }),
+      prisma.booking.update({ where: { id: booking.id }, data: { status: "CANCELLED", cancellationReason: "Payment refunded" } }),
+      ...(booking.couponCode ? [prisma.coupon.updateMany({ where: { code: booking.couponCode, usedCount: { gt: 0 } }, data: { usedCount: { decrement: 1 } } })] : []),
+    ]);
+    res.json({ count: updated.count, status: "CANCELLED" });
   } catch (error) {
     next(error);
   }
@@ -454,6 +478,7 @@ export const adminUpdateBookingDiscount = async (req: Request, res: Response, ne
     });
     if (!booking) throw new AppError("Booking not found", 404);
 
+    // totalAmount is already net of the currently applied discount.
     const gross = Math.max(0, booking.totalAmount + (booking.discountAmount || 0));
     const discount = Math.min(discountAmount, gross);
     const newTotal = gross - discount;
@@ -472,19 +497,25 @@ export const adminUpdateBookingDiscount = async (req: Request, res: Response, ne
 export const adminUpdateBooking = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { date, startTime, endTime } = req.body;
-    const updateData: any = {};
-    if (date) updateData.date = new Date(date);
-    if (startTime) updateData.startTime = startTime;
-    if (endTime) updateData.endTime = endTime;
-    if (startTime && endTime) {
-      const [sh, sm] = startTime.split(":").map(Number);
-      const [eh, em] = endTime.split(":").map(Number);
-      updateData.duration = (eh + em / 60) - (sh + sm / 60);
-    }
-    const booking = await prisma.booking.update({
-      where: { id: req.params.id },
-      data: updateData,
-    });
+    const current = await prisma.booking.findUnique({ where: { id: req.params.id }, include: { turf: { include: { venue: true } } }, });
+    if (!current) throw new AppError("Booking not found", 404);
+    const nextDate = date ? new Date(date) : current.date;
+    const nextStart = startTime || current.startTime;
+    const nextEnd = endTime || current.endTime;
+    let pricing;
+    try { pricing = calculateBookingPrice(current.turf, nextDate, nextStart, nextEnd); }
+    catch (error: any) { throw new AppError(error.message, 400); }
+    const latestStart = current.turf.venue.lastBookingTime || current.turf.venue.closingTime;
+    if (timeToMinutes(nextStart) < timeToMinutes(current.turf.venue.openingTime) || timeToMinutes(nextEnd) > timeToMinutes(current.turf.venue.closingTime) || timeToMinutes(nextStart) > timeToMinutes(latestStart)) throw new AppError("Selected time is outside the venue booking hours", 400);
+    const updateData: any = { date: nextDate, startTime: nextStart, endTime: nextEnd, duration: pricing.duration };
+    const overlap = await prisma.booking.findFirst({ where: { id: { not: current.id }, turfId: current.turfId, date: nextDate, status: { not: "CANCELLED" }, startTime: { lt: nextEnd }, endTime: { gt: nextStart } } });
+    if (overlap) throw new AppError("This time slot is already booked. Please choose a different time.", 409);
+    const discount = Math.min(current.discountAmount || 0, pricing.totalAmount);
+    updateData.totalAmount = pricing.totalAmount - discount;
+    const [booking] = await prisma.$transaction([
+      prisma.booking.update({ where: { id: req.params.id }, data: updateData }),
+      prisma.payment.updateMany({ where: { bookingId: req.params.id, status: "PENDING" }, data: { amount: updateData.totalAmount } }),
+    ]);
     res.json(booking);
   } catch (error) {
     next(error);

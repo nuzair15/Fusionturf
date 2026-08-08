@@ -599,7 +599,10 @@ model Fixture {
   leagueWeek     Int?
   isGrandFinal   Boolean       @default(false)
   isRelegationPlayoff Boolean  @default(false)
+  isFriendly      Boolean       @default(false)
   status         MatchStatus   @default(SCHEDULED)
+  matchClockSeconds Int          @default(0)
+  matchClockStartedAt DateTime?
   homeScore      Int?
   awayScore      Int?
   homePossession Int?          // percentage

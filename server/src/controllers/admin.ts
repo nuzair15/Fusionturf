@@ -375,6 +375,7 @@ const FIXTURE_WRITABLE_FIELDS = [
   "seasonId", "competitionId", "homeTeamId", "awayTeamId", "venueId",
   "matchDate", "kickoffTime", "round", "leagueWeek",
   "isGrandFinal", "isRelegationPlayoff", "referee", "referee2",
+  "isFriendly",
   "attendance", "stadium", "matchReport", "highlights", "isFeatured",
 ] as const;
 // Deliberately excluded: status, homeScore, awayScore, and every live-match
@@ -420,16 +421,34 @@ export const updateFixtureStatus = async (req: Request, res: Response, next: Nex
     const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id } });
     if (!fixture) throw new AppError("Fixture not found", 404);
     if (status === "LIVE" && fixture.status === "COMPLETED") throw new AppError("Completed fixtures cannot return to live", 400);
+    const now = new Date();
     if (status === "COMPLETED") {
       if (fixture.homeScore === null || fixture.awayScore === null) throw new AppError("Completed fixtures require scores", 400);
       await leagueSystem.processMatchResult(req.params.id, fixture.homeScore, fixture.awayScore);
     } else {
-      await prisma.fixture.update({ where: { id: req.params.id }, data: { status } });
+      const elapsed = fixture.status === "LIVE" && fixture.matchClockStartedAt
+        ? fixture.matchClockSeconds + Math.max(0, Math.floor((now.getTime() - fixture.matchClockStartedAt.getTime()) / 1000))
+        : fixture.matchClockSeconds;
+      await prisma.fixture.update({ where: { id: req.params.id }, data: {
+        status,
+        matchClockSeconds: elapsed,
+        matchClockStartedAt: status === "LIVE" ? now : null,
+      } });
     }
     res.json(await prisma.fixture.findUnique({ where: { id: req.params.id } }));
   } catch (error) {
     next(error);
   }
+};
+
+export const resetFixtureClock = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const fixture = await prisma.fixture.update({
+      where: { id: req.params.id },
+      data: { matchClockSeconds: 0, matchClockStartedAt: "LIVE" === (await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { status: true } }))?.status ? new Date() : null },
+    });
+    res.json({ matchClockSeconds: fixture.matchClockSeconds });
+  } catch (error) { next(error); }
 };
 
 export const updateFixtureScore = async (req: Request, res: Response, next: NextFunction) => {
@@ -1364,6 +1383,8 @@ export const getLiveStats = async (req: Request, res: Response, next: NextFuncti
         id: fixture.id,
         matchDate: fixture.matchDate,
         status: fixture.status,
+        matchClockSeconds: fixture.matchClockSeconds + (fixture.status === "LIVE" && fixture.matchClockStartedAt
+          ? Math.max(0, Math.floor((Date.now() - fixture.matchClockStartedAt.getTime()) / 1000)) : 0),
         kickoffTime: fixture.kickoffTime,
         round: fixture.round,
         stadium: fixture.stadium,

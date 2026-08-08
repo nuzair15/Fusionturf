@@ -4,7 +4,7 @@ import { Scoreboard } from "./Scoreboard";
 import { MatchTimer } from "./MatchTimer";
 import { formatDate, formatTime } from "@/lib/utils";
 
-export function MatchHeader({ data, minute, onMinuteChange, onClose, onTogglePause, onResetTimer, timerRunning }: {
+export function MatchHeader({ data, minute, onMinuteChange, onClose, onTogglePause, onResetTimer, timerRunning, clockSeconds }: {
   data: LiveMatchData;
   minute: number;
   onMinuteChange: (m: number) => void;
@@ -12,6 +12,7 @@ export function MatchHeader({ data, minute, onMinuteChange, onClose, onTogglePau
   onTogglePause: () => void;
   onResetTimer: () => void;
   timerRunning: boolean;
+  clockSeconds: number;
 }) {
   const { fixture, homeTeam, awayTeam } = data;
   const competition = (fixture as any).competition?.name;
@@ -54,7 +55,7 @@ export function MatchHeader({ data, minute, onMinuteChange, onClose, onTogglePau
           awayLogo={awayTeam.logoUrl}
         />
         <div className="flex items-center gap-3">
-          <MatchTimer running={timerRunning} onTogglePause={onTogglePause} onReset={onResetTimer} />
+          <MatchTimer seconds={clockSeconds} running={timerRunning} onTogglePause={onTogglePause} onReset={onResetTimer} />
           <div className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-1.5">
             <button aria-label="Decrease minute" onClick={() => onMinuteChange(Math.max(0, minute - 1))} className="flex h-6 w-6 items-center justify-center rounded-full text-white transition hover:bg-white/20 active:scale-90">
               <Minus className="h-3.5 w-3.5" />

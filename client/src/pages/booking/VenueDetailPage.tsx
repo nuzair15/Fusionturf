@@ -36,6 +36,9 @@ export function VenueDetailPage() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [couponCode, setCouponCode] = useState("");
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [couponMessage, setCouponMessage] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [startSlot, setStartSlot] = useState("");
   const [endSlot, setEndSlot] = useState("");
@@ -164,6 +167,7 @@ export function VenueDetailPage() {
         customerName: name,
         customerPhone: phone,
         customerEmail: email || undefined,
+        couponCode: couponCode.trim() || undefined,
       });
       setDone(true);
     } catch (err: any) {
@@ -258,7 +262,7 @@ export function VenueDetailPage() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium">Date *</label>
-                    <Input type="date" value={date} onChange={(e) => { setDate(e.target.value); setStartSlot(""); setEndSlot(""); }} min={new Date().toISOString().split("T")[0]} required />
+                  <Input type="date" value={date} onChange={(e) => { setDate(e.target.value); setStartSlot(""); setEndSlot(""); setCouponDiscount(0); setCouponMessage(""); }} min={new Date().toISOString().split("T")[0]} required />
                   </div>
 
                   <div className="space-y-1.5">
@@ -271,7 +275,7 @@ export function VenueDetailPage() {
                             key={slot}
                             type="button"
                             disabled={booked}
-                            onClick={() => { setStartSlot(slot); setEndSlot(""); }}
+                            onClick={() => { setStartSlot(slot); setEndSlot(""); setCouponDiscount(0); setCouponMessage(""); }}
                             className={`rounded-lg border py-3 text-sm font-medium transition-all ${
                               startSlot === slot
                                 ? "border-primary bg-primary text-primary-foreground"
@@ -320,8 +324,19 @@ export function VenueDetailPage() {
                       <p className="font-medium">Booking Summary</p>
                       <p className="text-muted-foreground">{formatAmPm(startSlot)} - {formatAmPm(endSlot)} on {new Date(date).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}</p>
                       <div className="mt-1 space-y-0.5">
-                        <p className="text-xs text-muted-foreground">{formatCurrency(computedPrice)} × {Math.ceil((parseInt(endSlot.slice(0, 2), 10) * 60 + parseInt(endSlot.slice(3), 10) - (parseInt(startSlot.slice(0, 2), 10) * 60 + parseInt(startSlot.slice(3), 10))) / 60)} hr = <span className="font-semibold text-foreground">{formatCurrency(computedTotal)}</span></p>
+                        <p className="text-xs text-muted-foreground">{formatCurrency(computedPrice)} × {((parseInt(endSlot.slice(0, 2), 10) * 60 + parseInt(endSlot.slice(3), 10) - (parseInt(startSlot.slice(0, 2), 10) * 60 + parseInt(startSlot.slice(3), 10))) / 60).toFixed(1)} hr = <span className="font-semibold text-foreground">{formatCurrency(computedTotal)}</span></p>
                       </div>
+                      <div className="mt-3 flex gap-2">
+                        <Input value={couponCode} onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponDiscount(0); setCouponMessage(""); }} placeholder="Coupon code" className="h-9" />
+                        <Button type="button" variant="outline" className="h-9" onClick={async () => {
+                          try {
+                            const result = await api.post<{ discountAmount: number; totalAmount: number }>("/bookings/validate-coupon", { code: couponCode, turfId: selectedTurfId, date, startTime: startSlot, endTime: endSlot });
+                            setCouponDiscount(result.discountAmount); setCouponMessage(`Coupon applied: -${formatCurrency(result.discountAmount)}`);
+                          } catch (err: any) { setCouponDiscount(0); setCouponMessage(err.message || "Invalid coupon"); }
+                        }} disabled={!couponCode.trim()}>Apply</Button>
+                      </div>
+                      {couponMessage && <p className={`text-xs ${couponDiscount ? "text-green-600" : "text-destructive"}`}>{couponMessage}</p>}
+                      {couponDiscount > 0 && <p className="text-sm font-semibold">Payable: {formatCurrency(computedTotal - couponDiscount)}</p>}
                       {computedPrice !== turf?.basePrice && (
                         <p className="mt-0.5 text-[11px] text-amber-600">Weekend or peak hour pricing applied</p>
                       )}

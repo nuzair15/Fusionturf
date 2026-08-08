@@ -132,7 +132,7 @@ function findNextDay(from: Date, targetDay: string): Date {
 
 export async function recalculateStandings(seasonId: string): Promise<void> {
   const fixtures = await prisma.fixture.findMany({
-    where: { seasonId, status: "COMPLETED", isGrandFinal: false, isRelegationPlayoff: false },
+    where: { seasonId, status: "COMPLETED", isFriendly: false, OR: [{ competitionId: null }, { competition: { is: { type: { not: "FRIENDLY" } } } }], isGrandFinal: false, isRelegationPlayoff: false },
   });
 
   const teams = await prisma.team.findMany({ where: { seasonId, isActive: true } });
@@ -230,6 +230,8 @@ function calculateHeadToHead(fixtures: Array<{ homeTeamId: string; awayTeamId: s
 export async function processMatchResult(fixtureId: string, homeScore: number, awayScore: number): Promise<void> {
   const fixture = await prisma.fixture.findUnique({ where: { id: fixtureId }, include: { season: true } });
   if (!fixture) throw new Error("Fixture not found");
+  if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore) || homeScore < 0 || awayScore < 0) throw new Error("Scores must be non-negative integers");
+  if (fixture.status === "CANCELLED" || fixture.status === "POSTPONED") throw new Error("Cancelled or postponed fixtures cannot be completed");
 
   await prisma.fixture.update({
     where: { id: fixtureId },
@@ -524,7 +526,7 @@ export async function recalculatePlayerStats(seasonId: string): Promise<void> {
     prisma.assist.groupBy({ by: ["playerId"], where: { playerId: { in: playerIds } }, _count: { _all: true } }),
     prisma.card.groupBy({ by: ["playerId", "type"], where: { playerId: { in: playerIds } }, _count: { _all: true } }),
     prisma.fixture.findMany({
-      where: { seasonId, status: "COMPLETED", OR: [{ homeTeamId: { in: teamIds } }, { awayTeamId: { in: teamIds } }] },
+      where: { seasonId, status: "COMPLETED", isFriendly: false, OR: [{ competitionId: null }, { competition: { is: { type: { not: "FRIENDLY" } } } }], AND: [{ OR: [{ homeTeamId: { in: teamIds } }, { awayTeamId: { in: teamIds } }] }] },
       select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true },
     }),
   ]);

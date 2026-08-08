@@ -331,6 +331,29 @@ export const getTopAssists = async (req: Request, res: Response, next: NextFunct
 
 export const getPlayerStats = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (req.query.friendly === "true") {
+      const seasonId = req.query.seasonId as string | undefined;
+      const fixtures = await prisma.fixture.findMany({
+        where: { seasonId, status: "COMPLETED", OR: [{ isFriendly: true }, { competition: { is: { type: "FRIENDLY" } } }] },
+        select: { id: true, homeTeamId: true, awayTeamId: true },
+      });
+      const fixtureIds = fixtures.map((f) => f.id);
+      const [goals, assists, cards, lineups, players] = await Promise.all([
+        prisma.goal.groupBy({ by: ["playerId"], where: { fixtureId: { in: fixtureIds } }, _count: { _all: true } }),
+        prisma.assist.groupBy({ by: ["playerId"], where: { fixtureId: { in: fixtureIds } }, _count: { _all: true } }),
+        prisma.card.groupBy({ by: ["playerId", "type"], where: { fixtureId: { in: fixtureIds } }, _count: { _all: true } }),
+        prisma.lineup.findMany({ where: { fixtureId: { in: fixtureIds } }, select: { fixtureId: true, playerId: true } }),
+        prisma.player.findMany({ where: { seasonId, isActive: true }, include: { team: { select: { name: true, slug: true, logoUrl: true } } } }),
+      ]);
+      const goalMap = new Map(goals.map((g) => [g.playerId, g._count._all]));
+      const assistMap = new Map(assists.map((a) => [a.playerId, a._count._all]));
+      const cardMap = new Map<string, { yellow: number; red: number }>();
+      cards.forEach((c) => { const x = cardMap.get(c.playerId) || { yellow: 0, red: 0 }; if (c.type === "YELLOW") x.yellow += c._count._all; else x.red += c._count._all; cardMap.set(c.playerId, x); });
+      const appearanceMap = new Map<string, Set<string>>();
+      lineups.forEach((lineup) => { const set = appearanceMap.get(lineup.playerId) || new Set<string>(); set.add(lineup.fixtureId); appearanceMap.set(lineup.playerId, set); });
+      const result = players.map((p) => ({ id: `friendly-${p.id}`, playerId: p.id, teamId: p.teamId, player: p, team: p.team, appearances: appearanceMap.get(p.id)?.size || 0, goals: goalMap.get(p.id) || 0, assists: assistMap.get(p.id) || 0, yellowCards: cardMap.get(p.id)?.yellow || 0, redCards: cardMap.get(p.id)?.red || 0 })).filter((p) => p.appearances || p.goals || p.assists || p.yellowCards || p.redCards);
+      return res.json(result.sort((a, b) => (b.goals - a.goals) || (b.assists - a.assists)));
+    }
     const where: any = {};
     if (req.query.seasonId) where.seasonId = req.query.seasonId;
     if (req.query.stat) {

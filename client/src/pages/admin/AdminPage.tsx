@@ -645,8 +645,8 @@ export function AdminPage() {
               keyExtractor={(f) => f.id}
               total={fixtures?.meta?.total}
               onSearch={setFixtureSearch}
-              onAdd={() => { setEditingItem(null); openForm("fixture", { homeTeamId: "", awayTeamId: "", matchDate: "", kickoffTime: "", seasonId: seasons?.[0]?.id || "" }); }}
-              onEdit={(f) => { setEditingItem(f); openForm("fixture", { homeTeamId: f.homeTeamId, awayTeamId: f.awayTeamId, matchDate: f.matchDate, kickoffTime: f.kickoffTime || "", seasonId: f.seasonId, stadium: f.stadium || "", referee: (f as any).referee || "", referee2: (f as any).referee2 || "", matchReport: (f as any).matchReport || "" }); }}
+              onAdd={() => { setEditingItem(null); openForm("fixture", { homeTeamId: "", awayTeamId: "", matchDate: "", kickoffTime: "", seasonId: seasons?.[0]?.id || "", isFriendly: false }); }}
+              onEdit={(f) => { setEditingItem(f); openForm("fixture", { homeTeamId: f.homeTeamId, awayTeamId: f.awayTeamId, matchDate: f.matchDate, kickoffTime: f.kickoffTime || "", seasonId: f.seasonId, isFriendly: !!(f as any).isFriendly, stadium: f.stadium || "", referee: (f as any).referee || "", referee2: (f as any).referee2 || "", matchReport: (f as any).matchReport || "" }); }}
               onDelete={(f) => { if (confirm(`Delete fixture ${f.homeTeam?.name} vs ${f.awayTeam?.name}?`)) api.delete(`/admin/fixtures/${f.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-fixtures"] })).catch((e: any) => setActionError(e.message)); }}
               bulkActions={[
                 { label: "Delete", icon: <Trash2 className="h-4 w-4" />, variant: "destructive", confirmMessage: (count) => `Delete ${count} selected fixture(s)?`, onClick: async (items) => { for (const f of items) { try { await api.delete(`/admin/fixtures/${f.id}`); } catch {} } queryClient.invalidateQueries({ queryKey: ["admin-fixtures"] }); } },
@@ -692,6 +692,10 @@ export function AdminPage() {
                     ))}
                   </Select>
                 </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={!!formData.isFriendly} onChange={(e) => handleFormChange("isFriendly", e.target.checked)} />
+                  Friendly match (excluded from standings and league statistics)
+                </label>
                 <div className="space-y-1.5">
                   <Label>Stadium / Venue</Label>
                   <Input value={formData.stadium || ""} onChange={(e) => handleFormChange("stadium", e.target.value)} placeholder="e.g. Fusion Arena" />

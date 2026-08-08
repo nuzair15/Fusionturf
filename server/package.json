@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
+    "test": "tsx src/utils/booking.test.ts",
     "start": "node dist/production.js",
     "start:dev": "node dist/index.js",
     "db:generate": "prisma generate",
