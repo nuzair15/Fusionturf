@@ -1,4 +1,5 @@
 import prisma from "../config/database.js";
+import { Prisma } from "@prisma/client";
 
 const DAYS = ["Friday", "Saturday", "Sunday"] as const;
 const TEAM_COUNT = 6;
@@ -130,9 +131,23 @@ function findNextDay(from: Date, targetDay: string): Date {
   return d;
 }
 
+// Fixtures that count toward league standings and player statistics: completed,
+// not friendly (flag or FRIENDLY-type competition), and not post-season knockout
+// games. Used both when recomputing tables and when filtering goals/assists/cards.
+function countedFixturesWhere(seasonId: string): Prisma.FixtureWhereInput {
+  return {
+    seasonId,
+    status: "COMPLETED",
+    isFriendly: false,
+    OR: [{ competitionId: null }, { competition: { is: { type: { not: "FRIENDLY" } } } }],
+    isGrandFinal: false,
+    isRelegationPlayoff: false,
+  };
+}
+
 export async function recalculateStandings(seasonId: string): Promise<void> {
   const fixtures = await prisma.fixture.findMany({
-    where: { seasonId, status: "COMPLETED", isFriendly: false, OR: [{ competitionId: null }, { competition: { is: { type: { not: "FRIENDLY" } } } }], isGrandFinal: false, isRelegationPlayoff: false },
+    where: countedFixturesWhere(seasonId),
   });
 
   const teams = await prisma.team.findMany({ where: { seasonId, isActive: true } });
@@ -521,12 +536,12 @@ export async function recalculatePlayerStats(seasonId: string): Promise<void> {
 
   const playerIds = players.map((player) => player.id);
   const teamIds = [...new Set(players.map((player) => player.teamId).filter((id): id is string => !!id))];
-  const [goals, assists, cards, fixtures] = await Promise.all([
-    prisma.goal.groupBy({ by: ["playerId"], where: { playerId: { in: playerIds } }, _count: { _all: true } }),
-    prisma.assist.groupBy({ by: ["playerId"], where: { playerId: { in: playerIds } }, _count: { _all: true } }),
-    prisma.card.groupBy({ by: ["playerId", "type"], where: { playerId: { in: playerIds } }, _count: { _all: true } }),
+const [goals, assists, cards, fixtures] = await Promise.all([
+    prisma.goal.groupBy({ by: ["playerId"], where: { playerId: { in: playerIds }, fixture: countedFixturesWhere(seasonId) }, _count: { _all: true } }),
+    prisma.assist.groupBy({ by: ["playerId"], where: { playerId: { in: playerIds }, fixture: countedFixturesWhere(seasonId) }, _count: { _all: true } }),
+    prisma.card.groupBy({ by: ["playerId", "type"], where: { playerId: { in: playerIds }, fixture: countedFixturesWhere(seasonId) }, _count: { _all: true } }),
     prisma.fixture.findMany({
-      where: { seasonId, status: "COMPLETED", isFriendly: false, OR: [{ competitionId: null }, { competition: { is: { type: { not: "FRIENDLY" } } } }], AND: [{ OR: [{ homeTeamId: { in: teamIds } }, { awayTeamId: { in: teamIds } }] }] },
+      where: { ...countedFixturesWhere(seasonId), AND: [{ OR: [{ homeTeamId: { in: teamIds } }, { awayTeamId: { in: teamIds } }] }] },
       select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true },
     }),
   ]);

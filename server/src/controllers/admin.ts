@@ -403,10 +403,21 @@ export const updateFixture = async (req: Request, res: Response, next: NextFunct
   try {
     const data: any = pick(req.body, FIXTURE_WRITABLE_FIELDS);
     if (data.matchDate) data.matchDate = new Date(data.matchDate);
+    const existing = await prisma.fixture.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, seasonId: true, status: true, isFriendly: true },
+    });
+    if (!existing) throw new AppError("Fixture not found", 404);
     const fixture = await prisma.fixture.update({
       where: { id: req.params.id },
       data,
     });
+    // Toggling a completed match in/out of friendly must propagate to league
+    // standings, player stats, and everything derived from them.
+    if (existing.status === "COMPLETED" && "isFriendly" in req.body && data.isFriendly !== existing.isFriendly) {
+      await leagueSystem.recalculateStandings(existing.seasonId);
+      await leagueSystem.recalculatePlayerStats(existing.seasonId);
+    }
     res.json(fixture);
   } catch (error) {
     next(error);

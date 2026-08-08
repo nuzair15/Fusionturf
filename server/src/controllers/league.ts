@@ -59,7 +59,7 @@ export const getTeamBySlug = async (req: Request, res: Response, next: NextFunct
     const team = await prisma.team.findFirst({
       where: { slug: req.params.slug, isActive: true },
       include: {
-        players: { orderBy: { jerseyNumber: "asc" } },
+        players: { orderBy: { jerseyNumber: "asc" }, include: { homeStats: true } },
         staff: true,
         standings: { include: { season: true } },
         homeMatches: {
@@ -78,6 +78,63 @@ export const getTeamBySlug = async (req: Request, res: Response, next: NextFunct
       },
     });
     if (!team) throw new AppError("Team not found", 404);
+
+    // Friendly-match stats for each squad player, computed from friendly
+    // fixtures (flag or FRIENDLY-type competition) so the club page can show
+    // league and friendly numbers side by side.
+    const playerIds = team.players.map((p) => p.id);
+    const friendlyFixtures = await prisma.fixture.findMany({
+      where: {
+        seasonId: team.seasonId,
+        status: "COMPLETED",
+        AND: [
+          { OR: [{ isFriendly: true }, { competition: { is: { type: "FRIENDLY" } } }] },
+          { OR: [{ homeTeamId: team.id }, { awayTeamId: team.id }] },
+        ],
+      },
+      select: { id: true, homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true },
+    });
+
+    let goalsConceded = 0;
+    let cleanSheets = 0;
+    for (const f of friendlyFixtures) {
+      const conceded = f.homeTeamId === team.id ? f.awayScore || 0 : f.homeScore || 0;
+      goalsConceded += conceded;
+      if (conceded === 0) cleanSheets++;
+    }
+
+    const fixtureIds = friendlyFixtures.map((f) => f.id);
+    const [goals, assists, cards] = fixtureIds.length > 0
+      ? await Promise.all([
+          prisma.goal.groupBy({ by: ["playerId"], where: { playerId: { in: playerIds }, fixtureId: { in: fixtureIds } }, _count: { _all: true } }),
+          prisma.assist.groupBy({ by: ["playerId"], where: { playerId: { in: playerIds }, fixtureId: { in: fixtureIds } }, _count: { _all: true } }),
+          prisma.card.groupBy({ by: ["playerId", "type"], where: { playerId: { in: playerIds }, fixtureId: { in: fixtureIds } }, _count: { _all: true } }),
+        ])
+      : [[], [], []];
+
+    const goalCounts = new Map(goals.map((g) => [g.playerId, g._count._all]));
+    const assistCounts = new Map(assists.map((a) => [a.playerId, a._count._all]));
+    const cardCounts = new Map<string, { yellow: number; red: number }>();
+    for (const row of cards) {
+      const current = cardCounts.get(row.playerId) || { yellow: 0, red: 0 };
+      if (row.type === "YELLOW") current.yellow += row._count._all;
+      if (row.type === "RED" || row.type === "SECOND_YELLOW") current.red += row._count._all;
+      cardCounts.set(row.playerId, current);
+    }
+
+    team.players = team.players.map((p) => ({
+      ...p,
+      friendlyStats: {
+        appearances: friendlyFixtures.length,
+        goals: goalCounts.get(p.id) || 0,
+        assists: assistCounts.get(p.id) || 0,
+        yellowCards: cardCounts.get(p.id)?.yellow || 0,
+        redCards: cardCounts.get(p.id)?.red || 0,
+        cleanSheets: p.position === "GK" ? cleanSheets : null,
+        goalsConceded: p.position === "GK" ? goalsConceded : null,
+      },
+    }));
+
     res.json(team);
   } catch (error) {
     next(error);

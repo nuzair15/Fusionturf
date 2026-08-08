@@ -127,17 +127,39 @@ export function TeamDetailPage() {
           <LeagueCard title="Squad">
             {team.players && team.players.length > 0 ? (
               <div className="grid gap-3 p-4 grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {team.players.map((player) => (
-                  <button key={player.id} onClick={() => navigate(`/league/players/${player.slug}`)} className="overflow-hidden rounded-2xl border text-left transition hover:-translate-y-0.5 hover:shadow-md">
-                    <div className="aspect-[4/5] bg-muted">
-                      <img src={player.photoUrl || "/placeholder.svg"} alt="" className="h-full w-full object-cover" />
-                    </div>
-                    <div className="space-y-0.5 p-3">
-                      <p className="truncate font-semibold">{player.firstName} {player.lastName}</p>
-                      <p className="text-xs text-muted-foreground">{player.position || "Player"} • #{player.jerseyNumber || "—"}</p>
-                    </div>
-                  </button>
-                ))}
+                {team.players.map((player) => {
+                  const league = player.homeStats?.[0];
+                  const friendly = player.friendlyStats;
+                  return (
+                    <button key={player.id} onClick={() => navigate(`/league/players/${player.slug}`)} className="overflow-hidden rounded-2xl border text-left transition hover:-translate-y-0.5 hover:shadow-md">
+                      <div className="aspect-[4/5] bg-muted">
+                        <img src={player.photoUrl || "/placeholder.svg"} alt="" className="h-full w-full object-cover" />
+                      </div>
+                      <div className="space-y-1 p-3">
+                        <p className="truncate font-semibold">{player.firstName} {player.lastName}</p>
+                        <p className="text-xs text-muted-foreground">{player.position || "Player"} • #{player.jerseyNumber || "—"}</p>
+                        {league && (
+                          <div className="flex items-center justify-between rounded-lg bg-muted/60 px-2 py-1.5 text-[11px]">
+                            <span className="font-bold uppercase tracking-wide text-muted-foreground">League</span>
+                            <span>P {league.appearances}</span>
+                            <span>G {league.goals}</span>
+                            <span>A {league.assists}</span>
+                            <span>YC {league.yellowCards || 0}</span>
+                          </div>
+                        )}
+                        {friendly && (friendly.appearances > 0 || friendly.goals > 0 || friendly.assists > 0) && (
+                          <div className="flex items-center justify-between rounded-lg border border-dashed px-2 py-1.5 text-[11px]">
+                            <span className="font-bold uppercase tracking-wide text-muted-foreground">Friendly</span>
+                            <span>P {friendly.appearances}</span>
+                            <span>G {friendly.goals}</span>
+                            <span>A {friendly.assists}</span>
+                            <span>YC {friendly.yellowCards}</span>
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             ) : (
               <div className="p-4"><LeagueEmptyState title="No squad uploaded" description="Add players to surface the squad view." /></div>

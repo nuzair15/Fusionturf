@@ -78,8 +78,19 @@ export interface Player {
   biography?: string;
   squadType?: string;
   homeStats?: PlayerStat[];
+  friendlyStats?: FriendlyPlayerStat;
   awards?: AwardWinner[];
   galleries?: Gallery[];
+}
+
+export interface FriendlyPlayerStat {
+  appearances: number;
+  goals: number;
+  assists: number;
+  yellowCards: number;
+  redCards: number;
+  cleanSheets?: number | null;
+  goalsConceded?: number | null;
 }
 
 export interface PlayerStat {
