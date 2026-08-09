@@ -22,7 +22,9 @@ const AwardsPage = lazy(() => import("@/pages/league/AwardsPage").then((m) => ({
 const DashboardPage = lazy(() => import("@/pages/dashboard/DashboardPage").then((m) => ({ default: m.DashboardPage })));
 const AdminPage = lazy(() => import("@/pages/admin/AdminPage").then((m) => ({ default: m.AdminPage })));
 const NewsPage = lazy(() => import("@/pages/league/NewsPage").then((m) => ({ default: m.NewsPage })));
+const SearchPage = lazy(() => import("@/pages/search/SearchPage").then((m) => ({ default: m.SearchPage })));
 import { ApiErrorNotice } from "@/components/ApiErrorNotice";
+import { NotFoundPage } from "@/pages/NotFoundPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -56,9 +58,11 @@ export default function App() {
                   <Route path="/league/teams/:slug" element={<TeamDetailPage />} />
                   <Route path="/league/players/:slug" element={<PlayerDetailPage />} />
                   <Route path="/league/fixtures/:id" element={<FixtureDetailPage />} />
+                  <Route path="/search" element={<SearchPage />} />
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/admin" element={<AdminPage />} />
                   <Route path="/admin/*" element={<AdminPage />} />
+                  <Route path="*" element={<NotFoundPage />} />
               </Routes>
               </Suspense>
               </main>

@@ -10,6 +10,7 @@ import type { Team } from "@/types";
 import { ChevronLeft, MapPin, CalendarDays, Trophy, Users, GalleryVertical, BadgeIcon } from "lucide-react";
 import { LeagueHero, LeagueCard, LeaguePills, LeagueEmptyState } from "@/components/league/LeagueUI";
 import { formatDate } from "@/lib/utils";
+import { FollowButton } from "@/components/league/FollowButton";
 
 export function TeamDetailPage() {
   const { slug } = useParams();
@@ -41,6 +42,7 @@ export function TeamDetailPage() {
           subtitle={`${team.city || "City unknown"} • ${team.homeStadium || "Home venue pending"}${team.description ? ` • ${team.description}` : ""}`}
           actions={(
             <>
+              <FollowButton type="TEAM" entityId={team.id} />
               <Badge variant="secondary" className="rounded-full px-3 py-1">{team._count?.players || 0} players</Badge>
               <Badge variant="secondary" className="rounded-full px-3 py-1">{standing ? `#${standing.position} • ${standing.points} pts` : "No standing yet"}</Badge>
             </>
@@ -128,8 +130,6 @@ export function TeamDetailPage() {
             {team.players && team.players.length > 0 ? (
               <div className="grid gap-3 p-4 grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {team.players.map((player) => {
-                  const league = player.homeStats?.[0];
-                  const friendly = player.friendlyStats;
                   return (
                     <button key={player.id} onClick={() => navigate(`/league/players/${player.slug}`)} className="overflow-hidden rounded-2xl border text-left transition hover:-translate-y-0.5 hover:shadow-md">
                       <div className="aspect-[4/5] bg-muted">
@@ -138,24 +138,7 @@ export function TeamDetailPage() {
                       <div className="space-y-1 p-3">
                         <p className="truncate font-semibold">{player.firstName} {player.lastName}</p>
                         <p className="text-xs text-muted-foreground">{player.position || "Player"} • #{player.jerseyNumber || "—"}</p>
-                        {league && (
-                          <div className="flex items-center justify-between rounded-lg bg-muted/60 px-2 py-1.5 text-[11px]">
-                            <span className="font-bold uppercase tracking-wide text-muted-foreground">League</span>
-                            <span>P {league.appearances}</span>
-                            <span>G {league.goals}</span>
-                            <span>A {league.assists}</span>
-                            <span>YC {league.yellowCards || 0}</span>
-                          </div>
-                        )}
-                        {friendly && (friendly.appearances > 0 || friendly.goals > 0 || friendly.assists > 0) && (
-                          <div className="flex items-center justify-between rounded-lg border border-dashed px-2 py-1.5 text-[11px]">
-                            <span className="font-bold uppercase tracking-wide text-muted-foreground">Friendly</span>
-                            <span>P {friendly.appearances}</span>
-                            <span>G {friendly.goals}</span>
-                            <span>A {friendly.assists}</span>
-                            <span>YC {friendly.yellowCards}</span>
-                          </div>
-                        )}
+                        <p className="text-xs text-primary">Open profile for statistics →</p>
                       </div>
                     </button>
                   );

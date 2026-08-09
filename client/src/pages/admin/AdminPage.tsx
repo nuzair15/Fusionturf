@@ -33,6 +33,7 @@ const adminTabs = [
   { id: "seasons", label: "Seasons", icon: Calendar },
   { id: "teams", label: "Teams", icon: Trophy },
   { id: "players", label: "Players", icon: Users },
+  { id: "player-stats", label: "Player Stats", icon: TrendingUp },
   { id: "fixtures", label: "Fixtures", icon: Activity },
   { id: "awards", label: "Awards", icon: Medal },
   { id: "gallery", label: "Gallery", icon: Image },
@@ -86,6 +87,7 @@ export function AdminPage() {
   const [newsSearch, setNewsSearch] = useState("");
   const [sponsorSearch, setSponsorSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
+  const [friendlyStatsMode, setFriendlyStatsMode] = useState(false);
 
   const openForm = (type: string, initial: Record<string, any> = {}) => {
     setFormData(initial);
@@ -190,6 +192,12 @@ export function AdminPage() {
     queryKey: ["admin-players", selectedSeasonId, playerSearch],
     queryFn: () => api.get<PaginatedResponse<Player>>("/admin/players", { limit: "100", ...(selectedSeasonId ? { seasonId: selectedSeasonId } : {}), ...(playerSearch ? { search: playerSearch } : {}) }),
     enabled: tabEnabled("players"),
+  });
+
+  const { data: editablePlayerStats } = useQuery({
+    queryKey: ["admin-player-stats", selectedSeasonId, friendlyStatsMode],
+    queryFn: () => api.get<any[]>("/admin/player-stats", { seasonId: selectedSeasonId, friendly: friendlyStatsMode ? "true" : "false" }),
+    enabled: tabEnabled("player-stats") && !!selectedSeasonId,
   });
 
   const { data: fixtures } = useQuery({ queryKey: ["admin-fixtures", fixtureSearch], queryFn: () => api.get<PaginatedResponse<Fixture>>("/admin/fixtures", { limit: "100", ...(fixtureSearch ? { search: fixtureSearch } : {}) }), enabled: tabEnabled("fixtures") });
@@ -615,6 +623,38 @@ export function AdminPage() {
                 {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                 <Button className="w-full" onClick={() => submitForm("player", "/admin/players", "admin-players")}
                   disabled={!formData.firstName || !formData.teamId}>{editingItem ? "Update Player" : "Create Player"}</Button>
+              </div>
+            </Dialog>
+          </>
+        )}
+
+        {activeTab === "player-stats" && (
+          <>
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <Label>Season</Label>
+              <Select value={selectedSeasonId} onChange={(e) => setSelectedSeasonId(e.target.value)} className="w-64">{(seasons || []).map((s: Season) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select>
+              <Button variant={friendlyStatsMode ? "default" : "outline"} onClick={() => setFriendlyStatsMode((v) => !v)}>{friendlyStatsMode ? "Friendly stats" : "League stats"}</Button>
+              <p className="text-xs text-muted-foreground">Appearances are capped to fixtures where the player was in the lineup or matchday squad.</p>
+            </div>
+            <DataTable<any>
+              title={friendlyStatsMode ? "Friendly Player Stats" : "League Player Stats"}
+              columns={[
+                { key: "player", label: "Player", sortable: true, render: (s) => <span className="font-medium">{s.player.firstName} {s.player.lastName}</span> },
+                { key: "team", label: "Team", render: (s) => s.team?.name || "-" },
+                { key: "appearances", label: "Apps", render: (s) => s.appearances },
+                { key: "goals", label: "Goals", render: (s) => s.goals },
+                { key: "assists", label: "Assists", render: (s) => s.assists },
+                { key: "manage", label: "Manage", render: (s) => <Button size="sm" variant="outline" onClick={() => { setEditingItem(s); openForm("player-stats", { ...s }); }}><Edit2 className="mr-1 h-3.5 w-3.5" /> Edit</Button> },
+              ]}
+              data={editablePlayerStats || []}
+              keyExtractor={(s) => s.id}
+            />
+            <Dialog open={showForm === "player-stats"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={`Edit ${friendlyStatsMode ? "Friendly" : "League"} Stats`}>
+              <div className="grid grid-cols-2 gap-4">
+                {[["appearances", "Appearances"], ["goals", "Goals"], ["assists", "Assists"], ["minutesPlayed", "Minutes"], ["shots", "Shots"], ["shotsOnTarget", "Shots on target"], ["yellowCards", "Yellow cards"], ["redCards", "Red cards"], ["averageRating", "Rating"]].map(([key, label]) => <div key={key} className="space-y-1.5"><Label>{label}</Label><Input type="number" min={0} max={key === "averageRating" ? 10 : undefined} step={key === "averageRating" ? "0.1" : "1"} value={formData[key] ?? 0} onChange={(e) => handleFormChange(key, e.target.value === "" ? 0 : Number(e.target.value))} /></div>)}
+                <p className="col-span-2 text-xs text-muted-foreground">Appearances cannot exceed eligible fixtures for this player.</p>
+                {formErrors && <p className="col-span-2 text-sm text-destructive">{formErrors}</p>}
+                <Button className="col-span-2" onClick={async () => { try { await api.patch(`/admin/player-stats/${editingItem.playerId}`, { seasonId: selectedSeasonId, teamId: editingItem.teamId, friendly: friendlyStatsMode, ...formData }); setShowForm(null); setEditingItem(null); queryClient.invalidateQueries({ queryKey: ["admin-player-stats"] }); } catch (e: any) { setFormErrors(e.message || "Failed to save stats"); } }}>Save stats</Button>
               </div>
             </Dialog>
           </>

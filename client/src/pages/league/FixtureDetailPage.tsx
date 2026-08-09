@@ -11,6 +11,7 @@ import { useLineup } from "@/hooks/useLineup";
 import { FootballPitch } from "@/components/league/FootballPitch";
 import { BenchPlayers } from "@/components/league/BenchPlayers";
 import { FormationBadge } from "@/components/league/FormationBadge";
+import { useAuth } from "@/providers/AuthProvider";
 import type { Fixture, Team } from "@/types";
 import { ChevronLeft, ChevronRight, Swords } from "lucide-react";
 
@@ -105,12 +106,17 @@ function MatchLineupsSection({ fixtureId, homeTeam, awayTeam }: { fixtureId: str
 export function FixtureDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const { data: fixture, isLoading } = useQuery({
     queryKey: ["fixture", id],
     queryFn: () => api.get<Fixture>(`/league/fixtures/${id}`),
     enabled: !!id,
+    refetchInterval: (query) => query.state.data?.status === "LIVE" || query.state.data?.status === "PAUSED" || query.state.data?.status === "HALF_TIME" ? 5000 : false,
   });
+
+  const { data: rsvp, refetch: refetchRsvp } = useQuery({ queryKey: ["rsvp", id], queryFn: () => api.get<any>(`/league/fixtures/${id}/rsvp`), enabled: !!id && !!user });
+  const setRsvp = async (status: "GOING" | "MAYBE" | "NOT_GOING") => { await api.post(`/league/fixtures/${id}/rsvp`, { status }); await refetchRsvp(); };
 
   if (isLoading) return <div className="mx-auto max-w-7xl px-4 py-8"><div className="h-96 animate-pulse rounded-xl bg-muted" /></div>;
   if (!fixture) return null;
@@ -133,13 +139,14 @@ export function FixtureDetailPage() {
               <h2 className="text-base font-bold sm:text-xl">{fixture.homeTeam.shortName || fixture.homeTeam.name}</h2>
             </div>
             <div className="text-center">
-              {fixture.status === "COMPLETED" ? (
+              {fixture.status === "COMPLETED" || fixture.status === "LIVE" || fixture.status === "HALF_TIME" || fixture.status === "PAUSED" ? (
                 <div className="text-3xl font-bold sm:text-5xl tabular-nums">
                   <AnimatedScore value={fixture.homeScore ?? 0} /> - <AnimatedScore value={fixture.awayScore ?? 0} />
                 </div>
               ) : (
                 <div className="text-2xl font-bold text-muted-foreground sm:text-3xl">VS</div>
               )}
+              {(fixture.status === "LIVE" || fixture.status === "PAUSED" || fixture.status === "HALF_TIME") && <p className="mt-1 text-xs font-semibold uppercase tracking-widest text-rose-300">LIVE · {Math.floor((fixture.matchClockSeconds || 0) / 60)}:{String((fixture.matchClockSeconds || 0) % 60).padStart(2, "0")}</p>}
               <p className="mt-1 text-white/60 text-xs sm:mt-2 sm:text-sm">
                 {formatDate(fixture.matchDate)} • {fixture.kickoffTime || "TBD"}
               </p>
@@ -150,6 +157,11 @@ export function FixtureDetailPage() {
               <h2 className="text-base font-bold sm:text-xl">{fixture.awayTeam.shortName || fixture.awayTeam.name}</h2>
             </div>
           </div>
+        </div>
+
+        <div className="mb-8 grid gap-4 md:grid-cols-[1fr_auto]">
+          <Card><CardContent className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-4"><div><p className="text-xs text-muted-foreground">Possession</p><p className="font-semibold">{fixture.homePossession ?? "-"}% · {fixture.awayPossession ?? "-"}%</p></div><div><p className="text-xs text-muted-foreground">Shots</p><p className="font-semibold">{fixture.homeShots ?? 0} · {fixture.awayShots ?? 0}</p></div><div><p className="text-xs text-muted-foreground">On target</p><p className="font-semibold">{fixture.homeShotsOnTarget ?? 0} · {fixture.awayShotsOnTarget ?? 0}</p></div><div><p className="text-xs text-muted-foreground">RSVP</p><p className="font-semibold">{rsvp?.status || "Not set"}</p></div></CardContent></Card>
+          {user && <div className="flex items-center gap-2"><Button variant={rsvp?.status === "GOING" ? "default" : "outline"} onClick={() => setRsvp("GOING")}>I’m going</Button><Button variant={rsvp?.status === "MAYBE" ? "default" : "outline"} onClick={() => setRsvp("MAYBE")}>Maybe</Button></div>}
         </div>
 
         {fixture.highlights && (

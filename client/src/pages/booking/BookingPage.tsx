@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import { formatCurrency, formatTime } from "@/lib/utils";
 
 export function BookingPage() {
   const navigate = useNavigate();
+  const [mapOpen, setMapOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["venues"],
@@ -31,6 +33,8 @@ export function BookingPage() {
 
         <h1 className="text-3xl font-bold">Book a Turf</h1>
         <p className="mt-2 text-muted-foreground">Select a venue below to view available slots and book.</p>
+        <div className="mt-5 flex items-center justify-between rounded-xl border bg-card p-3"><div className="flex items-center gap-2 text-sm"><MapPin className="h-4 w-4 text-primary" /><span>Find a pitch near you with the venue map</span></div><Button variant="outline" size="sm" onClick={() => setMapOpen((open) => !open)}>{mapOpen ? "Hide map" : "Show map"}</Button></div>
+        {mapOpen && venues.some((venue) => venue.latitude && venue.longitude) && <div className="mt-4 overflow-hidden rounded-2xl border"><iframe title="Venue map" className="h-72 w-full" loading="lazy" src={`https://www.openstreetmap.org/export/embed.html?bbox=${Math.min(...venues.filter((v) => v.longitude).map((v) => v.longitude!)) - 0.03}%2C${Math.min(...venues.filter((v) => v.latitude).map((v) => v.latitude!)) - 0.03}%2C${Math.max(...venues.filter((v) => v.longitude).map((v) => v.longitude!)) + 0.03}%2C${Math.max(...venues.filter((v) => v.latitude).map((v) => v.latitude!)) + 0.03}&layer=mapnik`} /></div>}
 
         {venues.length === 0 ? (
           <div className="py-20 text-center">

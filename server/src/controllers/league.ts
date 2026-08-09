@@ -197,6 +197,7 @@ export const getPlayerBySlug = async (req: Request, res: Response, next: NextFun
       include: {
         team: true,
         homeStats: { include: { season: true, team: true } },
+        friendlyStats: { include: { season: true, team: true } },
         awardNominations: { include: { award: true } },
         galleries: { take: 10, orderBy: { createdAt: "desc" } },
       },
@@ -218,6 +219,13 @@ export const getFixtures = async (req: Request, res: Response, next: NextFunctio
     if (req.query.teamId) where.OR = [{ homeTeamId: req.query.teamId }, { awayTeamId: req.query.teamId }];
     if (req.query.status) where.status = req.query.status;
     if (req.query.competitionId) where.competitionId = req.query.competitionId;
+    if (req.query.venueId) where.venueId = req.query.venueId;
+    if (req.query.round) where.round = Number(req.query.round);
+    if (req.query.from || req.query.to) {
+      where.matchDate = {};
+      if (req.query.from) where.matchDate.gte = new Date(String(req.query.from));
+      if (req.query.to) where.matchDate.lte = new Date(`${String(req.query.to)}T23:59:59.999`);
+    }
     if (req.query.date) {
       const date = new Date(req.query.date as string);
       where.matchDate = { gte: new Date(date.setHours(0, 0, 0, 0)), lte: new Date(date.setHours(23, 59, 59, 999)) };

@@ -3,6 +3,7 @@ import { authenticate, authorize } from "../middleware/auth.js";
 import { activityLogger } from "../middleware/activityLogger.js";
 import * as admin from "../controllers/admin.js";
 import * as bookingAdmin from "../controllers/booking.js";
+import * as playerStats from "../controllers/playerStats.js";
 
 const router = Router();
 
@@ -33,6 +34,8 @@ router.get("/players/search", admin.searchPlayers);
 router.post("/players", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.createPlayer);
 router.patch("/players/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.updatePlayer);
 router.delete("/players/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.deletePlayer);
+router.get("/player-stats", playerStats.getAdminPlayerStats);
+router.patch("/player-stats/:playerId", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), playerStats.updateAdminPlayerStats);
 
 // Fixtures
 router.get("/fixtures", admin.getFixtures);

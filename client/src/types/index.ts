@@ -143,6 +143,7 @@ export interface Fixture {
   kickoffTime?: string;
   round?: number;
   status: MatchStatus;
+  matchClockSeconds?: number;
   homeScore?: number;
   awayScore?: number;
   homePossession?: number;

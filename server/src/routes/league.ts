@@ -8,6 +8,7 @@ import {
   getFixtureLineups,
 } from "../controllers/league.js";
 import { authenticate, optionalAuth } from "../middleware/auth.js";
+import * as fan from "../controllers/fan.js";
 
 const router = Router();
 
@@ -56,5 +57,16 @@ router.get("/fixtures/:id/squad", getMatchdaySquad);
 router.get("/suspensions", getSuspensions);
 router.get("/suspensions/player/:playerId", getPlayerSuspensions);
 router.get("/stats/awards", getAwardLeaderboard);
+
+// Fan experience
+router.get("/search", fan.search);
+router.get("/head-to-head", fan.getHeadToHead);
+router.get("/polls", fan.getPolls);
+router.post("/polls/:id/vote", optionalAuth, fan.votePoll);
+router.get("/fan/dashboard", authenticate, fan.getFanDashboard);
+router.get("/fan/follows", authenticate, fan.getFollows);
+router.post("/fan/follows/toggle", authenticate, fan.toggleFollow);
+router.get("/fixtures/:id/rsvp", authenticate, fan.getRsvp);
+router.post("/fixtures/:id/rsvp", authenticate, fan.updateRsvp);
 
 export default router;

@@ -3,11 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "@/providers/ThemeProvider";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import { Moon, Sun, Calendar } from "lucide-react";
+import { Moon, Sun, Calendar, Search } from "lucide-react";
+import { useState } from "react";
 
 export function Navbar() {
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
+  const [search, setSearch] = useState("");
 
   const { data: settings } = useQuery({
     queryKey: ["settings"],
@@ -33,6 +35,7 @@ export function Navbar() {
           <Link to="/league" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
             League
           </Link>
+          <form onSubmit={(e) => { e.preventDefault(); if (search.trim()) navigate(`/search?q=${encodeURIComponent(search.trim())}`); }} className="relative"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><input aria-label="Search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search football" className="h-9 w-44 rounded-full border bg-background pl-9 pr-3 text-sm" /></form>
         </div>
 
         <div className="flex items-center gap-2">

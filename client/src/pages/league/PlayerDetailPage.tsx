@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import type { Player } from "@/types";
 import { ChevronLeft, MapPin, Ruler, Weight, Award, Footprints } from "lucide-react";
+import { FollowButton } from "@/components/league/FollowButton";
 
 export function PlayerDetailPage() {
   const { slug } = useParams();
@@ -29,6 +30,7 @@ export function PlayerDetailPage() {
     return acc;
   }, {}) || {};
   const seasonKeys = Object.keys(statsBySeason);
+  const friendlyStats = (player as any).friendlyStats || [];
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
@@ -47,6 +49,7 @@ export function PlayerDetailPage() {
               {player.team && (
                 <p className="text-white/60">{player.team.name}</p>
               )}
+              <div className="mt-3"><FollowButton type="PLAYER" entityId={player.id} /></div>
             </div>
           </div>
         </div>
@@ -120,6 +123,11 @@ export function PlayerDetailPage() {
                 </CardContent>
               </Card>
             )}
+
+            {friendlyStats.length > 0 && <Card>
+              <CardHeader><CardTitle>Friendly Statistics</CardTitle></CardHeader>
+              <CardContent className="space-y-3">{friendlyStats.map((s: any) => <div key={s.id} className="rounded-xl border p-4"><div className="mb-3 flex items-center gap-2 text-sm font-semibold"><span>{s.season?.name || "Friendly matches"}</span><span className="text-muted-foreground">·</span><span className="text-muted-foreground">{s.team?.name || "Team"}</span></div><div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{[["Appearances", s.appearances], ["Goals", s.goals], ["Assists", s.assists], ["Minutes", s.minutesPlayed], ["Shots", s.shots], ["On target", s.shotsOnTarget], ["Yellow cards", s.yellowCards], ["Rating", s.averageRating?.toFixed?.(1) || "-"]].map(([label, value]) => <div key={label as string} className="rounded-lg bg-secondary/40 p-3 text-center"><p className="font-bold">{value as any}</p><p className="text-xs text-muted-foreground">{label as string}</p></div>)}</div></div>)}</CardContent>
+            </Card>}
 
             {/* Awards */}
             {player.awards && player.awards.length > 0 && (

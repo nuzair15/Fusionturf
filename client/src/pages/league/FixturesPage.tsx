@@ -19,9 +19,13 @@ export function FixturesPage() {
   const [view, setView] = useState("list");
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const [viewYear, setViewYear] = useState(today.getFullYear());
+  const [teamFilter, setTeamFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [roundFilter, setRoundFilter] = useState("");
 
   const { data: currentSeason } = useQuery({ queryKey: ["current-season"], queryFn: () => api.get<Season>("/league/seasons/current"), retry: false });
-  const { data } = useQuery({ queryKey: ["fixtures-calendar"], queryFn: () => api.get<PaginatedResponse<Fixture>>("/league/fixtures", { limit: "120" }) });
+  const { data: teams } = useQuery({ queryKey: ["fixture-teams"], queryFn: () => api.get<any[]>("/league/teams") });
+  const { data } = useQuery({ queryKey: ["fixtures-calendar", teamFilter, statusFilter, roundFilter], queryFn: () => api.get<PaginatedResponse<Fixture>>("/league/fixtures", { limit: "120", ...(teamFilter ? { teamId: teamFilter } : {}), ...(statusFilter ? { status: statusFilter } : {}), ...(roundFilter ? { round: roundFilter } : {}) }) });
 
   const fixtures = data?.data || [];
   const todayKey = today.toISOString().split("T")[0];
@@ -90,6 +94,11 @@ export function FixturesPage() {
       </div>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        <div className="mb-4 grid gap-3 rounded-2xl border bg-card p-4 sm:grid-cols-3">
+          <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)} className="h-10 rounded-md border bg-background px-3 text-sm"><option value="">All teams</option>{(teams || []).map((team: any) => <option key={team.id} value={team.id}>{team.name}</option>)}</select>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="h-10 rounded-md border bg-background px-3 text-sm"><option value="">All statuses</option><option value="LIVE">Live</option><option value="SCHEDULED">Upcoming</option><option value="COMPLETED">Completed</option></select>
+          <input value={roundFilter} onChange={(e) => setRoundFilter(e.target.value.replace(/\D/g, ""))} placeholder="Filter by round" inputMode="numeric" className="h-10 rounded-md border bg-background px-3 text-sm" />
+        </div>
         <LeaguePills
           active={view}
           onChange={setView}

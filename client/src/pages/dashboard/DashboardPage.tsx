@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { useEffect } from "react";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +9,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/providers/AuthProvider";
 import { formatDate, formatCurrency, getMatchStatusColor } from "@/lib/utils";
 import type { Booking, DashboardStats } from "@/types";
-import { Calendar, Clock, MapPin, CreditCard, User, Settings, ArrowRight } from "lucide-react";
+import { Calendar, Clock, MapPin, CreditCard, User, Settings, ArrowRight, Bell, Heart, Trophy, BarChart3 } from "lucide-react";
 
 export function DashboardPage() {
   const { user, logout } = useAuth();
@@ -21,6 +22,16 @@ export function DashboardPage() {
   });
 
   const bookingList = bookings?.data || [];
+
+  const { data: fanData } = useQuery({
+    queryKey: ["fan-dashboard"],
+    queryFn: () => api.get<any>("/league/fan/dashboard"),
+    enabled: !!user,
+  });
+
+  useEffect(() => {
+    if (user && "Notification" in window && Notification.permission === "default") Notification.requestPermission();
+  }, [user]);
 
   if (!user) {
     return (
@@ -38,12 +49,39 @@ export function DashboardPage() {
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">Welcome, {user.firstName}</h1>
-            <p className="text-muted-foreground">Manage your bookings and profile</p>
+            <p className="text-muted-foreground">Your bookings, followed football, and matchday updates</p>
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="secondary">{user.role.replace("_", " ")}</Badge>
           </div>
         </div>
+
+        <div className="mt-8 grid gap-6 lg:grid-cols-[1.35fr_1fr]">
+          <Card>
+            <CardHeader><CardTitle className="flex items-center gap-2"><Heart className="h-4 w-4 text-rose-500" /> Your football</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              {!fanData?.follows?.length ? (
+                <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Follow a team or player to personalize this space.</div>
+              ) : (
+                <>
+                  <div className="flex flex-wrap gap-2">{fanData.follows.map((f: any) => <Badge key={f.id} variant="secondary">{f.team?.name || `${f.player?.firstName} ${f.player?.lastName}`}</Badge>)}</div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {(fanData.upcoming || []).slice(0, 4).map((fixture: any) => <button key={fixture.id} onClick={() => navigate(`/league/fixtures/${fixture.id}`)} className="rounded-xl border p-3 text-left hover:bg-secondary/50"><p className="text-xs text-muted-foreground">{formatDate(fixture.matchDate)} · {fixture.kickoffTime || "TBD"}</p><p className="mt-1 font-medium">{fixture.homeTeam.shortName || fixture.homeTeam.name} <span className="text-muted-foreground">vs</span> {fixture.awayTeam.shortName || fixture.awayTeam.name}</p></button>)}
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle className="flex items-center gap-2"><Bell className="h-4 w-4" /> Notifications</CardTitle></CardHeader>
+            <CardContent className="space-y-3">{(fanData?.notifications || []).slice(0, 4).map((n: any) => <div key={n.id} className="border-b pb-3 last:border-0"><p className="text-sm font-medium">{n.title}</p><p className="text-xs text-muted-foreground">{n.message}</p></div>)}{!fanData?.notifications?.length && <p className="text-sm text-muted-foreground">No match updates yet.</p>}</CardContent>
+          </Card>
+        </div>
+
+        {fanData?.standings?.length > 0 && <div className="mt-8 grid gap-6 lg:grid-cols-2">
+          <Card><CardHeader><CardTitle className="flex items-center gap-2"><Trophy className="h-4 w-4" /> Followed teams</CardTitle></CardHeader><CardContent className="space-y-2">{fanData.standings.map((row: any) => <div key={row.id} className="flex items-center gap-3 rounded-lg border p-3"><span className="font-bold text-primary">#{row.position}</span><span className="flex-1 font-medium">{row.team.name}</span><Badge>{row.points} pts</Badge></div>)}</CardContent></Card>
+          <Card><CardHeader><CardTitle className="flex items-center gap-2"><BarChart3 className="h-4 w-4" /> Followed player stats</CardTitle></CardHeader><CardContent className="space-y-2">{(fanData.playerStats || []).slice(0, 5).map((s: any) => <div key={s.id} className="flex items-center gap-3 rounded-lg border p-3"><span className="flex-1 font-medium">{s.player.firstName} {s.player.lastName}</span><span className="text-sm">{s.goals} goals</span><span className="text-sm text-muted-foreground">{s.assists} assists</span></div>)}</CardContent></Card>
+        </div>}
 
         <div className="grid gap-6 md:grid-cols-3">
           {/* Quick Stats */}
