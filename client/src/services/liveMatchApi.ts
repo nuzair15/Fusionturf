@@ -31,4 +31,10 @@ export const liveMatchApi = {
 
   removeGoal: (fixtureId: string, playerId: string) =>
     api.post(`/admin/fixtures/${fixtureId}/goal/remove`, { playerId }),
+
+  setMatchRating: (fixtureId: string, body: { playerId: string; rating: number }) =>
+    api.patch(`/admin/fixtures/${fixtureId}/match-rating`, body),
+
+  setManOfTheMatch: (fixtureId: string, body: { playerId?: string }) =>
+    api.patch(`/admin/fixtures/${fixtureId}/man-of-the-match`, body),
 };

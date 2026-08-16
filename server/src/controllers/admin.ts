@@ -1656,6 +1656,7 @@ export const getLiveStats = async (req: Request, res: Response, next: NextFuncti
     const cards = await prisma.card.findMany({ where: { fixtureId: fixture.id }, include: { player: { select: { id: true, firstName: true, lastName: true, photoUrl: true, jerseyNumber: true, position: true, teamId: true } } } });
     const substitutions = await prisma.substitution.findMany({ where: { fixtureId: fixture.id }, include: { playerOff: { select: { id: true, firstName: true, lastName: true, photoUrl: true, jerseyNumber: true, position: true, teamId: true } }, playerOn: { select: { id: true, firstName: true, lastName: true, photoUrl: true, jerseyNumber: true, position: true, teamId: true } } }, orderBy: { minute: "asc" } });
     const notes = await prisma.matchNote.findMany({ where: { fixtureId: fixture.id }, include: { player: { select: { id: true, firstName: true, lastName: true, photoUrl: true, jerseyNumber: true, position: true, teamId: true } } }, orderBy: { minute: "asc" } });
+    const ratings = await prisma.matchPlayerRating.findMany({ where: { fixtureId: fixture.id }, select: { playerId: true, rating: true } });
     const lineups = await prisma.lineup.findMany({ where: { fixtureId: fixture.id } });
     const lineupByPlayer = new Map(lineups.map((l) => [l.playerId, l]));
     const hasLineup = lineups.length > 0;
@@ -1700,6 +1701,8 @@ export const getLiveStats = async (req: Request, res: Response, next: NextFuncti
         round: fixture.round,
         stadium: fixture.stadium,
         competition: fixture.competition,
+        manOfTheMatchId: fixture.manOfTheMatchId,
+        matchPlayerRatings: Object.fromEntries(ratings.map((r) => [r.playerId, r.rating])),
         homeScore: fixture.homeScore,
         awayScore: fixture.awayScore,
         homePossession: fixture.homePossession,
@@ -1792,6 +1795,53 @@ export const updateLiveStat = async (req: Request, res: Response, next: NextFunc
     } else {
       throw new AppError("Invalid statType", 400);
     }
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const setMatchRating = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { playerId, rating } = req.body;
+    if (!playerId || rating === undefined) throw new AppError("playerId and rating required", 400);
+    const value = Math.max(0, Math.min(10, Number(rating)));
+    if (Number.isNaN(value)) throw new AppError("Invalid rating", 400);
+
+    const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { id: true, homeTeamId: true, awayTeamId: true } });
+    if (!fixture) throw new AppError("Fixture not found", 404);
+    const player = await prisma.player.findUnique({ where: { id: playerId }, select: { id: true, teamId: true } });
+    if (!player || (player.teamId !== fixture.homeTeamId && player.teamId !== fixture.awayTeamId)) {
+      throw new AppError("Player does not belong to this fixture", 400);
+    }
+
+    const row = await prisma.matchPlayerRating.upsert({
+      where: { fixtureId_playerId: { fixtureId: fixture.id, playerId } },
+      create: { fixtureId: fixture.id, playerId, rating: value },
+      update: { rating: value },
+    });
+    res.json(row);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const setManOfTheMatch = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { playerId } = req.body;
+    const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { id: true, homeTeamId: true, awayTeamId: true, manOfTheMatchId: true } });
+    if (!fixture) throw new AppError("Fixture not found", 404);
+
+    let nextId: string | null = null;
+    if (playerId) {
+      const player = await prisma.player.findUnique({ where: { id: playerId }, select: { id: true, teamId: true } });
+      if (!player || (player.teamId !== fixture.homeTeamId && player.teamId !== fixture.awayTeamId)) {
+        throw new AppError("Player does not belong to this fixture", 400);
+      }
+      nextId = player.id;
+    }
+
+    const updated = await prisma.fixture.update({ where: { id: fixture.id }, data: { manOfTheMatchId: nextId } });
+    res.json({ manOfTheMatchId: updated.manOfTheMatchId });
   } catch (error) {
     next(error);
   }

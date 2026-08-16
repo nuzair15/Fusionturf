@@ -5,13 +5,15 @@ import { cn } from "@/lib/utils";
 import type { TimelineEvent } from "@/types/live";
 import { eventKindLabel } from "@/lib/liveTimeline";
 
-export const TimelineCard = memo(function TimelineCard({ event, homeColor, onDelete, onUndo, onCopy, onView }: {
+export const TimelineCard = memo(function TimelineCard({ event, stripColor, teamName, onDelete, onUndo, onCopy, onView, onEditStats }: {
   event: TimelineEvent;
-  homeColor?: string;
+  stripColor?: string;
+  teamName?: string;
   onDelete: (event: TimelineEvent) => void;
   onUndo: (event: TimelineEvent) => void;
   onCopy: (event: TimelineEvent) => void;
   onView: (event: TimelineEvent) => void;
+  onEditStats?: (event: TimelineEvent) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -37,14 +39,20 @@ export const TimelineCard = memo(function TimelineCard({ event, homeColor, onDel
           ? "bg-blue-500/15 text-blue-600"
           : "bg-violet-500/15 text-violet-600";
 
+  const teamBadge = teamName ? (
+    <span className="inline-flex items-center gap-1.5 font-semibold" style={stripColor ? { color: stripColor } : undefined}>
+      {stripColor && <span className="h-2 w-2 rounded-full" style={{ backgroundColor: stripColor }} />}
+      {teamName}
+    </span>
+  ) : null;
+
   const menuItems = [
     { label: "View Details", icon: <Eye className="h-3.5 w-3.5" />, onClick: () => onView(event) },
+    ...(onEditStats && event.player ? [{ label: "Edit Player Stats", icon: <Pencil className="h-3.5 w-3.5" />, onClick: () => { setMenuOpen(false); onEditStats(event); } }] : []),
     { label: "Undo", icon: <Undo2 className="h-3.5 w-3.5" />, onClick: () => { setMenuOpen(false); onUndo(event); } },
     { label: "Delete", icon: <Trash2 className="h-3.5 w-3.5" />, onClick: () => { setMenuOpen(false); onDelete(event); } },
     { label: "Copy", icon: <Copy className="h-3.5 w-3.5" />, onClick: () => { setMenuOpen(false); onCopy(event); } },
   ];
-
-  const colorStrip = homeColor && (event.kind === "substitution" ? homeColor : undefined);
 
   return (
     <motion.div
@@ -55,13 +63,14 @@ export const TimelineCard = memo(function TimelineCard({ event, homeColor, onDel
       transition={{ duration: 0.18 }}
       className="relative overflow-hidden rounded-xl border bg-card shadow-sm"
     >
-      {colorStrip && <span className="absolute left-0 top-0 h-full w-1" style={{ backgroundColor: colorStrip }} />}
+      {stripColor && <span className="absolute left-0 top-0 h-full w-1" style={{ backgroundColor: stripColor }} />}
       <div className="flex items-center gap-3 p-3 pl-4">
         <span className="w-10 shrink-0 text-right text-sm font-black tabular-nums text-muted-foreground">{event.minute}'</span>
         <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-full", iconBg)}>{icon}</span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold leading-tight">{eventKindLabel[event.kind]}</p>
-          <div className="truncate text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 truncate text-xs text-muted-foreground">
+            {teamBadge}
             {isGoal && <span>{event.player ? `${event.player.firstName} ${event.player.lastName}` : "Unknown"}</span>}
             {isCard && <span>{event.player ? `${event.player.firstName} ${event.player.lastName}` : "Unknown"}</span>}
             {event.kind === "substitution" && (

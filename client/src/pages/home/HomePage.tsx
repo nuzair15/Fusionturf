@@ -86,7 +86,11 @@ export function HomePage() {
               <Card key={fixture.id} className="overflow-hidden border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
                 <CardContent className="space-y-4 p-4">
                   <div className="flex items-center justify-between">
-                    <Badge variant="outline">{fixture.status}</Badge>
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant="outline">{fixture.status}</Badge>
+                      {fixture.isFriendly && <Badge variant="secondary" className="text-violet-600 dark:text-violet-400">Friendly</Badge>}
+                      {!fixture.isFriendly && fixture.competition?.name && <Badge variant="secondary">{fixture.competition.name}</Badge>}
+                    </div>
                     <span className="text-xs text-muted-foreground">{formatDate(fixture.matchDate)} {fixture.kickoffTime ? `• ${formatTime(fixture.kickoffTime)}` : ""}</span>
                   </div>
                   <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">

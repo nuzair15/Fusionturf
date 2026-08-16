@@ -8,6 +8,7 @@ import { toast, Toaster } from "@/components/ui/toast";
 import { MatchHeader } from "./MatchHeader";
 import { QuickActions, type QuickAction } from "./QuickActions";
 import { Timeline } from "./Timeline";
+import { HOME_COLOR, AWAY_COLOR } from "./Timeline";
 import { PlayerPanel } from "./PlayerPanel";
 import { StatisticsPanel } from "./StatisticsPanel";
 import { ActivityFeed, type ActivityItem } from "./ActivityFeed";
@@ -17,6 +18,7 @@ import { SubstitutionDialog } from "./SubstitutionDialog";
 import { NoteDialog, type NoteType } from "./NoteDialog";
 import { ConfirmationModal } from "./ConfirmationModal";
 import { EventDetailsDialog } from "./EventDetailsDialog";
+import { PlayerStatsDialog, type PlayerStatType } from "./PlayerStatsDialog";
 import type { MatchStatus } from "@/types";
 
 interface UndoEntry {
@@ -46,6 +48,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [viewingEvent, setViewingEvent] = useState<TimelineEvent | null>(null);
+  const [editingPlayer, setEditingPlayer] = useState<{ playerId: string; teamId: string } | null>(null);
   const [timerRunning, setTimerRunning] = useState(false);
   const [clockSeconds, setClockSeconds] = useState(0);
   const fetchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -273,6 +276,34 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
     navigator.clipboard?.writeText(text).then(() => toast("Copied to clipboard", text, "info")).catch(() => {});
   }, []);
 
+  const handleEventStatChange = useCallback((statType: PlayerStatType, action: "increment" | "decrement") => {
+    const target = editingPlayer;
+    if (!target) return;
+    return runAction(
+      () => liveMatchApi.updateLiveStat(fixtureId, { playerId: target.playerId, statType, teamId: target.teamId, action }),
+      `${statType} ${action === "increment" ? "increased" : "decreased"}`,
+      action === "increment" ? { type: statType === "goal" ? "goal" : statType === "assist" ? "assist" : "card", label: `${statType} updated` } : undefined
+    );
+  }, [editingPlayer, fixtureId, runAction]);
+
+  const handleSetRating = useCallback((rating: number) => {
+    const target = editingPlayer;
+    if (!target) return;
+    return runAction(
+      () => liveMatchApi.setMatchRating(fixtureId, { playerId: target.playerId, rating }),
+      `Rating set to ${rating.toFixed(1)}`,
+      undefined
+    );
+  }, [editingPlayer, fixtureId, runAction]);
+
+  const handleSetMotm = useCallback((playerId: string | null) => {
+    return runAction(
+      () => liveMatchApi.setManOfTheMatch(fixtureId, { playerId: playerId || undefined }),
+      playerId ? "Man of the Match set" : "Man of the Match cleared",
+      undefined
+    );
+  }, [fixtureId, runAction]);
+
   if (loading && !data) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -320,6 +351,8 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
             <PlayerPanel
               home={homeTeam}
               away={awayTeam}
+              onPickHome={(p) => setEditingPlayer({ playerId: p.id, teamId: homeTeam.id })}
+              onPickAway={(p) => setEditingPlayer({ playerId: p.id, teamId: awayTeam.id })}
               onDecrement={(t, p, s) => handlePlayerStat(t, p, s, "decrement")}
               onIncrement={(t, p, s) => handlePlayerStat(t, p, s, "increment")}
               subbedOffIds={subbedOffIds}
@@ -329,10 +362,14 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
             <Timeline
               events={events}
               homeTeamId={homeTeam.id}
+              awayTeamId={awayTeam.id}
+              homeName={homeTeam.shortName || homeTeam.name}
+              awayName={awayTeam.shortName || awayTeam.name}
               onDelete={handleDeleteEvent}
               onUndo={handleUndoEvent}
               onCopy={handleCopyEvent}
               onView={setViewingEvent}
+              onEditStats={(e) => e.player && e.teamId && setEditingPlayer({ playerId: e.player.id, teamId: e.teamId })}
             />
           </div>
           <div className="order-3 space-y-3">
@@ -398,6 +435,20 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
         event={viewingEvent}
         teamName={viewingEvent?.teamId === homeTeam.id ? homeTeam.shortName || homeTeam.name : viewingEvent?.teamId === awayTeam.id ? awayTeam.shortName || awayTeam.name : undefined}
         onClose={() => setViewingEvent(null)}
+      />
+      <PlayerStatsDialog
+        open={!!editingPlayer}
+        playerId={editingPlayer?.playerId ?? null}
+        teamId={editingPlayer?.teamId ?? null}
+        home={homeTeam}
+        away={awayTeam}
+        stripColor={editingPlayer?.teamId === homeTeam.id ? HOME_COLOR : editingPlayer?.teamId === awayTeam.id ? AWAY_COLOR : undefined}
+        manOfTheMatchId={data.fixture.manOfTheMatchId}
+        ratings={data.fixture.matchPlayerRatings}
+        onClose={() => setEditingPlayer(null)}
+        onUpdateStat={handleEventStatChange}
+        onSetRating={handleSetRating}
+        onSetMotm={handleSetMotm}
       />
     </div>
   );

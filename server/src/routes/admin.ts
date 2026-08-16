@@ -149,6 +149,8 @@ router.patch("/fixtures/:id/live-stats/team", authorize("SUPER_ADMIN", "LEAGUE_A
 router.post("/fixtures/:id/live-stats/reset-clock", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.resetFixtureClock);
 router.post("/fixtures/:id/goal", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.addGoal);
 router.post("/fixtures/:id/goal/remove", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.removeGoal);
+router.patch("/fixtures/:id/match-rating", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.setMatchRating);
+router.patch("/fixtures/:id/man-of-the-match", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.setManOfTheMatch);
 router.post("/fixtures/:id/substitution", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.addSubstitution);
 router.post("/fixtures/:id/event/remove", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.removeMatchEvent);
 router.post("/fixtures/:id/note", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.addMatchNote);

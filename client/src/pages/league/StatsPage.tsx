@@ -7,11 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import type { PlayerStat } from "@/types";
-import { Trophy, Target, Shield, Zap, Eye, Swords, Award, ChevronLeft } from "lucide-react";
+import { Trophy, Target, Shield, Zap, Eye, Swords, Award, Star, ChevronLeft } from "lucide-react";
 
 const statCategories = [
   { key: "goals", label: "Top Scorers", icon: Trophy, color: "text-yellow-500" },
   { key: "assists", label: "Top Assists", icon: Target, color: "text-blue-500" },
+  { key: "motm", label: "Man of the Match", icon: Star, color: "text-amber-500" },
   { key: "cleanSheets", label: "Clean Sheets", icon: Shield, color: "text-green-500" },
   { key: "saves", label: "Most Saves", icon: Eye, color: "text-purple-500" },
   { key: "appearances", label: "Most Appearances", icon: Award, color: "text-orange-500" },
@@ -76,7 +77,9 @@ export function StatsPage() {
               ) : (
                 stats.map((s, i) => {
                   const cat = statCategories.find((c) => c.key === activeStat);
-                  const value = s[activeStat as keyof PlayerStat] as number | undefined ?? 0;
+                  const value = activeStat === "motm"
+                    ? ((s as any).manOfTheMatch ?? 0)
+                    : (s[activeStat as keyof PlayerStat] as number | undefined ?? 0);
                   return (
                     <div key={s.id} className="flex items-center gap-4 rounded-lg border p-3">
                       <span className={`w-6 text-center text-lg font-bold ${i < 3 ? cat?.color : "text-muted-foreground"}`}>

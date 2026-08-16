@@ -49,6 +49,16 @@ function PlayerLink({ player, children }: { player: { id: string; slug?: string;
 const HOME_COLOR = "#22c55e";
 const AWAY_COLOR = "#38bdf8";
 
+function TeamDotBadge({ teamName, color, logoUrl }: { teamName?: string; color?: string; logoUrl?: string }) {
+  if (!teamName) return null;
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1.5 rounded-full bg-muted/60 px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+      {logoUrl ? <img src={logoUrl} alt="" className="h-3.5 w-3.5 rounded-full object-cover" /> : color ? <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} /> : null}
+      <span className="truncate">{teamName}</span>
+    </span>
+  );
+}
+
 function MatchLineupsSection({ fixtureId, homeTeam, awayTeam }: { fixtureId: string; homeTeam: Team; awayTeam: Team }) {
   const { data: lineups, isLoading } = useLineup(fixtureId);
 
@@ -131,9 +141,13 @@ export function FixtureDetailPage() {
 
         {/* Match Header */}
         <div className="relative mb-8 overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 to-slate-800 p-8 text-white">
-          <Badge className={`absolute right-4 top-4 ${getMatchStatusColor(fixture.status)}`}>
-            {fixture.status}
-          </Badge>
+          <div className="absolute right-4 top-4 flex flex-col items-end gap-1.5">
+            <Badge className={`${getMatchStatusColor(fixture.status)}`}>
+              {fixture.status}
+            </Badge>
+            {fixture.isFriendly && <Badge className="bg-violet-500/90 hover:bg-violet-500/90">Friendly</Badge>}
+            {!fixture.isFriendly && fixture.competition?.name && <Badge className="bg-white/10 text-white hover:bg-white/10">{fixture.competition.name}</Badge>}
+          </div>
           <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
             <div className="flex flex-col items-center gap-2 sm:flex-1">
               <img src={fixture.homeTeam.logoUrl || "/placeholder.svg"} alt="" className="h-12 w-12 rounded-full bg-white/10 p-1.5 sm:h-16 sm:w-16 sm:p-2" />
@@ -192,8 +206,13 @@ export function FixtureDetailPage() {
                 <CardHeader><CardTitle>Goals</CardTitle></CardHeader>
                 <CardContent className="space-y-2">
                   {fixture.goals.map((goal) => (
-                    <div key={goal.id} className="flex items-center gap-3 rounded-lg border p-3">
+                    <div key={goal.id} className="flex flex-wrap items-center gap-3 rounded-lg border p-3">
                       <Swords className="h-4 w-4 text-green-500" />
+                      <TeamDotBadge
+                        teamName={goal.player.teamId === fixture.homeTeamId ? fixture.homeTeam.shortName || fixture.homeTeam.name : goal.player.teamId === fixture.awayTeamId ? fixture.awayTeam.shortName || fixture.awayTeam.name : undefined}
+                        color={goal.player.teamId === fixture.homeTeamId ? HOME_COLOR : goal.player.teamId === fixture.awayTeamId ? AWAY_COLOR : undefined}
+                        logoUrl={goal.player.teamId === fixture.homeTeamId ? fixture.homeTeam.logoUrl : goal.player.teamId === fixture.awayTeamId ? fixture.awayTeam.logoUrl : undefined}
+                      />
                       <PlayerLink player={goal.player}>
                         <span className="text-sm font-medium">{goal.player.firstName} {goal.player.lastName}</span>
                       </PlayerLink>
@@ -212,8 +231,13 @@ export function FixtureDetailPage() {
                 <CardHeader><CardTitle>Cards</CardTitle></CardHeader>
                 <CardContent className="space-y-2">
                   {fixture.cards.map((card) => (
-                    <div key={card.id} className="flex items-center gap-3 rounded-lg border p-3">
+                    <div key={card.id} className="flex flex-wrap items-center gap-3 rounded-lg border p-3">
                       <div className={`h-4 w-3 rounded-sm ${card.type === "RED" ? "bg-red-500" : "bg-yellow-400"}`} />
+                      <TeamDotBadge
+                        teamName={card.player.teamId === fixture.homeTeamId ? fixture.homeTeam.shortName || fixture.homeTeam.name : card.player.teamId === fixture.awayTeamId ? fixture.awayTeam.shortName || fixture.awayTeam.name : undefined}
+                        color={card.player.teamId === fixture.homeTeamId ? HOME_COLOR : card.player.teamId === fixture.awayTeamId ? AWAY_COLOR : undefined}
+                        logoUrl={card.player.teamId === fixture.homeTeamId ? fixture.homeTeam.logoUrl : card.player.teamId === fixture.awayTeamId ? fixture.awayTeam.logoUrl : undefined}
+                      />
                       <PlayerLink player={card.player}>
                         <span className="text-sm font-medium">{card.player.firstName} {card.player.lastName}</span>
                       </PlayerLink>
@@ -231,8 +255,13 @@ export function FixtureDetailPage() {
                 <CardHeader><CardTitle>Substitutions</CardTitle></CardHeader>
                 <CardContent className="space-y-2">
                   {fixture.substitutions.map((sub) => (
-                    <div key={sub.id} className="flex items-center gap-3 rounded-lg border p-3 text-sm">
+                    <div key={sub.id} className="flex flex-wrap items-center gap-3 rounded-lg border p-3 text-sm">
                       <ArrowRightLeft className="h-4 w-4 text-blue-500" />
+                      <TeamDotBadge
+                        teamName={sub.playerOff.teamId === fixture.homeTeamId ? fixture.homeTeam.shortName || fixture.homeTeam.name : sub.playerOff.teamId === fixture.awayTeamId ? fixture.awayTeam.shortName || fixture.awayTeam.name : undefined}
+                        color={sub.playerOff.teamId === fixture.homeTeamId ? HOME_COLOR : sub.playerOff.teamId === fixture.awayTeamId ? AWAY_COLOR : undefined}
+                        logoUrl={sub.playerOff.teamId === fixture.homeTeamId ? fixture.homeTeam.logoUrl : sub.playerOff.teamId === fixture.awayTeamId ? fixture.awayTeam.logoUrl : undefined}
+                      />
                       <PlayerLink player={sub.playerOff}>
                         <span className="text-muted-foreground line-through">{sub.playerOff.firstName} {sub.playerOff.lastName}</span>
                       </PlayerLink>
@@ -251,16 +280,22 @@ export function FixtureDetailPage() {
             <MatchLineupsSection fixtureId={fixture.id} homeTeam={fixture.homeTeam} awayTeam={fixture.awayTeam} />
 
             {/* Player Ratings */}
-            {fixture.matchPlayerRatings && fixture.matchPlayerRatings.length > 0 && (
+            {(fixture.matchPlayerRatings && fixture.matchPlayerRatings.length > 0) && (
               <Card>
                 <CardHeader><CardTitle>Player Ratings</CardTitle></CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    {fixture.matchPlayerRatings.sort((a, b) => b.rating - a.rating).slice(0, 10).map((r) => (
-                      <div key={r.id} className="flex items-center justify-between rounded-lg border p-2">
+                    {[...fixture.matchPlayerRatings].sort((a, b) => b.rating - a.rating).map((r) => (
+                      <div key={r.id} className="flex flex-wrap items-center gap-3 rounded-lg border p-2">
+                        <TeamDotBadge
+                          teamName={r.player.teamId === fixture.homeTeamId ? fixture.homeTeam.shortName || fixture.homeTeam.name : r.player.teamId === fixture.awayTeamId ? fixture.awayTeam.shortName || fixture.awayTeam.name : undefined}
+                          color={r.player.teamId === fixture.homeTeamId ? HOME_COLOR : r.player.teamId === fixture.awayTeamId ? AWAY_COLOR : undefined}
+                          logoUrl={r.player.teamId === fixture.homeTeamId ? fixture.homeTeam.logoUrl : r.player.teamId === fixture.awayTeamId ? fixture.awayTeam.logoUrl : undefined}
+                        />
                         <PlayerLink player={r.player}>
                           <span className="text-sm">{r.player.firstName} {r.player.lastName}</span>
                         </PlayerLink>
+                        <div className="flex-1" />
                         <Badge variant={r.rating >= 8 ? "default" : "secondary"}>{r.rating.toFixed(1)}</Badge>
                       </div>
                     ))}
@@ -303,21 +338,31 @@ export function FixtureDetailPage() {
                   { label: "Fouls", home: fixture.homeFouls, away: fixture.awayFouls },
                   { label: "Offsides", home: fixture.homeOffsides, away: fixture.awayOffsides },
                   { label: "Expected Goals", home: fixture.homeExpectedGoals, away: fixture.awayExpectedGoals },
-                ].map((stat) => (
-                  stat.home != null && stat.away != null && (
+                ].map((stat) => {
+                  const hasData = stat.home != null && stat.away != null;
+                  const home = hasData ? (Number(stat.home) || 0) : 0;
+                  const away = hasData ? (Number(stat.away) || 0) : 0;
+                  const total = home + away;
+                  return (
                     <div key={stat.label}>
                       <p className="mb-1 text-center text-xs text-muted-foreground">{stat.label}</p>
                       <div className="flex items-center gap-2">
-                        <span className="w-8 text-right text-sm font-medium">{stat.home}{stat.unit || ""}</span>
-                        <div className="flex-1 flex gap-0.5 h-2">
-                          <div className="bg-primary rounded-l-full" style={{ width: `${(stat.home / (stat.home + stat.away)) * 100}%` }} />
-                          <div className="bg-destructive rounded-r-full" style={{ width: `${(stat.away / (stat.home + stat.away)) * 100}%` }} />
+                        <span className="w-8 text-right text-sm font-medium">{hasData ? `${home}${stat.unit || ""}` : "-"}</span>
+                        <div className="flex h-2 flex-1 gap-0.5">
+                          {hasData ? (
+                            <>
+                              <div className="rounded-l-full bg-primary" style={{ width: `${total ? (home / total) * 100 : 50}%` }} />
+                              <div className="rounded-r-full bg-destructive" style={{ width: `${total ? (away / total) * 100 : 50}%` }} />
+                            </>
+                          ) : (
+                            <div className="w-full rounded-full bg-muted" />
+                          )}
                         </div>
-                        <span className="w-8 text-sm font-medium">{stat.away}{stat.unit || ""}</span>
+                        <span className="w-8 text-sm font-medium">{hasData ? `${away}${stat.unit || ""}` : "-"}</span>
                       </div>
                     </div>
-                  )
-                ))}
+                  );
+                })}
               </CardContent>
             </Card>
 
@@ -325,17 +370,21 @@ export function FixtureDetailPage() {
             <Card className="mt-6">
               <CardHeader><CardTitle>Match Info</CardTitle></CardHeader>
               <CardContent className="space-y-2 text-sm">
-                {fixture.referee && <div className="flex justify-between"><span className="text-muted-foreground">Referee</span><span>{fixture.referee}</span></div>}
-                {fixture.attendance && <div className="flex justify-between"><span className="text-muted-foreground">Attendance</span><span>{fixture.attendance.toLocaleString()}</span></div>}
-                {fixture.manOfTheMatch && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Man of the Match</span>
+                <div className="flex justify-between"><span className="text-muted-foreground">Competition</span><span>{fixture.isFriendly ? "Friendly" : fixture.competition?.name || "League"}</span></div>
+                {fixture.round != null && <div className="flex justify-between"><span className="text-muted-foreground">Round</span><span>{fixture.round}</span></div>}
+                {fixture.stadium && <div className="flex justify-between"><span className="text-muted-foreground">Venue</span><span>{fixture.stadium}</span></div>}
+                <div className="flex justify-between"><span className="text-muted-foreground">Referee</span><span>{fixture.referee || "—"}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Attendance</span><span>{fixture.attendance ? fixture.attendance.toLocaleString() : "—"}</span></div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Man of the Match</span>
+                  {fixture.manOfTheMatch ? (
                     <PlayerLink player={fixture.manOfTheMatch}>
                       <span className="font-medium">{fixture.manOfTheMatch.firstName} {fixture.manOfTheMatch.lastName}</span>
                     </PlayerLink>
-                  </div>
-                )}
-                {fixture.competition && <div className="flex justify-between"><span className="text-muted-foreground">Competition</span><span>{fixture.competition.name}</span></div>}
+                  ) : (
+                    <span>—</span>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </div>

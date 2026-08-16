@@ -237,7 +237,7 @@ export interface Lineup {
 
 export interface MatchPlayerRating {
   id: string;
-  player: { id: string; slug?: string; firstName: string; lastName: string };
+  player: { id: string; slug?: string; firstName: string; lastName: string; teamId?: string };
   rating: number;
 }
 

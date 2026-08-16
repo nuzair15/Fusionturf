@@ -102,6 +102,8 @@ export interface LiveFixtureInfo {
   awayOffsides?: number;
   homeExpectedGoals?: number;
   awayExpectedGoals?: number;
+  manOfTheMatchId?: string | null;
+  matchPlayerRatings?: Record<string, number>;
 }
 
 export interface LiveMatchData {

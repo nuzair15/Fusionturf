@@ -5,13 +5,20 @@ import type { TimelineEvent } from "@/types/live";
 import { EventFilters, type TimelineFilter } from "./EventFilters";
 import { TimelineCard } from "./TimelineCard";
 
-export function Timeline({ events, homeTeamId, onDelete, onUndo, onCopy, onView }: {
+export const HOME_COLOR = "#22c55e";
+export const AWAY_COLOR = "#3b82f6";
+
+export function Timeline({ events, homeTeamId, awayTeamId, homeName, awayName, onDelete, onUndo, onCopy, onView, onEditStats }: {
   events: TimelineEvent[];
   homeTeamId: string;
+  awayTeamId: string;
+  homeName?: string;
+  awayName?: string;
   onDelete: (event: TimelineEvent) => void;
   onUndo: (event: TimelineEvent) => void;
   onCopy: (event: TimelineEvent) => void;
   onView: (event: TimelineEvent) => void;
+  onEditStats?: (event: TimelineEvent) => void;
 }) {
   const [filter, setFilter] = useState<TimelineFilter>("all");
 
@@ -50,11 +57,13 @@ export function Timeline({ events, homeTeamId, onDelete, onUndo, onCopy, onView 
             <TimelineCard
               key={e.key}
               event={e}
-              homeColor={e.teamId === homeTeamId ? "#22c55e" : undefined}
+              stripColor={e.teamId === homeTeamId ? HOME_COLOR : e.teamId === awayTeamId ? AWAY_COLOR : undefined}
+              teamName={e.teamId === homeTeamId ? homeName : e.teamId === awayTeamId ? awayName : undefined}
               onDelete={onDelete}
               onUndo={onUndo}
               onCopy={onCopy}
               onView={onView}
+              onEditStats={onEditStats}
             />
           ))}
         </AnimatePresence>
