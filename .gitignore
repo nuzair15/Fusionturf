@@ -8,3 +8,6 @@ build
 coverage
 .turbo
 tmp
+client/tsconfig.tsbuildinfo
+server/tsconfig.tsbuildinfo
+*.tsbuildinfo
