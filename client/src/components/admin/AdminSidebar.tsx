@@ -34,6 +34,7 @@ const navGroups: NavGroup[] = [
     items: [
       { id: "seasons", label: "League", icon: Trophy },
       { id: "fixtures", label: "Fixtures", icon: Activity },
+      { id: "competitions", label: "Competitions", icon: Trophy },
       { id: "standings", label: "Standings", icon: GitCompare },
       { id: "teams", label: "Teams", icon: Users },
       { id: "players", label: "Players", icon: Users },

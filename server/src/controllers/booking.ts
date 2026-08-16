@@ -499,7 +499,11 @@ export const adminUpdateBooking = async (req: Request, res: Response, next: Next
     const { date, startTime, endTime } = req.body;
     const current = await prisma.booking.findUnique({ where: { id: req.params.id }, include: { turf: { include: { venue: true } } }, });
     if (!current) throw new AppError("Booking not found", 404);
+    if (current.status === "CANCELLED" || current.status === "COMPLETED") {
+      throw new AppError("Cancelled or completed bookings cannot be rescheduled", 400);
+    }
     const nextDate = date ? new Date(date) : current.date;
+    if (Number.isNaN(nextDate.getTime())) throw new AppError("Invalid booking date", 400);
     const nextStart = startTime || current.startTime;
     const nextEnd = endTime || current.endTime;
     let pricing;
@@ -516,6 +520,9 @@ export const adminUpdateBooking = async (req: Request, res: Response, next: Next
       prisma.booking.update({ where: { id: req.params.id }, data: updateData }),
       prisma.payment.updateMany({ where: { bookingId: req.params.id, status: "PENDING" }, data: { amount: updateData.totalAmount } }),
     ]);
+    if (nextDate.getTime() !== current.date.getTime() || nextStart !== current.startTime || nextEnd !== current.endTime) {
+      createNotification(current.userId, "Booking time updated", `Your booking ${current.bookingNumber} has been moved to ${nextDate.toISOString().slice(0, 10)} from ${nextStart} to ${nextEnd}.`, "booking").catch(() => {});
+    }
     res.json(booking);
   } catch (error) {
     next(error);

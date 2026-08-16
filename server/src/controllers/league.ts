@@ -4,6 +4,13 @@ import prisma from "../config/database.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { paginate, paginatedResponse, calculateMatchStats, searchPlayerIds } from "../utils/helpers.js";
 import { LineupRow, serializeTeamLineup } from "../utils/lineup.js";
+import { recalculateStandings } from "../services/league-system.js";
+
+async function resolveSeasonId(requested?: unknown): Promise<string | undefined> {
+  if (requested) return String(requested);
+  const current = await prisma.season.findFirst({ where: { isCurrent: true, isActive: true }, select: { id: true } });
+  return current?.id;
+}
 
 // ─── Seasons ───
 
@@ -32,11 +39,32 @@ export const getCurrentSeason = async (_req: Request, res: Response, next: NextF
   }
 };
 
+export const getCompetitionBracket = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const competition = await prisma.competition.findUnique({
+      where: { id: req.params.id },
+      include: {
+        bracketMatches: {
+          include: {
+            homeTeam: { select: { id: true, name: true, shortName: true, logoUrl: true } },
+            awayTeam: { select: { id: true, name: true, shortName: true, logoUrl: true } },
+            winnerTeam: { select: { id: true, name: true, shortName: true } },
+            fixture: { select: { id: true, matchDate: true, kickoffTime: true, status: true, homeScore: true, awayScore: true } },
+          },
+          orderBy: [{ roundNumber: "asc" }, { position: "asc" }],
+        },
+      },
+    });
+    if (!competition) throw new AppError("Competition not found", 404);
+    res.json(competition);
+  } catch (error) { next(error); }
+};
+
 // ─── Teams ───
 
 export const getTeams = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { seasonId } = req.query;
+    const seasonId = await resolveSeasonId(req.query.seasonId);
     const where: any = { isActive: true };
     if (seasonId) where.seasonId = seasonId;
 
@@ -73,7 +101,7 @@ export const getTeamBySlug = async (req: Request, res: Response, next: NextFunct
           orderBy: { matchDate: "desc" },
         },
         sponsors: { where: { isActive: true } },
-        galleries: { take: 10, orderBy: { createdAt: "desc" } },
+        galleries: { where: { isActive: true }, take: 10, orderBy: { createdAt: "desc" } },
         news: { take: 5, orderBy: { createdAt: "desc" } },
       },
     });
@@ -122,10 +150,32 @@ export const getTeamBySlug = async (req: Request, res: Response, next: NextFunct
       cardCounts.set(row.playerId, current);
     }
 
+    const [playerAppearances, playerLineups] = await Promise.all([
+      prisma.matchdaySquadEntry.findMany({
+        where: { playerId: { in: playerIds }, squad: { fixtureId: { in: fixtureIds } } },
+        select: { playerId: true, squad: { select: { fixtureId: true } } },
+      }),
+      prisma.lineup.findMany({
+        where: { playerId: { in: playerIds }, fixtureId: { in: fixtureIds } },
+        select: { playerId: true, fixtureId: true },
+      }),
+    ]);
+    const appearanceMap = new Map<string, Set<string>>();
+    playerAppearances.forEach((entry) => {
+      const fixtures = appearanceMap.get(entry.playerId) || new Set<string>();
+      fixtures.add(entry.squad.fixtureId);
+      appearanceMap.set(entry.playerId, fixtures);
+    });
+    playerLineups.forEach((entry) => {
+      const fixtures = appearanceMap.get(entry.playerId) || new Set<string>();
+      fixtures.add(entry.fixtureId);
+      appearanceMap.set(entry.playerId, fixtures);
+    });
+
     team.players = team.players.map((p) => ({
       ...p,
       friendlyStats: {
-        appearances: friendlyFixtures.length,
+        appearances: appearanceMap.get(p.id)?.size || 0,
         goals: goalCounts.get(p.id) || 0,
         assists: assistCounts.get(p.id) || 0,
         yellowCards: cardCounts.get(p.id)?.yellow || 0,
@@ -147,7 +197,8 @@ export const getPlayers = async (req: Request, res: Response, next: NextFunction
   try {
     const { page, limit, skip } = paginate(req.query);
     const where: any = { isActive: true };
-    if (req.query.seasonId) where.seasonId = req.query.seasonId;
+    const seasonId = await resolveSeasonId(req.query.seasonId);
+    if (seasonId) where.seasonId = seasonId;
     if (req.query.teamId) where.teamId = req.query.teamId;
     if (req.query.position) where.position = req.query.position;
     if (req.query.search) {
@@ -193,17 +244,66 @@ export const getPlayers = async (req: Request, res: Response, next: NextFunction
 export const getPlayerBySlug = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const player = await prisma.player.findFirst({
-      where: { slug: req.params.slug },
+      where: { slug: req.params.slug, isActive: true },
       include: {
         team: true,
         homeStats: { include: { season: true, team: true } },
         friendlyStats: { include: { season: true, team: true } },
         awardNominations: { include: { award: true } },
-        galleries: { take: 10, orderBy: { createdAt: "desc" } },
+        galleries: { where: { isActive: true }, take: 10, orderBy: { createdAt: "desc" } },
+        transfers: {
+          include: {
+            fromTeam: { select: { id: true, name: true, slug: true } },
+            toTeam: { select: { id: true, name: true, slug: true } },
+            fromSeason: { select: { id: true, name: true } },
+            toSeason: { select: { id: true, name: true } },
+          },
+          orderBy: { transferredAt: "desc" },
+        },
       },
     });
     if (!player) throw new AppError("Player not found", 404);
-    res.json(player);
+
+    // Build a profile-ready view even when an admin has not created a manual
+    // stats row yet. Appearances are based only on lineup or matchday-squad
+    // participation, never on team fixture totals.
+    const seasonIds = [...new Set([player.seasonId, ...player.homeStats.map((s) => s.seasonId), ...player.friendlyStats.map((s) => s.seasonId)])];
+    const profileStats = (await Promise.all(seasonIds.map(async (seasonId) => {
+      const rows = await Promise.all([false, true].map(async (friendly) => {
+        const fixtures = await prisma.fixture.findMany({
+          where: {
+            seasonId,
+            status: "COMPLETED",
+            ...(friendly
+              ? { OR: [{ isFriendly: true }, { competition: { is: { type: "FRIENDLY" } } }] }
+              : { isFriendly: false, OR: [{ competitionId: null }, { competition: { is: { type: { not: "FRIENDLY" } } } }] }),
+          },
+          select: { id: true },
+        });
+        const fixtureIds = fixtures.map((f) => f.id);
+        const [lineups, squadEntries, goals, assists, cards, ratings] = fixtureIds.length ? await Promise.all([
+          prisma.lineup.findMany({ where: { playerId: player.id, fixtureId: { in: fixtureIds } }, select: { fixtureId: true } }),
+          prisma.matchdaySquadEntry.findMany({ where: { playerId: player.id, squad: { fixtureId: { in: fixtureIds } } }, select: { squad: { select: { fixtureId: true } } } }),
+          prisma.goal.count({ where: { playerId: player.id, fixtureId: { in: fixtureIds } } }),
+          prisma.assist.count({ where: { playerId: player.id, fixtureId: { in: fixtureIds } } }),
+          prisma.card.findMany({ where: { playerId: player.id, fixtureId: { in: fixtureIds } }, select: { type: true } }),
+          prisma.matchPlayerRating.aggregate({ where: { playerId: player.id, fixtureId: { in: fixtureIds } }, _avg: { rating: true } }),
+        ]) : [[], [], 0, 0, [], { _avg: { rating: null } }];
+        const eligible = new Set([...lineups.map((x: any) => x.fixtureId), ...squadEntries.map((x: any) => x.squad.fixtureId)]).size;
+        const manual: any = (friendly ? player.friendlyStats : player.homeStats).find((s) => s.seasonId === seasonId && s.teamId === player.teamId);
+        return {
+          ...(manual || {}), id: manual?.id || `${friendly ? "friendly" : "league"}-${seasonId}-${player.id}`,
+          seasonId, season: manual?.season || { id: seasonId, name: "Season" }, team: manual?.team || player.team,
+          competition: friendly ? "FRIENDLY" : "LEAGUE", appearances: Math.min(manual?.appearances ?? eligible, eligible),
+          goals: manual?.goals ?? goals, assists: manual?.assists ?? assists,
+          yellowCards: manual?.yellowCards ?? cards.filter((c: any) => c.type === "YELLOW").length,
+          redCards: manual?.redCards ?? cards.filter((c: any) => c.type === "RED" || c.type === "SECOND_YELLOW").length,
+          averageRating: manual?.averageRating ?? ratings._avg.rating,
+        };
+      }));
+      return rows;
+    }))).flat();
+    res.json({ ...player, profileStats });
   } catch (error) {
     next(error);
   }
@@ -215,7 +315,8 @@ export const getFixtures = async (req: Request, res: Response, next: NextFunctio
   try {
     const { page, limit, skip } = paginate(req.query);
     const where: any = {};
-    if (req.query.seasonId) where.seasonId = req.query.seasonId;
+    const seasonId = await resolveSeasonId(req.query.seasonId);
+    if (seasonId) where.seasonId = seasonId;
     if (req.query.teamId) where.OR = [{ homeTeamId: req.query.teamId }, { awayTeamId: req.query.teamId }];
     if (req.query.status) where.status = req.query.status;
     if (req.query.competitionId) where.competitionId = req.query.competitionId;
@@ -330,10 +431,14 @@ export const getFixtureLineups = async (req: Request, res: Response, next: NextF
 export const getStandings = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const where: any = {};
-    if (req.query.seasonId) where.seasonId = req.query.seasonId;
+    const seasonId = await resolveSeasonId(req.query.seasonId);
+    if (seasonId) {
+      where.seasonId = seasonId;
+      await recalculateStandings(String(seasonId));
+    }
     if (req.query.competitionId) {
       const fixtures = await prisma.fixture.findMany({
-        where: { competitionId: req.query.competitionId as string, status: "COMPLETED" },
+        where: { competitionId: req.query.competitionId as string, seasonId, status: "COMPLETED" },
         select: { homeTeamId: true, awayTeamId: true },
       });
       const teamIds = [...new Set(fixtures.flatMap((fixture) => [fixture.homeTeamId, fixture.awayTeamId]))];
@@ -358,7 +463,8 @@ export const getStandings = async (req: Request, res: Response, next: NextFuncti
 export const getTopScorers = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const where: any = {};
-    if (req.query.seasonId) where.seasonId = req.query.seasonId;
+    const seasonId = await resolveSeasonId(req.query.seasonId);
+    if (seasonId) where.seasonId = seasonId;
     const players = await prisma.playerStat.findMany({
       where,
       include: {
@@ -377,7 +483,8 @@ export const getTopScorers = async (req: Request, res: Response, next: NextFunct
 export const getTopAssists = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const where: any = {};
-    if (req.query.seasonId) where.seasonId = req.query.seasonId;
+    const seasonId = await resolveSeasonId(req.query.seasonId);
+    if (seasonId) where.seasonId = seasonId;
 
     const players = await prisma.playerStat.findMany({
       where,
@@ -397,17 +504,18 @@ export const getTopAssists = async (req: Request, res: Response, next: NextFunct
 export const getPlayerStats = async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (req.query.friendly === "true") {
-      const seasonId = req.query.seasonId as string | undefined;
+      const seasonId = await resolveSeasonId(req.query.seasonId);
       const fixtures = await prisma.fixture.findMany({
         where: { seasonId, status: "COMPLETED", OR: [{ isFriendly: true }, { competition: { is: { type: "FRIENDLY" } } }] },
         select: { id: true, homeTeamId: true, awayTeamId: true },
       });
       const fixtureIds = fixtures.map((f) => f.id);
-      const [goals, assists, cards, lineups, players] = await Promise.all([
+      const [goals, assists, cards, lineups, squadEntries, players] = await Promise.all([
         prisma.goal.groupBy({ by: ["playerId"], where: { fixtureId: { in: fixtureIds } }, _count: { _all: true } }),
         prisma.assist.groupBy({ by: ["playerId"], where: { fixtureId: { in: fixtureIds } }, _count: { _all: true } }),
         prisma.card.groupBy({ by: ["playerId", "type"], where: { fixtureId: { in: fixtureIds } }, _count: { _all: true } }),
         prisma.lineup.findMany({ where: { fixtureId: { in: fixtureIds } }, select: { fixtureId: true, playerId: true } }),
+        prisma.matchdaySquadEntry.findMany({ where: { squad: { fixtureId: { in: fixtureIds } } }, select: { playerId: true, squad: { select: { fixtureId: true } } } }),
         prisma.player.findMany({ where: { seasonId, isActive: true }, include: { team: { select: { name: true, slug: true, logoUrl: true } } } }),
       ]);
       const goalMap = new Map(goals.map((g) => [g.playerId, g._count._all]));
@@ -416,11 +524,13 @@ export const getPlayerStats = async (req: Request, res: Response, next: NextFunc
       cards.forEach((c) => { const x = cardMap.get(c.playerId) || { yellow: 0, red: 0 }; if (c.type === "YELLOW") x.yellow += c._count._all; else x.red += c._count._all; cardMap.set(c.playerId, x); });
       const appearanceMap = new Map<string, Set<string>>();
       lineups.forEach((lineup) => { const set = appearanceMap.get(lineup.playerId) || new Set<string>(); set.add(lineup.fixtureId); appearanceMap.set(lineup.playerId, set); });
+      squadEntries.forEach((entry) => { const set = appearanceMap.get(entry.playerId) || new Set<string>(); set.add(entry.squad.fixtureId); appearanceMap.set(entry.playerId, set); });
       const result = players.map((p) => ({ id: `friendly-${p.id}`, playerId: p.id, teamId: p.teamId, player: p, team: p.team, appearances: appearanceMap.get(p.id)?.size || 0, goals: goalMap.get(p.id) || 0, assists: assistMap.get(p.id) || 0, yellowCards: cardMap.get(p.id)?.yellow || 0, redCards: cardMap.get(p.id)?.red || 0 })).filter((p) => p.appearances || p.goals || p.assists || p.yellowCards || p.redCards);
       return res.json(result.sort((a, b) => (b.goals - a.goals) || (b.assists - a.assists)));
     }
     const where: any = {};
-    if (req.query.seasonId) where.seasonId = req.query.seasonId;
+    const seasonId = await resolveSeasonId(req.query.seasonId);
+    if (seasonId) where.seasonId = seasonId;
     if (req.query.stat) {
       const statMap: Record<string, any> = {
         goals: { goals: "desc" },

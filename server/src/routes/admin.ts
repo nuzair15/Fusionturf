@@ -39,9 +39,16 @@ router.patch("/player-stats/:playerId", authorize("SUPER_ADMIN", "LEAGUE_ADMIN",
 
 // Fixtures
 router.get("/fixtures", admin.getFixtures);
+router.get("/competitions", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.getCompetitions);
+router.get("/competitions/:id/bracket", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.getCompetitionBracket);
+router.post("/competitions/:id/bracket/generate", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.generateCompetitionBracket);
+router.get("/fixtures/:id/result-history", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.getFixtureResultHistory);
 router.post("/fixtures", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.createFixture);
 router.patch("/fixtures/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.updateFixture);
 router.patch("/fixtures/:id/status", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.updateFixtureStatus);
+router.patch("/fixtures/:id/referee", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.assignFixtureReferee);
+router.post("/fixtures/:id/reschedule", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.rescheduleFixture);
+router.post("/fixtures/:id/settle", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.settleFixtureOutcome);
 router.patch("/fixtures/:id/score", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.updateFixtureScore);
 router.delete("/fixtures/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.deleteFixture);
 router.put("/fixtures/:id/lineups", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.updateFixtureLineups);
@@ -131,6 +138,9 @@ router.post("/seasons/:id/create-next", authorize("SUPER_ADMIN", "LEAGUE_ADMIN")
 router.post("/fixtures/:id/squad", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.adminSelectMatchdaySquad);
 router.get("/teams/:id/validate-squad", admin.adminValidateSquad);
 router.post("/process-match-result/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.adminProcessMatchResult);
+router.get("/standings/adjustments", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.getStandingAdjustments);
+router.post("/standings/adjustments", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.createStandingAdjustment);
+router.delete("/standings/adjustments/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.deleteStandingAdjustment);
 
 // Live Match Stats
 router.get("/fixtures/:id/live-stats", admin.getLiveStats);

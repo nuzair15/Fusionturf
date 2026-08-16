@@ -21,7 +21,15 @@ export const getAdminPlayerStats = async (req: Request, res: Response, next: Nex
     const friendly = req.query.friendly === "true";
     if (!seasonId) throw new AppError("seasonId is required", 400);
     const stats = friendly
-      ? await prisma.friendlyPlayerStat.findMany({ where: { seasonId }, include: { player: true, team: true }, orderBy: { player: { firstName: "asc" } } })
+      ? await prisma.player.findMany({
+          where: { seasonId, isActive: true, teamId: { not: null } },
+          include: { team: true, friendlyStats: { where: { seasonId } } },
+          orderBy: { firstName: "asc" },
+        }).then((players) => players.map((player) => ({
+          ...(player.friendlyStats[0] || { id: `friendly-${player.id}`, seasonId, playerId: player.id, teamId: player.teamId, appearances: 0, goals: 0, assists: 0, minutesPlayed: 0, shots: 0, shotsOnTarget: 0, yellowCards: 0, redCards: 0, averageRating: null }),
+          player,
+          team: player.team,
+        })))
       : await prisma.playerStat.findMany({ where: { seasonId }, include: { player: true, team: true }, orderBy: { player: { firstName: "asc" } } });
     res.json(stats);
   } catch (e) { next(e); }

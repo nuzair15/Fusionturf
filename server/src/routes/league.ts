@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   getSeasons, getCurrentSeason, getTeams, getTeamBySlug,
+  getCompetitionBracket,
   getPlayers, getPlayerBySlug, getFixtures, getFixtureById,
   getStandings, getTopScorers, getTopAssists, getPlayerStats, getTeamStats,
   getAwards, getAwardBySlug, voteForAward, getNews, getGallery, getSponsors,
@@ -15,6 +16,7 @@ const router = Router();
 // Seasons
 router.get("/seasons", getSeasons);
 router.get("/seasons/current", getCurrentSeason);
+router.get("/competitions/:id/bracket", getCompetitionBracket);
 
 // Teams
 router.get("/teams", getTeams);

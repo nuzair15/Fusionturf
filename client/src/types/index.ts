@@ -161,6 +161,18 @@ export interface Fixture {
   homeExpectedGoals?: number;
   awayExpectedGoals?: number;
   referee?: string;
+  referee2?: string;
+  refereeAssignedAt?: string;
+  originalMatchDate?: string;
+  postponementReason?: string;
+  rescheduleReason?: string;
+  rescheduledAt?: string;
+  extraTimeHomeScore?: number;
+  extraTimeAwayScore?: number;
+  penaltiesHomeScore?: number;
+  penaltiesAwayScore?: number;
+  winnerTeamId?: string;
+  outcome?: string;
   stadium?: string;
   attendance?: number;
   highlights?: string;
@@ -176,6 +188,7 @@ export interface Fixture {
   galleries?: Gallery[];
   season?: Season;
   competition?: { name: string };
+  isFriendly?: boolean;
 }
 
 export type MatchStatus = "SCHEDULED" | "LIVE" | "PAUSED" | "HALF_TIME" | "EXTRA_TIME" | "PENALTIES" | "POSTPONED" | "CANCELLED" | "COMPLETED";
@@ -439,6 +452,8 @@ export interface News {
 
 export interface Gallery {
   id: string;
+  playerId?: string;
+  teamId?: string;
   title: string;
   imageUrl: string;
   videoUrl?: string;
@@ -451,11 +466,13 @@ export interface Competition {
   seasonId: string;
   name: string;
   slug: string;
-  type: "LEAGUE" | "KNOCKOUT" | "GROUP";
+  type: "LEAGUE" | "KNOCKOUT" | "GROUP" | "CUP" | "FRIENDLY" | "OTHER";
   isActive: boolean;
   createdAt: string;
   season?: Season;
-  _count?: { fixtures: number };
+  bracketSize?: number;
+  bracketStatus?: string;
+  _count?: { fixtures: number; bracketMatches?: number };
 }
 
 export interface Sponsor {

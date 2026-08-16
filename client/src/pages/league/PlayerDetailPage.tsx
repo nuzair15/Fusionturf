@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import type { Player } from "@/types";
-import { ChevronLeft, MapPin, Ruler, Weight, Award, Footprints } from "lucide-react";
+import { ChevronLeft, MapPin, Ruler, Weight, Award, Footprints, Image as ImageIcon, Play } from "lucide-react";
 import { FollowButton } from "@/components/league/FollowButton";
 
 export function PlayerDetailPage() {
@@ -21,16 +21,18 @@ export function PlayerDetailPage() {
   if (isLoading) return <div className="mx-auto max-w-7xl px-4 py-8"><div className="h-96 animate-pulse rounded-xl bg-muted" /></div>;
   if (!player) return null;
 
-  const statsBySeason = player.homeStats?.reduce<Record<string, { season: any; team: any; stats: any[] }>>((acc, s) => {
+  const profileStats = (player as any).profileStats || [];
+  const leagueStats = profileStats.filter((s: any) => s.competition === "LEAGUE");
+  const statsBySeason = leagueStats.reduce((acc: Record<string, { season: any; team: any; stats: any[] }>, s: any) => {
     const key = `${s.season?.id || "unknown"}_${s.teamId}`;
     if (!acc[key]) {
       acc[key] = { season: s.season, team: s.team, stats: [] };
     }
     acc[key].stats.push(s);
     return acc;
-  }, {}) || {};
+  }, {});
   const seasonKeys = Object.keys(statsBySeason);
-  const friendlyStats = (player as any).friendlyStats || [];
+  const friendlyStats = profileStats.filter((s: any) => s.competition === "FRIENDLY");
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
@@ -61,6 +63,25 @@ export function PlayerDetailPage() {
               <Card>
                 <CardHeader><CardTitle>Biography</CardTitle></CardHeader>
                 <CardContent><p className="text-muted-foreground">{player.biography}</p></CardContent>
+              </Card>
+            )}
+
+            {player.galleries && player.galleries.length > 0 && (
+              <Card>
+                <CardHeader><CardTitle className="flex items-center gap-2"><ImageIcon className="h-5 w-5" /> Player Gallery</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {player.galleries.map((item) => (
+                      <a key={item.id} href={item.videoUrl || item.imageUrl} target="_blank" rel="noreferrer" className="group overflow-hidden rounded-xl border bg-muted/30">
+                        <div className="relative aspect-square">
+                          <img src={item.imageUrl} alt={item.title} className="h-full w-full object-cover transition duration-300 group-hover:scale-105" />
+                          {item.videoUrl && <span className="absolute inset-0 flex items-center justify-center bg-black/25"><Play className="h-8 w-8 fill-white text-white" /></span>}
+                        </div>
+                        <p className="truncate px-3 py-2 text-sm font-medium">{item.title}</p>
+                      </a>
+                    ))}
+                  </div>
+                </CardContent>
               </Card>
             )}
 

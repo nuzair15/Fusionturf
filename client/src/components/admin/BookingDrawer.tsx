@@ -38,6 +38,11 @@ export function BookingDrawer({ booking, settings, onClose }: { booking: Booking
   const [discountAmount, setDiscountAmount] = useState(booking.discountAmount || 0);
   const [discountInput, setDiscountInput] = useState(String((booking.discountAmount || 0) / 100 || ""));
   const [savingDiscount, setSavingDiscount] = useState(false);
+  const [editingTime, setEditingTime] = useState(false);
+  const [editDate, setEditDate] = useState(booking.date.split("T")[0]);
+  const [editStart, setEditStart] = useState(booking.startTime);
+  const [editEnd, setEditEnd] = useState(booking.endTime);
+  const [savingTime, setSavingTime] = useState(false);
   const statusColor = booking.status === "CONFIRMED" ? "bg-blue-500" :
     booking.status === "COMPLETED" ? "bg-green-500" :
     booking.status === "CANCELLED" ? "bg-red-500" :
@@ -75,6 +80,18 @@ export function BookingDrawer({ booking, settings, onClose }: { booking: Booking
       queryClient.invalidateQueries({ queryKey: ["admin-bookings"] });
     } catch {} finally {
       setSavingDiscount(false);
+    }
+  };
+
+  const saveTiming = async () => {
+    setSavingTime(true);
+    try {
+      await api.patch(`/admin/bookings/${booking.id}`, { date: editDate, startTime: editStart, endTime: editEnd });
+      queryClient.invalidateQueries({ queryKey: ["admin-bookings"] });
+      setEditingTime(false);
+      onClose();
+    } catch {} finally {
+      setSavingTime(false);
     }
   };
 
@@ -130,6 +147,25 @@ export function BookingDrawer({ booking, settings, onClose }: { booking: Booking
                 <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{formatTime(booking.startTime)} – {formatTime(booking.endTime)}</span>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">Duration: {booking.duration} min • {booking.numPlayers} players</p>
+              {(booking.status === "PENDING" || booking.status === "CONFIRMED" || booking.status === "RESCHEDULED") && !editingTime && (
+                <Button size="sm" variant="outline" className="mt-3" onClick={() => setEditingTime(true)}>
+                  <Edit2 className="mr-1.5 h-3.5 w-3.5" /> Edit date & time
+                </Button>
+              )}
+              {editingTime && (
+                <div className="mt-3 space-y-2 rounded-md bg-muted/50 p-3">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+                    <Input type="time" value={editStart} onChange={(e) => setEditStart(e.target.value)} />
+                    <Input type="time" value={editEnd} onChange={(e) => setEditEnd(e.target.value)} />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={saveTiming} disabled={savingTime}>Save timing</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditingTime(false)} disabled={savingTime}>Cancel</Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Venue hours, price, and overlapping bookings will be checked automatically.</p>
+                </div>
+              )}
             </div>
           </div>
 

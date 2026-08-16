@@ -152,6 +152,7 @@ export async function recalculateStandings(seasonId: string): Promise<void> {
 
   const teams = await prisma.team.findMany({ where: { seasonId, isActive: true } });
   const teamIds = teams.map((t) => t.id);
+  const adjustments = await prisma.standingAdjustment.findMany({ where: { seasonId }, select: { teamId: true, pointsDelta: true, goalsForDelta: true, goalsAgainstDelta: true } });
 
   const stats: Record<string, { played: number; wins: number; draws: number; losses: number; gf: number; ga: number; gd: number; pts: number }> = {};
 
@@ -163,6 +164,9 @@ export async function recalculateStandings(seasonId: string): Promise<void> {
     if (f.homeScore === null || f.awayScore === null) continue;
     const h = stats[f.homeTeamId];
     const a = stats[f.awayTeamId];
+    // Ignore legacy orphaned fixtures rather than allowing one bad record to
+    // prevent the entire season table from recalculating.
+    if (!h || !a) continue;
     h.played++;
     a.played++;
     h.gf += f.homeScore;
@@ -172,6 +176,14 @@ export async function recalculateStandings(seasonId: string): Promise<void> {
     if (f.homeScore > f.awayScore) { h.wins++; a.losses++; h.pts += POINTS_WIN; }
     else if (f.homeScore < f.awayScore) { a.wins++; h.losses++; a.pts += POINTS_WIN; }
     else { h.draws++; a.draws++; h.pts += POINTS_DRAW; a.pts += POINTS_DRAW; }
+  }
+
+  for (const adjustment of adjustments) {
+    const team = stats[adjustment.teamId];
+    if (!team) continue;
+    team.pts += adjustment.pointsDelta;
+    team.gf += adjustment.goalsForDelta;
+    team.ga += adjustment.goalsAgainstDelta;
   }
 
   for (const id of teamIds) {
@@ -220,6 +232,10 @@ export async function recalculateStandings(seasonId: string): Promise<void> {
     };
   });
 
+  await prisma.standing.deleteMany({
+    where: { seasonId, ...(teamIds.length ? { teamId: { notIn: teamIds } } : {}) },
+  });
+
   for (const data of standingsData) {
     await prisma.standing.upsert({
       where: { seasonId_teamId: { seasonId, teamId: data.teamId } },
@@ -242,11 +258,15 @@ function calculateHeadToHead(fixtures: Array<{ homeTeamId: string; awayTeamId: s
   return h2h;
 }
 
-export async function processMatchResult(fixtureId: string, homeScore: number, awayScore: number): Promise<void> {
-  const fixture = await prisma.fixture.findUnique({ where: { id: fixtureId }, include: { season: true } });
+export async function processMatchResult(fixtureId: string, homeScore: number, awayScore: number, knockoutWinnerTeamId?: string): Promise<void> {
+  const fixture = await prisma.fixture.findUnique({ where: { id: fixtureId }, include: { season: true, bracketMatch: true } });
   if (!fixture) throw new Error("Fixture not found");
   if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore) || homeScore < 0 || awayScore < 0) throw new Error("Scores must be non-negative integers");
   if (fixture.status === "CANCELLED" || fixture.status === "POSTPONED") throw new Error("Cancelled or postponed fixtures cannot be completed");
+  const validKnockoutWinner = fixture.bracketMatch && knockoutWinnerTeamId && [fixture.homeTeamId, fixture.awayTeamId].includes(knockoutWinnerTeamId);
+  if (fixture.bracketMatch && homeScore === awayScore && !validKnockoutWinner) throw new Error("Knockout matches require a winner; provide the penalty winner team");
+  if (fixture.bracketMatch && homeScore !== awayScore && knockoutWinnerTeamId && knockoutWinnerTeamId !== (homeScore > awayScore ? fixture.homeTeamId : fixture.awayTeamId)) throw new Error("Knockout winner does not match the score");
+  const wasCompleted = fixture.status === "COMPLETED";
 
   await prisma.fixture.update({
     where: { id: fixtureId },
@@ -272,6 +292,38 @@ export async function processMatchResult(fixtureId: string, homeScore: number, a
   await recalculatePlayerStats(fixture.seasonId);
 
   await autoDetectAwards(fixture.seasonId);
+  if (fixture.bracketMatch && !wasCompleted) await advanceBracketWinner(fixtureId, knockoutWinnerTeamId);
+}
+
+export async function advanceBracketWinner(fixtureId: string, knockoutWinnerTeamId?: string): Promise<void> {
+  const match = await prisma.bracketMatch.findFirst({ where: { fixtureId }, include: { fixture: true } });
+  if (!match || !match.fixture || match.fixture.homeScore === null || match.fixture.awayScore === null) return;
+  const winnerTeamId = knockoutWinnerTeamId || (match.fixture.homeScore > match.fixture.awayScore ? match.fixture.homeTeamId : match.fixture.awayTeamId);
+  await prisma.bracketMatch.update({ where: { id: match.id }, data: { winnerTeamId } });
+
+  const next = await prisma.bracketMatch.findUnique({
+    where: { competitionId_roundNumber_position: { competitionId: match.competitionId, roundNumber: match.roundNumber + 1, position: Math.ceil(match.position / 2) } },
+  });
+  if (!next) {
+    await prisma.competition.update({ where: { id: match.competitionId }, data: { bracketStatus: "COMPLETED" } });
+    return;
+  }
+
+  const isHomeSlot = match.position % 2 === 1;
+  await prisma.bracketMatch.update({ where: { id: next.id }, data: isHomeSlot ? { homeTeamId: winnerTeamId } : { awayTeamId: winnerTeamId } });
+  const updated = await prisma.bracketMatch.findUnique({ where: { id: next.id } });
+  if (updated?.homeTeamId && updated.awayTeamId && !updated.fixtureId) {
+    const parent = await prisma.fixture.create({ data: {
+      seasonId: (await prisma.competition.findUniqueOrThrow({ where: { id: next.competitionId }, select: { seasonId: true } })).seasonId,
+      competitionId: next.competitionId,
+      homeTeamId: updated.homeTeamId,
+      awayTeamId: updated.awayTeamId,
+      matchDate: new Date(),
+      round: next.roundNumber,
+      status: "SCHEDULED",
+    } });
+    await prisma.bracketMatch.update({ where: { id: next.id }, data: { fixtureId: parent.id } });
+  }
 }
 
 export async function generatePostSeasonFixtures(seasonId: string): Promise<void> {
@@ -418,9 +470,16 @@ export async function selectMatchdaySquad(fixtureId: string, teamId: string, pla
   const fixture = await prisma.fixture.findUnique({ where: { id: fixtureId } });
   if (!fixture) throw new Error("Fixture not found");
   if (fixture.status !== "SCHEDULED") throw new Error("Cannot change squad for a non-scheduled fixture");
+  if (teamId !== fixture.homeTeamId && teamId !== fixture.awayTeamId) throw new Error("Team is not participating in this fixture");
+  if (!Array.isArray(playerIds) || playerIds.length !== 8 || new Set(playerIds).size !== playerIds.length) {
+    throw new Error("Matchday squad must contain 8 different players");
+  }
 
   const players = await prisma.player.findMany({ where: { id: { in: playerIds }, teamId, seasonId: fixture.seasonId, isActive: true } });
   if (players.length !== 8) throw new Error("Matchday squad must have exactly 8 players");
+  const starters = players.filter((player) => player.squadType === "STARTER").length;
+  const substitutes = players.filter((player) => player.squadType === "SUBSTITUTE").length;
+  if (starters !== 6 || substitutes !== 2) throw new Error("Matchday squad must contain 6 starters and 2 substitutes");
 
   const activeSuspensions = await prisma.suspension.findMany({
     where: { playerId: { in: playerIds }, isActive: true, seasonId: fixture.seasonId },
@@ -442,7 +501,7 @@ export async function selectMatchdaySquad(fixtureId: string, teamId: string, pla
       data: playerIds.map((pid, idx) => ({
         squadId: squad.id,
         playerId: pid,
-        isStarter: idx < 6,
+        isStarter: players.find((player) => player.id === pid)?.squadType === "STARTER",
       })),
     });
   });

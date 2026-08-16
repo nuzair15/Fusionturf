@@ -150,6 +150,9 @@ export const createTeam = async (req: Request, res: Response, next: NextFunction
         city: city || null, seasonId, status: status || "active", isActive: status !== "inactive",
       },
     });
+    // Create the zeroed standing row immediately so the new team is visible
+    // on the league dashboard before its first completed fixture.
+    await leagueSystem.recalculateStandings(team.seasonId);
     res.status(201).json(team);
   } catch (error) {
     next(error);
@@ -161,9 +164,19 @@ export const updateTeam = async (req: Request, res: Response, next: NextFunction
     const { status } = req.body;
     const data = pick(req.body, ["name", "slug", "shortName", "logoUrl", "city", "seasonId", "status"] as const) as any;
     if (Object.keys(data).length === 0) return res.status(400).json({ error: "Nothing to update" });
+    const current = await prisma.team.findUnique({ where: { id: req.params.id }, select: { seasonId: true } });
+    if (!current) throw new AppError("Team not found", 404);
+    if (data.seasonId) {
+      const season = await prisma.season.findUnique({ where: { id: data.seasonId }, select: { id: true } });
+      if (!season) throw new AppError("Season not found", 404);
+    }
     if (status !== undefined) data.isActive = status !== "inactive";
     try {
       const team = await prisma.team.update({ where: { id: req.params.id }, data });
+      if (current.seasonId !== team.seasonId || status !== undefined) {
+        await leagueSystem.recalculateStandings(current.seasonId);
+        if (current.seasonId !== team.seasonId) await leagueSystem.recalculateStandings(team.seasonId);
+      }
       res.json(team);
     } catch (err: any) {
       if (err.code === "P2002") throw new AppError("A team with that slug already exists in this season", 409);
@@ -176,7 +189,10 @@ export const updateTeam = async (req: Request, res: Response, next: NextFunction
 
 export const deleteTeam = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const team = await prisma.team.update({ where: { id: req.params.id }, data: { isActive: false } });
+    const existing = await prisma.team.findUnique({ where: { id: req.params.id }, select: { seasonId: true } });
+    if (!existing) throw new AppError("Team not found", 404);
+    const team = await prisma.team.update({ where: { id: req.params.id }, data: { isActive: false, status: "inactive" } });
+    await leagueSystem.recalculateStandings(existing.seasonId);
     res.json(team);
   } catch (error) {
     next(error);
@@ -189,12 +205,13 @@ export const getPlayers = async (req: Request, res: Response, next: NextFunction
   try {
     const { page, limit, skip } = paginate(req.query);
     const { teamId, seasonId, search } = req.query;
-    const where: any = {};
+    const where: any = req.query.includeInactive === "true" ? {} : { isActive: true };
     if (teamId) where.teamId = teamId;
     if (seasonId) where.seasonId = seasonId;
     if (search) {
       const { ids, total } = await searchPlayerIds(search as string, {
         teamId: teamId as string, seasonId: seasonId as string,
+        isActive: where.isActive,
         limit, offset: skip,
       });
       if (ids.length === 0) return res.json(paginatedResponse([], total, page, limit));
@@ -247,9 +264,10 @@ export const createPlayer = async (req: Request, res: Response, next: NextFuncti
 
 export const updatePlayer = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { firstName, lastName, position, teamId, jerseyNumber, squadType, photoUrl, nationality, age, height, weight, preferredFoot, biography } = req.body;
+    const { firstName, lastName, position, teamId, jerseyNumber, squadType, photoUrl, nationality, age, height, weight, preferredFoot, biography, transferReason } = req.body;
     const current = await prisma.player.findUnique({ where: { id: req.params.id }, select: { teamId: true, seasonId: true } });
     if (!current) throw new AppError("Player not found", 404);
+    if (firstName !== undefined && !String(firstName).trim()) throw new AppError("First name is required", 400);
     if (teamId !== undefined && teamId !== current.teamId) {
       const season = await prisma.season.findUnique({ where: { id: current.seasonId }, select: { transferWindowOpen: true } });
       if (season && !season.transferWindowOpen) {
@@ -260,12 +278,14 @@ export const updatePlayer = async (req: Request, res: Response, next: NextFuncti
     if (firstName !== undefined) data.firstName = firstName;
     if (lastName !== undefined) data.lastName = lastName;
     if (position !== undefined) data.position = position;
-    if (jerseyNumber !== undefined && jerseyNumber !== "") data.jerseyNumber = parseInt(jerseyNumber);
-    if (squadType !== undefined && squadType !== "") data.squadType = squadType;
+    if (jerseyNumber !== undefined) data.jerseyNumber = jerseyNumber === "" || jerseyNumber === null ? null : parseInt(jerseyNumber);
+    if (squadType !== undefined) data.squadType = squadType === "" || squadType === null ? null : squadType;
     if (teamId !== undefined) {
-      data.teamId = teamId;
+      if (!teamId) throw new AppError("A team is required", 400);
       const newTeam = await prisma.team.findUnique({ where: { id: teamId }, select: { seasonId: true } });
-      if (newTeam?.seasonId) data.seasonId = newTeam.seasonId;
+      if (!newTeam) throw new AppError("Team not found", 404);
+      data.teamId = teamId;
+      data.seasonId = newTeam.seasonId;
     }
     if (photoUrl !== undefined) data.photoUrl = photoUrl;
     if (nationality !== undefined) data.nationality = nationality;
@@ -276,6 +296,19 @@ export const updatePlayer = async (req: Request, res: Response, next: NextFuncti
     if (biography !== undefined) data.biography = biography;
     if (Object.keys(data).length === 0) return res.status(400).json({ error: "Nothing to update" });
     const player = await prisma.player.update({ where: { id: req.params.id }, data });
+    if (teamId !== undefined && teamId !== current.teamId) {
+      await prisma.playerTransfer.create({
+        data: {
+          playerId: req.params.id,
+          fromTeamId: current.teamId,
+          toTeamId: teamId,
+          fromSeasonId: current.seasonId,
+          toSeasonId: data.seasonId,
+          reason: transferReason ? String(transferReason).trim() : null,
+          createdById: req.user?.userId,
+        },
+      });
+    }
     res.json(player);
   } catch (error) {
     next(error);
@@ -284,6 +317,8 @@ export const updatePlayer = async (req: Request, res: Response, next: NextFuncti
 
 export const deletePlayer = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const existing = await prisma.player.findUnique({ where: { id: req.params.id }, select: { id: true, isActive: true } });
+    if (!existing) throw new AppError("Player not found", 404);
     const player = await prisma.player.update({ where: { id: req.params.id }, data: { isActive: false } });
     res.json(player);
   } catch (error) {
@@ -346,11 +381,88 @@ export const copyPlayersFromSeason = async (req: Request, res: Response, next: N
 
 // ─── Fixtures Management ───
 
+export const getCompetitions = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const competitions = await prisma.competition.findMany({
+      where: req.query.seasonId ? { seasonId: String(req.query.seasonId) } : undefined,
+      include: { season: { select: { id: true, name: true } }, _count: { select: { fixtures: true, bracketMatches: true } } },
+      orderBy: [{ seasonId: "desc" }, { name: "asc" }],
+    });
+    res.json(competitions);
+  } catch (error) { next(error); }
+};
+
+export const getCompetitionBracket = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const competition = await prisma.competition.findUnique({
+      where: { id: req.params.id },
+      include: {
+        season: { select: { id: true, name: true } },
+        bracketMatches: {
+          include: {
+            homeTeam: { select: { id: true, name: true, shortName: true, logoUrl: true } },
+            awayTeam: { select: { id: true, name: true, shortName: true, logoUrl: true } },
+            winnerTeam: { select: { id: true, name: true, shortName: true } },
+            fixture: { select: { id: true, matchDate: true, kickoffTime: true, status: true, homeScore: true, awayScore: true } },
+          },
+          orderBy: [{ roundNumber: "asc" }, { position: "asc" }],
+        },
+      },
+    });
+    if (!competition) throw new AppError("Competition not found", 404);
+    res.json(competition);
+  } catch (error) { next(error); }
+};
+
+export const generateCompetitionBracket = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { teamIds, matchDate, kickoffTime } = req.body;
+    if (!Array.isArray(teamIds) || teamIds.length < 2 || teamIds.length > 32 || (teamIds.length & (teamIds.length - 1)) !== 0) {
+      throw new AppError("A knockout bracket requires 2, 4, 8, 16, or 32 teams", 400);
+    }
+    if (new Set(teamIds).size !== teamIds.length) throw new AppError("Bracket teams must be unique", 400);
+    const competition = await prisma.competition.findUnique({ where: { id: req.params.id } });
+    if (!competition) throw new AppError("Competition not found", 404);
+    if (competition.type !== "KNOCKOUT" && competition.type !== "CUP") throw new AppError("Only knockout or cup competitions can have brackets", 400);
+    const existing = await prisma.bracketMatch.count({ where: { competitionId: competition.id } });
+    if (existing) throw new AppError("This competition already has a bracket", 409);
+    const teams = await prisma.team.findMany({ where: { id: { in: teamIds }, seasonId: competition.seasonId, isActive: true }, select: { id: true } });
+    if (teams.length !== teamIds.length) throw new AppError("All bracket teams must be active teams from the competition season", 400);
+    const baseDate = matchDate ? new Date(matchDate) : new Date();
+    if (Number.isNaN(baseDate.getTime())) throw new AppError("Invalid first-round match date", 400);
+    const rounds = Math.log2(teamIds.length);
+    const created = await prisma.$transaction(async (tx) => {
+      const rows: any[] = [];
+      for (let round = 1; round <= rounds; round++) {
+        const matchCount = teamIds.length / (2 ** round);
+        for (let position = 1; position <= matchCount; position++) {
+          const homeTeamId = round === 1 ? teamIds[(position - 1) * 2] : null;
+          const awayTeamId = round === 1 ? teamIds[(position - 1) * 2 + 1] : null;
+          const row = await tx.bracketMatch.create({ data: { competitionId: competition.id, roundNumber: round, position, homeTeamId, awayTeamId } });
+          if (round === 1 && homeTeamId && awayTeamId) {
+            const date = new Date(baseDate);
+            date.setDate(date.getDate() + position - 1);
+            const fixture = await tx.fixture.create({ data: { seasonId: competition.seasonId, competitionId: competition.id, homeTeamId, awayTeamId, matchDate: date, kickoffTime: kickoffTime || null, round, status: "SCHEDULED" } });
+            await tx.bracketMatch.update({ where: { id: row.id }, data: { fixtureId: fixture.id } });
+            rows.push({ ...row, fixtureId: fixture.id });
+          } else rows.push(row);
+        }
+      }
+      await tx.competition.update({ where: { id: competition.id }, data: { bracketSize: teamIds.length, bracketStatus: "IN_PROGRESS" } });
+      return rows;
+    });
+    res.status(201).json({ competitionId: competition.id, bracketSize: teamIds.length, matches: created });
+  } catch (error) { next(error); }
+};
+
 export const getFixtures = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { page, limit, skip } = paginate(req.query);
     const { search } = req.query;
     const where: any = {};
+    if (req.query.seasonId) where.seasonId = String(req.query.seasonId);
+    if (req.query.friendly === "true") where.isFriendly = true;
+    if (req.query.friendly === "false") where.isFriendly = false;
     if (search) where.OR = [
       { homeTeam: { name: { contains: search as string, mode: "insensitive" } } },
       { awayTeam: { name: { contains: search as string, mode: "insensitive" } } },
@@ -378,6 +490,36 @@ const FIXTURE_WRITABLE_FIELDS = [
   "isFriendly",
   "attendance", "stadium", "matchReport", "highlights", "isFeatured",
 ] as const;
+
+async function validateFixtureReferences(data: Record<string, any>, excludeFixtureId?: string) {
+  if (data.homeTeamId === data.awayTeamId) throw new AppError("A fixture must have two different teams", 400);
+  const teams = await prisma.team.findMany({
+    where: { id: { in: [data.homeTeamId, data.awayTeamId] } },
+    select: { id: true, seasonId: true, isActive: true },
+  });
+  if (teams.length !== 2 || teams.some((team) => !team.isActive)) throw new AppError("Both fixture teams must be active and exist", 400);
+  if (teams.some((team) => team.seasonId !== data.seasonId)) throw new AppError("Both teams must belong to the selected season", 400);
+  if (data.competitionId) {
+    const competition = await prisma.competition.findUnique({ where: { id: data.competitionId }, select: { seasonId: true } });
+    if (!competition || competition.seasonId !== data.seasonId) throw new AppError("Competition must belong to the selected season", 400);
+  }
+  const matchDate = new Date(data.matchDate);
+  if (Number.isNaN(matchDate.getTime())) throw new AppError("A valid match date is required", 400);
+  const scheduledStatuses = { notIn: ["CANCELLED", "POSTPONED"] };
+  const conflictWhere: any = {
+    seasonId: data.seasonId,
+    matchDate,
+    status: scheduledStatuses,
+    OR: [
+      { homeTeamId: { in: [data.homeTeamId, data.awayTeamId] } },
+      { awayTeamId: { in: [data.homeTeamId, data.awayTeamId] } },
+    ],
+  };
+  if (excludeFixtureId) conflictWhere.id = { not: excludeFixtureId };
+  if (data.kickoffTime) conflictWhere.kickoffTime = data.kickoffTime;
+  const conflict = await prisma.fixture.findFirst({ where: conflictWhere, select: { id: true, homeTeamId: true, awayTeamId: true } });
+  if (conflict) throw new AppError("A participating team is already scheduled in this time slot", 409);
+}
 // Deliberately excluded: status, homeScore, awayScore, and every live-match
 // stat (homePossession, homeShots, ...). Those must be set through
 // updateFixtureStatus / updateFixtureScore / the live-stats endpoints, which
@@ -392,6 +534,7 @@ export const createFixture = async (req: Request, res: Response, next: NextFunct
     if (!data.seasonId || !data.homeTeamId || !data.awayTeamId || !data.matchDate) {
       throw new AppError("seasonId, homeTeamId, awayTeamId, and matchDate are required", 400);
     }
+    await validateFixtureReferences(data as Record<string, any>);
     const fixture = await prisma.fixture.create({ data: { ...data, matchDate: new Date(data.matchDate) } as any });
     res.status(201).json(fixture);
   } catch (error) {
@@ -405,18 +548,23 @@ export const updateFixture = async (req: Request, res: Response, next: NextFunct
     if (data.matchDate) data.matchDate = new Date(data.matchDate);
     const existing = await prisma.fixture.findUnique({
       where: { id: req.params.id },
-      select: { id: true, seasonId: true, status: true, isFriendly: true },
+      select: { id: true, seasonId: true, status: true, isFriendly: true, homeTeamId: true, awayTeamId: true, competitionId: true, matchDate: true, kickoffTime: true, venueId: true },
     });
     if (!existing) throw new AppError("Fixture not found", 404);
+    await validateFixtureReferences({ ...existing, ...data }, existing.id);
     const fixture = await prisma.fixture.update({
       where: { id: req.params.id },
       data,
     });
     // Toggling a completed match in/out of friendly must propagate to league
     // standings, player stats, and everything derived from them.
-    if (existing.status === "COMPLETED" && "isFriendly" in req.body && data.isFriendly !== existing.isFriendly) {
+    if (existing.status === "COMPLETED" && ("isFriendly" in req.body || "competitionId" in req.body || "seasonId" in req.body || "homeTeamId" in req.body || "awayTeamId" in req.body)) {
       await leagueSystem.recalculateStandings(existing.seasonId);
       await leagueSystem.recalculatePlayerStats(existing.seasonId);
+      if (fixture.seasonId !== existing.seasonId) {
+        await leagueSystem.recalculateStandings(fixture.seasonId);
+        await leagueSystem.recalculatePlayerStats(fixture.seasonId);
+      }
     }
     res.json(fixture);
   } catch (error) {
@@ -426,7 +574,7 @@ export const updateFixture = async (req: Request, res: Response, next: NextFunct
 
 export const updateFixtureStatus = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { status } = req.body;
+    const { status, reason } = req.body;
     const allowed = ["SCHEDULED", "LIVE", "PAUSED", "HALF_TIME", "EXTRA_TIME", "PENALTIES", "COMPLETED", "CANCELLED", "POSTPONED"];
     if (!allowed.includes(status)) throw new AppError("Invalid fixture status", 400);
     const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id } });
@@ -442,11 +590,93 @@ export const updateFixtureStatus = async (req: Request, res: Response, next: Nex
         : fixture.matchClockSeconds;
       await prisma.fixture.update({ where: { id: req.params.id }, data: {
         status,
+        ...(status === "POSTPONED" ? { postponementReason: reason ? String(reason).trim() : null } : {}),
         matchClockSeconds: elapsed,
         matchClockStartedAt: status === "LIVE" ? now : null,
       } });
     }
     res.json(await prisma.fixture.findUnique({ where: { id: req.params.id } }));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const assignFixtureReferee = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { referee, referee2 } = req.body;
+    if (!referee || !String(referee).trim()) throw new AppError("A referee name is required", 400);
+    const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { status: true } });
+    if (!fixture) throw new AppError("Fixture not found", 404);
+    if (fixture.status === "COMPLETED" || fixture.status === "CANCELLED") throw new AppError("Officials cannot be changed for this fixture", 400);
+    const updated = await prisma.fixture.update({ where: { id: req.params.id }, data: { referee: String(referee).trim(), referee2: referee2 ? String(referee2).trim() : null, refereeAssignedAt: new Date() } });
+    res.json(updated);
+  } catch (error) { next(error); }
+};
+
+export const rescheduleFixture = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { matchDate, kickoffTime, reason } = req.body;
+    const existing = await prisma.fixture.findUnique({ where: { id: req.params.id } });
+    if (!existing) throw new AppError("Fixture not found", 404);
+    if (existing.status === "COMPLETED" || existing.status === "CANCELLED") throw new AppError("Completed or cancelled fixtures cannot be rescheduled", 400);
+    let nextDate = matchDate ? new Date(matchDate) : new Date(existing.matchDate);
+    if (Number.isNaN(nextDate.getTime())) throw new AppError("A valid rescheduled date is required", 400);
+    const nextKickoff = kickoffTime ?? existing.kickoffTime;
+    if (!matchDate) {
+      let found = false;
+      for (let attempt = 0; attempt < 30; attempt++) {
+        try {
+          await validateFixtureReferences({ ...existing, matchDate: nextDate, kickoffTime: nextKickoff }, existing.id);
+          found = true;
+          break;
+        } catch (error: any) {
+          if (error?.statusCode !== 409) throw error;
+          nextDate = new Date(nextDate);
+          nextDate.setDate(nextDate.getDate() + 1);
+        }
+      }
+      if (!found) throw new AppError("No available rescheduling slot found in the next 30 days", 409);
+    } else {
+      await validateFixtureReferences({ ...existing, matchDate: nextDate, kickoffTime: nextKickoff }, existing.id);
+    }
+    const updated = await prisma.fixture.update({ where: { id: existing.id }, data: {
+      matchDate: nextDate,
+      kickoffTime: nextKickoff,
+      originalMatchDate: existing.originalMatchDate || existing.matchDate,
+      rescheduleReason: reason ? String(reason).trim() : null,
+      rescheduledAt: new Date(),
+      status: "SCHEDULED",
+    } });
+    res.json(updated);
+  } catch (error) { next(error); }
+};
+
+export const settleFixtureOutcome = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { outcome, winnerTeamId, reason } = req.body;
+    if (outcome !== "WALKOVER" && outcome !== "FORFEIT") throw new AppError("Outcome must be WALKOVER or FORFEIT", 400);
+    const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id } });
+    if (!fixture) throw new AppError("Fixture not found", 404);
+    if (fixture.status === "COMPLETED" || fixture.status === "CANCELLED") throw new AppError("This fixture is already closed", 400);
+    if (![fixture.homeTeamId, fixture.awayTeamId].includes(winnerTeamId)) throw new AppError("Winner must be one of the fixture teams", 400);
+    const homeScore = winnerTeamId === fixture.homeTeamId ? 3 : 0;
+    const awayScore = winnerTeamId === fixture.awayTeamId ? 3 : 0;
+    await leagueSystem.processMatchResult(fixture.id, homeScore, awayScore, winnerTeamId);
+    const updated = await prisma.fixture.update({ where: { id: fixture.id }, data: { outcome, winnerTeamId, matchReport: reason ? String(reason).trim() : fixture.matchReport } });
+    res.json(updated);
+  } catch (error) { next(error); }
+};
+
+export const getFixtureResultHistory = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!fixture) throw new AppError("Fixture not found", 404);
+    const history = await prisma.matchResultRevision.findMany({
+      where: { fixtureId: fixture.id },
+      include: { changedBy: { select: { id: true, firstName: true, lastName: true, email: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json(history);
   } catch (error) {
     next(error);
   }
@@ -464,11 +694,37 @@ export const resetFixtureClock = async (req: Request, res: Response, next: NextF
 
 export const updateFixtureScore = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { homeScore, awayScore } = req.body;
+    const { homeScore, awayScore, reason, winnerTeamId, extraTimeHomeScore, extraTimeAwayScore, penaltiesHomeScore, penaltiesAwayScore } = req.body;
     if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore) || homeScore < 0 || awayScore < 0) {
       throw new AppError("Scores must be non-negative integers", 400);
     }
-    await leagueSystem.processMatchResult(req.params.id, homeScore, awayScore);
+    const before = await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { homeScore: true, awayScore: true } });
+    if (!before) throw new AppError("Fixture not found", 404);
+    const hasExtraTime = Number.isInteger(extraTimeHomeScore) || Number.isInteger(extraTimeAwayScore);
+    const hasPenalties = Number.isInteger(penaltiesHomeScore) || Number.isInteger(penaltiesAwayScore);
+    if ((hasExtraTime && (!Number.isInteger(extraTimeHomeScore) || !Number.isInteger(extraTimeAwayScore))) || (hasPenalties && (!Number.isInteger(penaltiesHomeScore) || !Number.isInteger(penaltiesAwayScore)))) {
+      throw new AppError("Extra-time and penalty scores must be supplied as complete integer pairs", 400);
+    }
+    await leagueSystem.processMatchResult(req.params.id, homeScore, awayScore, winnerTeamId);
+    if (hasExtraTime || hasPenalties) await prisma.fixture.update({ where: { id: req.params.id }, data: {
+      extraTimeHomeScore: hasExtraTime ? extraTimeHomeScore : null,
+      extraTimeAwayScore: hasExtraTime ? extraTimeAwayScore : null,
+      penaltiesHomeScore: hasPenalties ? penaltiesHomeScore : null,
+      penaltiesAwayScore: hasPenalties ? penaltiesAwayScore : null,
+      outcome: hasPenalties ? "PENALTIES" : "EXTRA_TIME",
+      winnerTeamId: winnerTeamId || null,
+    } });
+    if (before.homeScore !== homeScore || before.awayScore !== awayScore) {
+      await prisma.matchResultRevision.create({ data: {
+        fixtureId: req.params.id,
+        changedById: req.user?.userId,
+        previousHomeScore: before.homeScore,
+        previousAwayScore: before.awayScore,
+        nextHomeScore: homeScore,
+        nextAwayScore: awayScore,
+        reason: reason ? String(reason).trim() : null,
+      } });
+    }
     const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id } });
     res.json(fixture);
   } catch (error) {
@@ -660,6 +916,37 @@ async function updateStanding(seasonId: string, teamId: string, goalsFor: number
     });
   }
 }
+
+export const getStandingAdjustments = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.query.seasonId) throw new AppError("seasonId is required", 400);
+    const adjustments = await prisma.standingAdjustment.findMany({ where: { seasonId: String(req.query.seasonId) }, include: { team: { select: { id: true, name: true, logoUrl: true } } }, orderBy: { createdAt: "desc" } });
+    res.json(adjustments);
+  } catch (error) { next(error); }
+};
+
+export const createStandingAdjustment = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { seasonId, teamId, pointsDelta = 0, goalsForDelta = 0, goalsAgainstDelta = 0, reason } = req.body;
+    if (!seasonId || !teamId || !reason || !String(reason).trim()) throw new AppError("seasonId, teamId, and reason are required", 400);
+    for (const value of [pointsDelta, goalsForDelta, goalsAgainstDelta]) if (!Number.isInteger(value)) throw new AppError("Standing adjustments must be integers", 400);
+    const team = await prisma.team.findUnique({ where: { id: teamId }, select: { seasonId: true } });
+    if (!team || team.seasonId !== seasonId) throw new AppError("Team does not belong to this season", 400);
+    const adjustment = await prisma.standingAdjustment.create({ data: { seasonId, teamId, pointsDelta, goalsForDelta, goalsAgainstDelta, reason: String(reason).trim(), createdById: req.user?.userId } });
+    await leagueSystem.recalculateStandings(seasonId);
+    res.status(201).json(adjustment);
+  } catch (error) { next(error); }
+};
+
+export const deleteStandingAdjustment = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const adjustment = await prisma.standingAdjustment.findUnique({ where: { id: req.params.id } });
+    if (!adjustment) throw new AppError("Standing adjustment not found", 404);
+    await prisma.standingAdjustment.delete({ where: { id: adjustment.id } });
+    await leagueSystem.recalculateStandings(adjustment.seasonId);
+    res.status(204).end();
+  } catch (error) { next(error); }
+};
 
 function calculateMatchStats(homeScore: number, awayScore: number) {
   const home = homeScore > awayScore ? "W" : homeScore < awayScore ? "L" : "D";
@@ -1310,9 +1597,22 @@ export const adminValidateSquad = async (req: Request, res: Response, next: Next
 
 export const adminProcessMatchResult = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { homeScore, awayScore } = req.body;
-    if (homeScore === undefined || awayScore === undefined) throw new AppError("homeScore and awayScore required", 400);
-    await leagueSystem.processMatchResult(req.params.id, homeScore, awayScore);
+    const { homeScore, awayScore, reason, winnerTeamId } = req.body;
+    if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore) || homeScore < 0 || awayScore < 0) throw new AppError("Scores must be non-negative integers", 400);
+    const before = await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { homeScore: true, awayScore: true } });
+    if (!before) throw new AppError("Fixture not found", 404);
+    await leagueSystem.processMatchResult(req.params.id, homeScore, awayScore, winnerTeamId);
+    if (before.homeScore !== homeScore || before.awayScore !== awayScore) {
+      await prisma.matchResultRevision.create({ data: {
+        fixtureId: req.params.id,
+        changedById: req.user?.userId,
+        previousHomeScore: before.homeScore,
+        previousAwayScore: before.awayScore,
+        nextHomeScore: homeScore,
+        nextAwayScore: awayScore,
+        reason: reason ? String(reason).trim() : null,
+      } });
+    }
     res.json({ message: "Match result processed" });
   } catch (error) {
     next(error);
@@ -1506,22 +1806,24 @@ export const addGoal = async (req: Request, res: Response, next: NextFunction) =
 
     const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id } });
     if (!fixture) throw new AppError("Fixture not found", 404);
-    const scorer = await prisma.player.findUnique({ where: { id: scorerId }, select: { teamId: true } });
-    if (!scorer || scorer.teamId !== teamId || ![fixture.homeTeamId, fixture.awayTeamId].includes(teamId)) {
+    const eventMinute = Number(minute);
+    if (!Number.isInteger(eventMinute) || eventMinute < 0 || eventMinute > 150) throw new AppError("Minute must be an integer between 0 and 150", 400);
+    const scorer = await prisma.player.findUnique({ where: { id: scorerId }, select: { teamId: true, seasonId: true, isActive: true } });
+    if (!scorer || !scorer.isActive || scorer.seasonId !== fixture.seasonId || scorer.teamId !== teamId || ![fixture.homeTeamId, fixture.awayTeamId].includes(teamId)) {
       throw new AppError("Scorer does not belong to this fixture", 400);
     }
     if (assistId) {
-      const assister = await prisma.player.findUnique({ where: { id: assistId }, select: { teamId: true } });
-      if (!assister || assister.teamId !== teamId) throw new AppError("Assister must belong to the scoring team", 400);
+      const assister = await prisma.player.findUnique({ where: { id: assistId }, select: { teamId: true, seasonId: true, isActive: true } });
+      if (!assister || !assister.isActive || assister.seasonId !== fixture.seasonId || assister.teamId !== teamId) throw new AppError("Assister must belong to the scoring team", 400);
     }
 
     const goal = await prisma.goal.create({
-      data: { fixtureId: fixture.id, playerId: scorerId, minute: minute || 0, isOwnGoal: !!isOwnGoal, isPenalty: !!isPenalty },
+      data: { fixtureId: fixture.id, playerId: scorerId, minute: eventMinute, isOwnGoal: !!isOwnGoal, isPenalty: !!isPenalty },
     });
 
     if (assistId) {
       await prisma.assist.create({
-        data: { fixtureId: fixture.id, playerId: assistId, minute: minute || 0, goalId: goal.id },
+        data: { fixtureId: fixture.id, playerId: assistId, minute: eventMinute, goalId: goal.id },
       });
     }
 
@@ -1563,11 +1865,17 @@ export const addSubstitution = async (req: Request, res: Response, next: NextFun
     const { teamId, playerOffId, playerOnId, minute } = req.body;
     if (!teamId || !playerOffId || !playerOnId) throw new AppError("teamId, playerOffId, playerOnId required", 400);
     if (playerOffId === playerOnId) throw new AppError("Cannot substitute a player with themselves", 400);
-    const players = await prisma.player.findMany({ where: { id: { in: [playerOffId, playerOnId] }, teamId }, select: { id: true } });
+    const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { id: true, seasonId: true, homeTeamId: true, awayTeamId: true, status: true } });
+    if (!fixture) throw new AppError("Fixture not found", 404);
+    if (![fixture.homeTeamId, fixture.awayTeamId].includes(teamId)) throw new AppError("Team is not part of this fixture", 400);
+    if (["SCHEDULED", "COMPLETED", "CANCELLED", "POSTPONED"].includes(fixture.status)) throw new AppError("Substitutions can only be recorded during an active match", 400);
+    const eventMinute = Number(minute);
+    if (!Number.isInteger(eventMinute) || eventMinute < 0 || eventMinute > 150) throw new AppError("Minute must be an integer between 0 and 150", 400);
+    const players = await prisma.player.findMany({ where: { id: { in: [playerOffId, playerOnId] }, teamId, seasonId: fixture.seasonId, isActive: true }, select: { id: true } });
     if (players.length !== 2) throw new AppError("Both players must belong to the selected team", 400);
 
     const sub = await prisma.substitution.create({
-      data: { fixtureId: req.params.id, playerOffId, playerOnId, minute: minute || 0 },
+      data: { fixtureId: req.params.id, playerOffId, playerOnId, minute: eventMinute },
     });
     res.status(201).json(sub);
   } catch (error) {
@@ -1585,20 +1893,28 @@ export const removeMatchEvent = async (req: Request, res: Response, next: NextFu
     if (!fixture) throw new AppError("Fixture not found", 404);
 
     if (type === "goal") {
-      const goal = await prisma.goal.findUnique({ where: { id } });
+      const goal = await prisma.goal.findFirst({ where: { id, fixtureId: fixture.id } });
       if (!goal) throw new AppError("Goal not found", 404);
       // Remove the linked assist (if created with the goal) then the goal.
       await prisma.assist.deleteMany({ where: { goalId: goal.id } });
       await prisma.goal.delete({ where: { id: goal.id } });
       await recalcScore(fixture.id);
     } else if (type === "assist") {
-      await prisma.assist.delete({ where: { id } });
+      const event = await prisma.assist.findFirst({ where: { id, fixtureId: fixture.id } });
+      if (!event) throw new AppError("Assist not found for this fixture", 404);
+      await prisma.assist.delete({ where: { id: event.id } });
     } else if (type === "card") {
-      await prisma.card.delete({ where: { id } });
+      const event = await prisma.card.findFirst({ where: { id, fixtureId: fixture.id } });
+      if (!event) throw new AppError("Card not found for this fixture", 404);
+      await prisma.card.delete({ where: { id: event.id } });
     } else if (type === "substitution") {
-      await prisma.substitution.delete({ where: { id } });
+      const event = await prisma.substitution.findFirst({ where: { id, fixtureId: fixture.id } });
+      if (!event) throw new AppError("Substitution not found for this fixture", 404);
+      await prisma.substitution.delete({ where: { id: event.id } });
     } else if (type === "note") {
-      await prisma.matchNote.delete({ where: { id } });
+      const event = await prisma.matchNote.findFirst({ where: { id, fixtureId: fixture.id } });
+      if (!event) throw new AppError("Note not found for this fixture", 404);
+      await prisma.matchNote.delete({ where: { id: event.id } });
     } else {
       throw new AppError("Invalid event type", 400);
     }

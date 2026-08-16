@@ -127,6 +127,8 @@ model User {
   managedAwards     Award[]        @relation("ManagedAwards")
   managedSeasons    Season[]       @relation("ManagedSeasons")
   managedTeams      Team[]         @relation("ManagedTeams")
+  matchResultRevisions MatchResultRevision[]
+  playerTransfers   PlayerTransfer[]
 
   @@map("users")
 }
@@ -448,6 +450,7 @@ model Season {
   players             Player[]
   fixtures            Fixture[]
   standings           Standing[]
+  standingAdjustments StandingAdjustment[]
   suspensions         Suspension[]
   awards              Award[]
   competitions        Competition[]
@@ -456,6 +459,8 @@ model Season {
   friendlyPlayerStats FriendlyPlayerStat[]
   news                News[]
   galleries           Gallery[]
+  transfersFromSeason PlayerTransfer[] @relation("TransfersFromSeason")
+  transfersToSeason   PlayerTransfer[] @relation("TransfersToSeason")
 
   @@map("seasons")
 }
@@ -470,8 +475,11 @@ model Competition {
   isActive  Boolean            @default(true)
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
+  bracketSize Int?
+  bracketStatus String @default("NOT_STARTED")
 
   fixtures Fixture[]
+  bracketMatches BracketMatch[]
 
   @@unique([seasonId, slug])
   @@map("competitions")
@@ -506,6 +514,7 @@ model Team {
   players               Player[]
   staff                 Staff[]
   standings             Standing[]
+  standingAdjustments   StandingAdjustment[]
   teamStats             TeamStat[]
   galleries             Gallery[]
   sponsors              Sponsor[]
@@ -517,6 +526,11 @@ model Team {
   awardWins             Award[]              @relation("TeamAwardWins")
   previousWinnerEntries PreviousWinner[]     @relation("TeamPreviousWinners")
   followers             UserFollow[]
+  bracketHomeMatches    BracketMatch[]       @relation("BracketHomeTeam")
+  bracketAwayMatches    BracketMatch[]       @relation("BracketAwayTeam")
+  bracketWins           BracketMatch[]       @relation("BracketWinner")
+  transfersFrom         PlayerTransfer[]      @relation("TransfersFrom")
+  transfersTo           PlayerTransfer[]      @relation("TransfersTo")
 
   @@unique([seasonId, slug])
   @@map("teams")
@@ -566,6 +580,7 @@ model Player {
   followers          UserFollow[]
   pollOptions        PollOption[]
   friendlyStats      FriendlyPlayerStat[]
+  transfers          PlayerTransfer[]
 
   @@unique([seasonId, slug])
   @@index([teamId])
@@ -630,6 +645,17 @@ model Fixture {
   awayExpectedGoals      Float?
   referee                String?
   referee2               String?
+  refereeAssignedAt      DateTime?
+  originalMatchDate      DateTime?
+  postponementReason     String?
+  rescheduleReason       String?
+  rescheduledAt          DateTime?
+  extraTimeHomeScore     Int?
+  extraTimeAwayScore     Int?
+  penaltiesHomeScore     Int?
+  penaltiesAwayScore     Int?
+  winnerTeamId            String?
+  outcome                String       @default("REGULAR") // REGULAR, WALKOVER, FORFEIT
   attendance             Int?
   stadium                String?
   matchReport            String?
@@ -659,6 +685,8 @@ model Fixture {
   galleries          Gallery[]
   rsvps              MatchRsvp[]
   polls              Poll[]
+  resultRevisions    MatchResultRevision[]
+  bracketMatch       BracketMatch?
 
   @@index([seasonId])
   @@index([homeTeamId])
@@ -666,6 +694,66 @@ model Fixture {
   @@index([matchDate])
   @@index([status])
   @@map("fixtures")
+}
+
+model BracketMatch {
+  id             String      @id @default(uuid())
+  competitionId  String
+  competition    Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  roundNumber    Int
+  position       Int
+  fixtureId      String?     @unique
+  fixture        Fixture?    @relation(fields: [fixtureId], references: [id], onDelete: SetNull)
+  homeTeamId     String?
+  homeTeam       Team?       @relation("BracketHomeTeam", fields: [homeTeamId], references: [id], onDelete: SetNull)
+  awayTeamId     String?
+  awayTeam       Team?       @relation("BracketAwayTeam", fields: [awayTeamId], references: [id], onDelete: SetNull)
+  winnerTeamId   String?
+  winnerTeam     Team?       @relation("BracketWinner", fields: [winnerTeamId], references: [id], onDelete: SetNull)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@unique([competitionId, roundNumber, position])
+  @@index([competitionId, roundNumber])
+  @@map("bracket_matches")
+}
+
+model PlayerTransfer {
+  id           String   @id @default(uuid())
+  playerId     String
+  player       Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  fromTeamId   String?
+  fromTeam     Team?    @relation("TransfersFrom", fields: [fromTeamId], references: [id], onDelete: SetNull)
+  toTeamId     String?
+  toTeam       Team?    @relation("TransfersTo", fields: [toTeamId], references: [id], onDelete: SetNull)
+  fromSeasonId String?
+  fromSeason   Season?  @relation("TransfersFromSeason", fields: [fromSeasonId], references: [id], onDelete: SetNull)
+  toSeasonId   String?
+  toSeason     Season?  @relation("TransfersToSeason", fields: [toSeasonId], references: [id], onDelete: SetNull)
+  reason       String?
+  createdById  String?
+  createdBy    User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  transferredAt DateTime @default(now())
+
+  @@index([playerId, transferredAt])
+  @@map("player_transfers")
+}
+
+model MatchResultRevision {
+  id             String   @id @default(uuid())
+  fixtureId      String
+  fixture        Fixture  @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
+  changedById    String?
+  changedBy      User?    @relation(fields: [changedById], references: [id], onDelete: SetNull)
+  previousHomeScore Int?
+  previousAwayScore Int?
+  nextHomeScore  Int
+  nextAwayScore  Int
+  reason         String?
+  createdAt      DateTime @default(now())
+
+  @@index([fixtureId, createdAt])
+  @@map("match_result_revisions")
 }
 
 model Goal {
@@ -867,10 +955,26 @@ model Standing {
   form           String? // "WWDLW" format
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
-
   @@unique([seasonId, teamId])
   @@index([seasonId, position])
   @@map("standings")
+}
+
+model StandingAdjustment {
+  id             String   @id @default(uuid())
+  seasonId       String
+  season         Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  teamId         String
+  team           Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  pointsDelta    Int      @default(0)
+  goalsForDelta  Int      @default(0)
+  goalsAgainstDelta Int   @default(0)
+  reason         String
+  createdById    String?
+  createdAt      DateTime @default(now())
+
+  @@index([seasonId, teamId])
+  @@map("standing_adjustments")
 }
 
 model PlayerStat {

@@ -23,8 +23,8 @@ import { AdminAnalytics } from "@/components/admin/AdminAnalytics";
 import { BookingDrawer } from "@/components/admin/BookingDrawer";
 import { BottomSheet } from "@/components/admin/BottomSheet";
 import { DataTable, ColumnDef, BulkAction } from "@/components/admin/DataTable";
-import type { DashboardStats, User, Season, Team, Player, Fixture, Award, News, Booking, PaginatedResponse, Venue, Turf, Sponsor, Suspension, ActivityLog, Gallery, Coupon, Advertisement, Faq, ReviewAdmin } from "@/types";
-import { LayoutDashboard, Users, Calendar, CalendarDays, Trophy, Settings, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2, XCircle, ListChecks, AlertTriangle, MessageSquare, HelpCircle, Tag, Monitor, Search, Menu, TrendingUp, MoreHorizontal, MessageCircle, QrCode, Copy } from "lucide-react";
+import type { DashboardStats, User, Season, Team, Player, Fixture, Award, News, Booking, PaginatedResponse, Venue, Turf, Sponsor, Suspension, ActivityLog, Gallery, Coupon, Advertisement, Faq, ReviewAdmin, Competition } from "@/types";
+import { LayoutDashboard, Users, Calendar, CalendarDays, Trophy, Settings, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2, XCircle, ListChecks, AlertTriangle, MessageSquare, HelpCircle, Tag, Monitor, Search, Menu, TrendingUp, MoreHorizontal, MessageCircle, QrCode, Copy, Eye } from "lucide-react";
 import { VenueCalendar } from "@/components/admin/VenueCalendar";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 
@@ -35,6 +35,7 @@ const adminTabs = [
   { id: "players", label: "Players", icon: Users },
   { id: "player-stats", label: "Player Stats", icon: TrendingUp },
   { id: "fixtures", label: "Fixtures", icon: Activity },
+  { id: "competitions", label: "Competitions", icon: Trophy },
   { id: "awards", label: "Awards", icon: Medal },
   { id: "gallery", label: "Gallery", icon: Image },
   { id: "venues", label: "Venues", icon: MapPin },
@@ -58,6 +59,7 @@ export function AdminPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("overview");
   const [editingItem, setEditingItem] = useState<any>(null);
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState<string | null>(null);
   const [passwordInput, setPasswordInput] = useState("");
   const [passwordError, setPasswordError] = useState(false);
@@ -83,11 +85,14 @@ export function AdminPage() {
   const [teamSearch, setTeamSearch] = useState("");
   const [playerSearch, setPlayerSearch] = useState("");
   const [fixtureSearch, setFixtureSearch] = useState("");
+  const [fixtureTypeFilter, setFixtureTypeFilter] = useState<"all" | "league" | "friendly">("all");
   const [bookingSearch, setBookingSearch] = useState("");
   const [newsSearch, setNewsSearch] = useState("");
   const [sponsorSearch, setSponsorSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const [friendlyStatsMode, setFriendlyStatsMode] = useState(false);
+  const [bracketCompetitionId, setBracketCompetitionId] = useState<string | null>(null);
+  const [selectedBracketTeams, setSelectedBracketTeams] = useState<string[]>([]);
 
   const openForm = (type: string, initial: Record<string, any> = {}) => {
     setFormData(initial);
@@ -136,6 +141,7 @@ export function AdminPage() {
       setEditingItem(null);
       setShowForm(null);
       queryClient.invalidateQueries({ queryKey: [invalidateKey] });
+      if (type === "player") queryClient.invalidateQueries({ queryKey: ["admin-player-detail"] });
     } catch (err: any) {
       setFormErrors(err.message || "Failed to save");
     }
@@ -191,7 +197,13 @@ export function AdminPage() {
   const { data: players } = useQuery({
     queryKey: ["admin-players", selectedSeasonId, playerSearch],
     queryFn: () => api.get<PaginatedResponse<Player>>("/admin/players", { limit: "100", ...(selectedSeasonId ? { seasonId: selectedSeasonId } : {}), ...(playerSearch ? { search: playerSearch } : {}) }),
-    enabled: tabEnabled("players"),
+    enabled: tabEnabled("players") || tabEnabled("gallery"),
+  });
+
+  const { data: selectedPlayer, isLoading: selectedPlayerLoading } = useQuery({
+    queryKey: ["admin-player-detail", selectedPlayerId],
+    queryFn: () => api.get<any>(`/league/players/${selectedPlayerId}`),
+    enabled: !!selectedPlayerId && unlocked,
   });
 
   const { data: editablePlayerStats } = useQuery({
@@ -200,7 +212,10 @@ export function AdminPage() {
     enabled: tabEnabled("player-stats") && !!selectedSeasonId,
   });
 
-  const { data: fixtures } = useQuery({ queryKey: ["admin-fixtures", fixtureSearch], queryFn: () => api.get<PaginatedResponse<Fixture>>("/admin/fixtures", { limit: "100", ...(fixtureSearch ? { search: fixtureSearch } : {}) }), enabled: tabEnabled("fixtures") });
+  const { data: fixtures } = useQuery({ queryKey: ["admin-fixtures", fixtureSearch, fixtureTypeFilter], queryFn: () => api.get<PaginatedResponse<Fixture>>("/admin/fixtures", { limit: "100", ...(fixtureSearch ? { search: fixtureSearch } : {}), ...(fixtureTypeFilter === "all" ? {} : { friendly: fixtureTypeFilter === "friendly" ? "true" : "false" }) }), enabled: tabEnabled("fixtures") });
+
+  const { data: competitions } = useQuery({ queryKey: ["admin-competitions", selectedSeasonId], queryFn: () => api.get<Competition[]>("/admin/competitions", { ...(selectedSeasonId ? { seasonId: selectedSeasonId } : {}) }), enabled: tabEnabled("competitions") });
+  const { data: bracket } = useQuery({ queryKey: ["admin-bracket", bracketCompetitionId], queryFn: () => api.get<any>(`/admin/competitions/${bracketCompetitionId}/bracket`), enabled: tabEnabled("competitions") && !!bracketCompetitionId });
 
   const { data: awards } = useQuery({ queryKey: ["admin-awards"], queryFn: () => api.get<Award[]>("/admin/awards"), enabled: tabEnabled("awards") });
 
@@ -529,6 +544,7 @@ export function AdminPage() {
                 { key: "team", label: "Team", sortable: true, render: (p) => p.team?.name || "-" },
                 { key: "position", label: "Position", render: (p) => p.position || "-" },
                 { key: "jersey", label: "Jersey", render: (p) => p.jerseyNumber || "-" },
+                { key: "manage", label: "Manage", render: (p) => <div className="flex gap-1"><Button size="sm" variant="outline" onClick={() => setSelectedPlayerId(p.slug)}><Eye className="mr-1 h-3.5 w-3.5" /> Details</Button><Button size="sm" variant="outline" onClick={() => { setEditingItem(p); openForm("player", { firstName: p.firstName, lastName: p.lastName || "", position: p.position || "", teamId: p.teamId || "", jerseyNumber: p.jerseyNumber || "", squadType: p.squadType || "", photoUrl: p.photoUrl || "", nationality: p.nationality || "", age: p.age || "", height: p.height || "", weight: p.weight || "", preferredFoot: p.preferredFoot || "", biography: p.biography || "" }); }}><Edit2 className="mr-1 h-3.5 w-3.5" /> Edit</Button></div> },
               ]}
               data={players?.data || []}
               keyExtractor={(p) => p.id}
@@ -536,7 +552,7 @@ export function AdminPage() {
               onSearch={setPlayerSearch}
               onAdd={() => { setEditingItem(null); openForm("player", { firstName: "", lastName: "", position: "", teamId: "", jerseyNumber: "", squadType: "", nationality: "", age: "", height: "", weight: "", preferredFoot: "", biography: "" }); }}
               onEdit={(p) => { setEditingItem(p); openForm("player", { firstName: p.firstName, lastName: p.lastName || "", position: p.position || "", teamId: p.teamId || "", jerseyNumber: p.jerseyNumber || "", squadType: p.squadType || "", photoUrl: p.photoUrl || "", nationality: p.nationality || "", age: p.age || "", height: p.height || "", weight: p.weight || "", preferredFoot: p.preferredFoot || "", biography: p.biography || "" }); }}
-              onDelete={(p) => { if (confirm(`Delete player ${p.firstName} ${p.lastName}?`)) api.delete(`/admin/players/${p.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-players"] })).catch((e: any) => setActionError(e.message)); }}
+              onDelete={(p) => { if (confirm(`Delete player ${p.firstName} ${p.lastName}?`)) api.delete(`/admin/players/${p.id}`).then(() => { setSelectedPlayerId(null); queryClient.invalidateQueries({ queryKey: ["admin-players"] }); }).catch((e: any) => setActionError(e.message)); }}
             />
             <Dialog open={showForm === "player"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Player" : "Add Player"}>
               <div className="space-y-4">
@@ -654,8 +670,20 @@ export function AdminPage() {
                 {[["appearances", "Appearances"], ["goals", "Goals"], ["assists", "Assists"], ["minutesPlayed", "Minutes"], ["shots", "Shots"], ["shotsOnTarget", "Shots on target"], ["yellowCards", "Yellow cards"], ["redCards", "Red cards"], ["averageRating", "Rating"]].map(([key, label]) => <div key={key} className="space-y-1.5"><Label>{label}</Label><Input type="number" min={0} max={key === "averageRating" ? 10 : undefined} step={key === "averageRating" ? "0.1" : "1"} value={formData[key] ?? 0} onChange={(e) => handleFormChange(key, e.target.value === "" ? 0 : Number(e.target.value))} /></div>)}
                 <p className="col-span-2 text-xs text-muted-foreground">Appearances cannot exceed eligible fixtures for this player.</p>
                 {formErrors && <p className="col-span-2 text-sm text-destructive">{formErrors}</p>}
-                <Button className="col-span-2" onClick={async () => { try { await api.patch(`/admin/player-stats/${editingItem.playerId}`, { seasonId: selectedSeasonId, teamId: editingItem.teamId, friendly: friendlyStatsMode, ...formData }); setShowForm(null); setEditingItem(null); queryClient.invalidateQueries({ queryKey: ["admin-player-stats"] }); } catch (e: any) { setFormErrors(e.message || "Failed to save stats"); } }}>Save stats</Button>
+                <Button className="col-span-2" onClick={async () => { try { await api.patch(`/admin/player-stats/${editingItem.playerId}`, { seasonId: editingItem.seasonId || selectedSeasonId, teamId: editingItem.teamId, friendly: editingItem.competition === "FRIENDLY" || friendlyStatsMode, ...formData }); setShowForm(null); setEditingItem(null); queryClient.invalidateQueries({ queryKey: ["admin-player-stats"] }); queryClient.invalidateQueries({ queryKey: ["admin-player-detail"] }); } catch (e: any) { setFormErrors(e.message || "Failed to save stats"); } }}>Save stats</Button>
               </div>
+            </Dialog>
+            <Dialog open={!!selectedPlayerId} onClose={() => setSelectedPlayerId(null)} title={selectedPlayer ? `${selectedPlayer.firstName} ${selectedPlayer.lastName}` : "Player details"}>
+              {selectedPlayerLoading && <div className="h-48 animate-pulse rounded-lg bg-muted" />}
+              {selectedPlayer && <div className="space-y-5">
+                <div className="flex items-center gap-4 rounded-xl border p-4">
+                  <img src={selectedPlayer.photoUrl || "/placeholder.svg"} alt="" className="h-20 w-20 rounded-xl object-cover" />
+                  <div><p className="text-lg font-bold">{selectedPlayer.firstName} {selectedPlayer.lastName}</p><p className="text-sm text-muted-foreground">{selectedPlayer.team?.name || "No team"} · {selectedPlayer.position || "No position"} · #{selectedPlayer.jerseyNumber || "-"}</p><Button size="sm" className="mt-2" onClick={() => { setEditingItem(selectedPlayer); openForm("player", { firstName: selectedPlayer.firstName, lastName: selectedPlayer.lastName || "", position: selectedPlayer.position || "", teamId: selectedPlayer.teamId || "", jerseyNumber: selectedPlayer.jerseyNumber || "", squadType: selectedPlayer.squadType || "", photoUrl: selectedPlayer.photoUrl || "", nationality: selectedPlayer.nationality || "", age: selectedPlayer.age || "", height: selectedPlayer.height || "", weight: selectedPlayer.weight || "", preferredFoot: selectedPlayer.preferredFoot || "", biography: selectedPlayer.biography || "" }); }}>Edit profile</Button></div>
+                </div>
+                {selectedPlayer.biography && <p className="text-sm text-muted-foreground">{selectedPlayer.biography}</p>}
+                <div><div className="mb-2 flex items-center justify-between"><h3 className="font-semibold">Statistics</h3><span className="text-xs text-muted-foreground">Click Edit to update manually</span></div><div className="space-y-3">{(selectedPlayer.profileStats || []).map((stat: any) => <div key={stat.id} className="rounded-xl border p-3"><div className="mb-2 flex items-center justify-between"><div><p className="text-sm font-semibold">{stat.competition === "FRIENDLY" ? "Friendly" : "League"} · {stat.season?.name || "Season"}</p><p className="text-xs text-muted-foreground">{stat.team?.name || selectedPlayer.team?.name || "Team"}</p></div><Button size="sm" variant="outline" onClick={() => { setEditingItem(stat); openForm("player-stats", { ...stat }); }}>Edit</Button></div><div className="grid grid-cols-4 gap-2 text-center text-xs">{[["Apps", stat.appearances], ["Goals", stat.goals], ["Assists", stat.assists], ["Minutes", stat.minutesPlayed], ["Shots", stat.shots], ["Cards", (stat.yellowCards || 0) + (stat.redCards || 0)], ["Rating", stat.averageRating?.toFixed?.(1) || "-"], ["Tackles", stat.tackles ?? "-"]].map(([label, value]) => <div key={label as string} className="rounded-lg bg-muted/50 p-2"><p className="font-bold">{value as any}</p><p className="text-muted-foreground">{label as string}</p></div>)}</div></div>)}</div></div>
+                {selectedPlayer.galleries?.length > 0 && <div><h3 className="mb-2 font-semibold">Gallery</h3><div className="grid grid-cols-3 gap-2">{selectedPlayer.galleries.map((g: any) => <img key={g.id} src={g.imageUrl} alt={g.title} className="aspect-square rounded-lg object-cover" />)}</div></div>}
+              </div>}
             </Dialog>
           </>
         )}
@@ -664,12 +692,14 @@ export function AdminPage() {
           <>
             <DataTable<Fixture>
               title="Fixtures"
+              filters={<Select value={fixtureTypeFilter} onChange={(e) => setFixtureTypeFilter(e.target.value as typeof fixtureTypeFilter)} className="w-40"><option value="all">All matches</option><option value="league">League only</option><option value="friendly">Friendly only</option></Select>}
               columns={[
                 { key: "home", label: "Home", sortable: true, render: (f) => <span className="font-medium">{f.homeTeam?.name || "?"}</span> },
                 { key: "score", label: "Score", render: (f) => <span className="font-bold">{f.status === "COMPLETED" ? `${f.homeScore ?? 0} - ${f.awayScore ?? 0}` : "vs"}</span> },
                 { key: "away", label: "Away", sortable: true, render: (f) => <span className="font-medium">{f.awayTeam?.name || "?"}</span> },
                 { key: "date", label: "Date", sortable: true, render: (f) => <span className="text-muted-foreground">{formatDate(f.matchDate)}</span> },
                 { key: "status", label: "Status", render: (f) => <Badge variant="secondary">{f.status}</Badge> },
+                { key: "type", label: "Type", render: (f) => <Badge variant={f.isFriendly ? "outline" : "secondary"}>{f.isFriendly ? "Friendly" : "League"}</Badge> },
                 { key: "manage", label: "Manage", render: (f) => (
                   <div className="flex items-center justify-end gap-1">
                     <Button size="sm" variant="outline" onClick={() => setLineupFixture(f)}>
@@ -771,10 +801,18 @@ export function AdminPage() {
                     <Input type="number" min={0} value={formData.awayScore ?? 0} onChange={(e) => handleFormChange("awayScore", parseInt(e.target.value) || 0)} />
                   </div>
                 </div>
+                <div className="space-y-1.5">
+                  <Label>Penalty winner (knockout ties only)</Label>
+                  <Select value={formData.winnerTeamId || ""} onChange={(e) => handleFormChange("winnerTeamId", e.target.value)}>
+                    <option value="">Not applicable</option>
+                    {formData.homeTeamId && <option value={formData.homeTeamId}>{formData.homeTeamName || "Home team"}</option>}
+                    {formData.awayTeamId && <option value={formData.awayTeamId}>{formData.awayTeamName || "Away team"}</option>}
+                  </Select>
+                </div>
                 <div className="flex gap-2">
                   <Button className="flex-1" variant="outline" onClick={async () => {
                     try {
-                      await api.patch(`/admin/fixtures/${formData.fixtureId}/score`, { homeScore: formData.homeScore, awayScore: formData.awayScore });
+                      await api.patch(`/admin/fixtures/${formData.fixtureId}/score`, { homeScore: formData.homeScore, awayScore: formData.awayScore, winnerTeamId: formData.winnerTeamId || undefined });
                       setEditingItem(null);
                       setShowForm(null);
                       queryClient.invalidateQueries({ queryKey: ["admin-fixtures"] });
@@ -784,7 +822,7 @@ export function AdminPage() {
                   }}>Update Score Only</Button>
                   <Button className="flex-1" onClick={async () => {
                     try {
-                      await api.post(`/admin/process-match-result/${formData.fixtureId}`, { homeScore: formData.homeScore, awayScore: formData.awayScore });
+                      await api.post(`/admin/process-match-result/${formData.fixtureId}`, { homeScore: formData.homeScore, awayScore: formData.awayScore, winnerTeamId: formData.winnerTeamId || undefined });
                       setEditingItem(null);
                       setShowForm(null);
                       queryClient.invalidateQueries({ queryKey: ["admin-fixtures"] });
@@ -809,6 +847,49 @@ export function AdminPage() {
               /> : <p className="p-4 text-muted-foreground">Loading...</p>}
             </Dialog>
           </>
+        )}
+
+        {activeTab === "competitions" && (
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-xl font-bold">Competitions & Brackets</h2>
+              <p className="text-sm text-muted-foreground">Create and monitor knockout brackets. League competitions continue to use standings.</p>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+              <div className="space-y-3">
+                {(competitions || []).map((competition) => {
+                  const selected = bracketCompetitionId === competition.id;
+                  const eligible = competition.type === "KNOCKOUT" || competition.type === "CUP";
+                  return <Card key={competition.id} className={selected ? "border-primary" : ""}>
+                    <CardContent className="p-4">
+                      <button className="w-full text-left" onClick={() => { setBracketCompetitionId(competition.id); setSelectedBracketTeams([]); }}>
+                        <div className="flex items-center justify-between gap-2"><span className="font-semibold">{competition.name}</span><Badge variant="outline">{competition.type}</Badge></div>
+                        <p className="mt-1 text-xs text-muted-foreground">{competition.bracketStatus || "NOT_STARTED"} · {competition._count?.bracketMatches || 0} bracket matches</p>
+                      </button>
+                      {selected && eligible && !competition._count?.bracketMatches && <div className="mt-3 border-t pt-3">
+                        <p className="mb-2 text-xs font-medium">Select teams ({selectedBracketTeams.length})</p>
+                        <div className="grid max-h-48 gap-1 overflow-y-auto">
+                          {(teams || []).filter((team) => team.seasonId === competition.seasonId).map((team) => <button key={team.id} onClick={() => setSelectedBracketTeams((prev) => prev.includes(team.id) ? prev.filter((id) => id !== team.id) : [...prev, team.id])} className={`rounded border px-2 py-1 text-left text-xs ${selectedBracketTeams.includes(team.id) ? "border-primary bg-primary/10" : ""}`}>{team.name}</button>)}
+                        </div>
+                        <Button size="sm" className="mt-3 w-full" disabled={! [2, 4, 8, 16, 32].includes(selectedBracketTeams.length)} onClick={async () => { try { await api.post(`/admin/competitions/${competition.id}/bracket/generate`, { teamIds: selectedBracketTeams }); queryClient.invalidateQueries({ queryKey: ["admin-competitions"] }); queryClient.invalidateQueries({ queryKey: ["admin-bracket", competition.id] }); } catch (err: any) { setFormErrors(err.message); } }}>Generate bracket</Button>
+                      </div>}
+                    </CardContent>
+                  </Card>;
+                })}
+                {!competitions?.length && <p className="rounded-lg border p-6 text-sm text-muted-foreground">No competitions found for this season.</p>}
+              </div>
+              <Card>
+                <CardHeader><CardTitle>{bracket?.name || "Bracket preview"}</CardTitle></CardHeader>
+                <CardContent>
+                  {!bracketCompetitionId && <p className="text-sm text-muted-foreground">Select a competition to view its bracket.</p>}
+                  {bracketCompetitionId && !bracket?.bracketMatches?.length && <p className="text-sm text-muted-foreground">No bracket has been generated yet.</p>}
+                  <div className="grid gap-4 overflow-x-auto md:grid-cols-2 lg:grid-cols-4">
+                    {Array.from(new Set((bracket?.bracketMatches || []).map((match: any) => match.roundNumber))).sort((a: any, b: any) => a - b).map((round: any) => <div key={round} className="min-w-48 space-y-2"><h3 className="text-sm font-semibold">Round {round}</h3>{(bracket.bracketMatches || []).filter((match: any) => match.roundNumber === round).map((match: any) => <div key={match.id} className="rounded-lg border p-2 text-xs"><div className="flex justify-between"><span>{match.homeTeam?.name || "TBD"}</span><b>{match.fixture?.homeScore ?? "-"}</b></div><div className="flex justify-between"><span>{match.awayTeam?.name || "TBD"}</span><b>{match.fixture?.awayScore ?? "-"}</b></div><p className="mt-1 text-[10px] text-muted-foreground">{match.fixture?.status || "Waiting"}</p></div>)}</div>)}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         )}
 
         {activeTab === "awards" && (
@@ -992,8 +1073,8 @@ export function AdminPage() {
                 g.isActive !== false ? <Badge className="bg-primary">Active</Badge> : <Badge variant="destructive">Inactive</Badge>,
                 g.createdAt ? formatDate(g.createdAt) : "-",
               ]}
-              onAdd={() => { setEditingItem(null); openForm("gallery", { title: "", imageUrl: "", videoUrl: "", isActive: true }); }}
-              onEdit={(g) => { setEditingItem(g); openForm("gallery", { title: g.title, imageUrl: g.imageUrl || "", videoUrl: g.videoUrl || "", isActive: g.isActive ?? true }); }}
+              onAdd={() => { setEditingItem(null); openForm("gallery", { title: "", imageUrl: "", videoUrl: "", playerId: "", isActive: true }); }}
+              onEdit={(g) => { setEditingItem(g); openForm("gallery", { title: g.title, imageUrl: g.imageUrl || "", videoUrl: g.videoUrl || "", playerId: g.playerId || "", isActive: g.isActive ?? true }); }}
               onDelete={(g) => { if (confirm("Delete this gallery item?")) api.delete(`/admin/gallery/${g.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-gallery"] })).catch((e: any) => setActionError(e.message)); }}
             />
             <Dialog open={showForm === "gallery"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Gallery Item" : "Add Gallery Item"}>
@@ -1008,6 +1089,13 @@ export function AdminPage() {
                 <div className="space-y-1.5">
                   <Label>Video URL (optional)</Label>
                   <Input value={formData.videoUrl || ""} onChange={(e) => handleFormChange("videoUrl", e.target.value)} placeholder="https://..." />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Player (optional)</Label>
+                  <Select value={formData.playerId || ""} onChange={(e) => handleFormChange("playerId", e.target.value)}>
+                    <option value="">General gallery item</option>
+                    {(players?.data || []).map((p: Player) => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>)}
+                  </Select>
                 </div>
                 <label className="flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={formData.isActive ?? true} onChange={(e) => handleFormChange("isActive", e.target.checked)} className="rounded" />

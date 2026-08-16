@@ -164,6 +164,14 @@ export function FixtureDetailPage() {
           {user && <div className="flex items-center gap-2"><Button variant={rsvp?.status === "GOING" ? "default" : "outline"} onClick={() => setRsvp("GOING")}>I’m going</Button><Button variant={rsvp?.status === "MAYBE" ? "default" : "outline"} onClick={() => setRsvp("MAYBE")}>Maybe</Button></div>}
         </div>
 
+        {(fixture.extraTimeHomeScore !== undefined || fixture.penaltiesHomeScore !== undefined || fixture.outcome === "WALKOVER" || fixture.outcome === "FORFEIT" || fixture.status === "POSTPONED") && (
+          <Card className="mb-8"><CardContent className="space-y-2 p-4 text-sm">
+            {fixture.status === "POSTPONED" && <p className="font-medium text-amber-600">Postponed{fixture.postponementReason ? `: ${fixture.postponementReason}` : ""}</p>}
+            {(fixture.extraTimeHomeScore !== undefined || fixture.penaltiesHomeScore !== undefined) && <div className="flex flex-wrap gap-4"><span>After extra time: {fixture.extraTimeHomeScore ?? fixture.homeScore} - {fixture.extraTimeAwayScore ?? fixture.awayScore}</span>{fixture.penaltiesHomeScore !== undefined && <span>Penalties: {fixture.penaltiesHomeScore} - {fixture.penaltiesAwayScore}</span>}</div>}
+            {(fixture.outcome === "WALKOVER" || fixture.outcome === "FORFEIT") && <p className="font-medium">Result: {fixture.outcome.toLowerCase()}</p>}
+          </CardContent></Card>
+        )}
+
         {fixture.highlights && (
           <div className="mb-8 overflow-hidden rounded-2xl">
             <iframe
