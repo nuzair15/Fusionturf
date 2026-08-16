@@ -3,15 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "@/providers/ThemeProvider";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import { Moon, Sun, Calendar, Search, LayoutDashboard, LogOut } from "lucide-react";
+import { Moon, Sun, Calendar, Search } from "lucide-react";
 import { useState } from "react";
-import { useAuth } from "@/providers/AuthProvider";
 
 export function Navbar() {
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { user, logout } = useAuth();
   const [search, setSearch] = useState("");
 
   const { data: settings } = useQuery({
@@ -40,9 +38,9 @@ export function Navbar() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button onClick={() => navigate(user ? "/dashboard" : "/auth")} variant={user ? "outline" : "default"} size="sm" className="hidden gap-1.5 sm:inline-flex">{user ? <LayoutDashboard className="h-4 w-4" /> : null}{user ? "Dashboard" : "Sign in"}</Button>
-          <Button onClick={() => navigate("/booking")} size="sm" className="gap-1.5 lg:hidden"><Calendar className="h-4 w-4" /> Book</Button>
-          {user && <button type="button" aria-label="Sign out" title="Sign out" onClick={() => { logout(); navigate("/"); }} className="hidden h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground sm:flex"><LogOut className="h-4 w-4" /></button>}
+          <Button onClick={() => navigate("/booking")} size="sm" className="gap-1.5">
+            <Calendar className="h-4 w-4" /> Book Now
+          </Button>
           <button
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent md:h-10 md:w-10"
