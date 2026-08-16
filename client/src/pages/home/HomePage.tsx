@@ -18,12 +18,12 @@ export function HomePage() {
     retry: false,
   });
 
-  const { data: fixtures } = useQuery({ queryKey: ["featured-fixtures"], queryFn: () => api.get<PaginatedResponse<Fixture>>("/league/fixtures?limit=6") });
-  const { data: standings } = useQuery({ queryKey: ["standings"], queryFn: () => api.get<Standing[]>("/league/standings") });
-  const { data: venues } = useQuery({ queryKey: ["venues"], queryFn: () => api.get<PaginatedResponse<Venue>>("/bookings/venues?limit=4") });
-  const { data: news } = useQuery({ queryKey: ["home-news"], queryFn: () => api.get<PaginatedResponse<News>>("/league/news?limit=4") });
-  const { data: sponsors } = useQuery({ queryKey: ["sponsors"], queryFn: () => api.get<{ data: Sponsor[] }>("/league/sponsors") });
-  const { data: currentSeason } = useQuery({ queryKey: ["current-season"], queryFn: () => api.get<Season>("/league/seasons/current"), retry: false });
+  const { data: fixtures } = useQuery({ queryKey: ["featured-fixtures"], queryFn: () => api.get<PaginatedResponse<Fixture>>("/league/fixtures?limit=6"), staleTime: 0, refetchOnWindowFocus: true, refetchInterval: 15000 });
+  const { data: standings } = useQuery({ queryKey: ["standings"], queryFn: () => api.get<Standing[]>("/league/standings"), staleTime: 0, refetchOnWindowFocus: true, refetchInterval: 10000 });
+  const { data: venues } = useQuery({ queryKey: ["venues"], queryFn: () => api.get<PaginatedResponse<Venue>>("/bookings/venues?limit=4"), refetchOnWindowFocus: true, refetchInterval: 60000 });
+  const { data: news } = useQuery({ queryKey: ["home-news"], queryFn: () => api.get<PaginatedResponse<News>>("/league/news?limit=4"), refetchOnWindowFocus: true, refetchInterval: 60000 });
+  const { data: sponsors } = useQuery({ queryKey: ["sponsors"], queryFn: () => api.get<{ data: Sponsor[] }>("/league/sponsors"), refetchOnWindowFocus: true, refetchInterval: 60000 });
+  const { data: currentSeason } = useQuery({ queryKey: ["current-season"], queryFn: () => api.get<Season>("/league/seasons/current"), retry: false, refetchOnWindowFocus: true, refetchInterval: 60000 });
 
   const heroImage = settings?.site_hero_url || "/hero.jpeg";
   const itemList = fixtures?.data || [];

@@ -78,7 +78,8 @@ export interface Player {
   biography?: string;
   squadType?: string;
   homeStats?: PlayerStat[];
-  friendlyStats?: FriendlyPlayerStat;
+  friendlyStats?: FriendlyPlayerStat[];
+  profileStats?: Array<PlayerStat & { competition?: "LEAGUE" | "FRIENDLY"; season?: Season; team?: Team }>;
   awards?: AwardWinner[];
   galleries?: Gallery[];
 }

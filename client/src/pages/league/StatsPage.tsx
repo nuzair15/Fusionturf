@@ -29,6 +29,9 @@ export function StatsPage() {
   const { data } = useQuery({
     queryKey: ["player-stats", activeStat, friendly],
     queryFn: () => api.get<PlayerStat[]>("/league/stats/players", { stat: activeStat, friendly: friendly ? "true" : "false" }),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchInterval: 30000,
   });
 
   const stats = data || [];

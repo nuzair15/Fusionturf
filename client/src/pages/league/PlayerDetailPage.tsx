@@ -7,21 +7,32 @@ import { api } from "@/lib/api";
 import type { Player } from "@/types";
 import { ChevronLeft, MapPin, Ruler, Weight, Award, Footprints, Image as ImageIcon, Play } from "lucide-react";
 import { FollowButton } from "@/components/league/FollowButton";
+import { PageError, PageSkeleton } from "@/components/PageState";
 
 export function PlayerDetailPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
 
-  const { data: player, isLoading } = useQuery({
+  const { data: player, isLoading, isError, refetch } = useQuery({
     queryKey: ["player", slug],
     queryFn: () => api.get<Player>(`/league/players/${slug}`),
     enabled: !!slug,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchInterval: 30000,
   });
 
-  if (isLoading) return <div className="mx-auto max-w-7xl px-4 py-8"><div className="h-96 animate-pulse rounded-xl bg-muted" /></div>;
-  if (!player) return null;
+  if (isLoading) return <PageSkeleton />;
+  if (isError || !player) return <PageError title="Player profile not found" description="This player may no longer be in the active league, or their profile is unavailable." onRetry={() => void refetch()} action={<Button variant="outline" onClick={() => navigate("/league")}>Back to league</Button>} />;
 
-  const profileStats = (player as any).profileStats || [];
+  const calculatedStats = (player.profileStats || []) as any[];
+  const storedStats = [
+    ...((player.homeStats || []) as any[]).map((s) => ({ ...s, competition: "LEAGUE" })),
+    ...((player.friendlyStats || []) as any[]).map((s) => ({ ...s, competition: "FRIENDLY" })),
+  ];
+  const profileStats = [...calculatedStats, ...storedStats].filter((stat, index, rows) =>
+    rows.findIndex((candidate) => `${candidate.competition}-${candidate.seasonId}-${candidate.teamId}` === `${stat.competition}-${stat.seasonId}-${stat.teamId}`) === index,
+  );
   const leagueStats = profileStats.filter((s: any) => s.competition === "LEAGUE");
   const statsBySeason = leagueStats.reduce((acc: Record<string, { season: any; team: any; stats: any[] }>, s: any) => {
     const key = `${s.season?.id || "unknown"}_${s.teamId}`;
@@ -86,9 +97,9 @@ export function PlayerDetailPage() {
             )}
 
             {/* Season Stats by Season + Team */}
-            {seasonKeys.length > 0 && (
+            <>
               <Card>
-                <CardHeader><CardTitle>Career Statistics</CardTitle></CardHeader>
+                <CardHeader><CardTitle>League Statistics</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
                   {seasonKeys.map((key) => {
                     const group = statsBySeason[key];
@@ -141,14 +152,16 @@ export function PlayerDetailPage() {
                       </div>
                     );
                   })}
+                  {seasonKeys.length === 0 && <p className="text-sm text-muted-foreground">No league statistics recorded yet.</p>}
                 </CardContent>
               </Card>
-            )}
+            </>
 
-            {friendlyStats.length > 0 && <Card>
+            <Card>
               <CardHeader><CardTitle>Friendly Statistics</CardTitle></CardHeader>
               <CardContent className="space-y-3">{friendlyStats.map((s: any) => <div key={s.id} className="rounded-xl border p-4"><div className="mb-3 flex items-center gap-2 text-sm font-semibold"><span>{s.season?.name || "Friendly matches"}</span><span className="text-muted-foreground">·</span><span className="text-muted-foreground">{s.team?.name || "Team"}</span></div><div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{[["Appearances", s.appearances], ["Goals", s.goals], ["Assists", s.assists], ["Minutes", s.minutesPlayed], ["Shots", s.shots], ["On target", s.shotsOnTarget], ["Yellow cards", s.yellowCards], ["Rating", s.averageRating?.toFixed?.(1) || "-"]].map(([label, value]) => <div key={label as string} className="rounded-lg bg-secondary/40 p-3 text-center"><p className="font-bold">{value as any}</p><p className="text-xs text-muted-foreground">{label as string}</p></div>)}</div></div>)}</CardContent>
-            </Card>}
+            </Card>
+            {friendlyStats.length === 0 && <p className="text-sm text-muted-foreground">No friendly-match statistics recorded yet.</p>}
 
             {/* Awards */}
             {player.awards && player.awards.length > 0 && (

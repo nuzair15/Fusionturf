@@ -52,6 +52,6 @@ export const errorHandler = (err: Error, _req: Request, res: Response, _next: Ne
   });
 };
 
-export const notFoundHandler = (_req: Request, res: Response) => {
-  res.status(404).json({ error: "Route not found" });
+export const notFoundHandler = (req: Request, res: Response) => {
+  res.status(404).json({ error: "Route not found", method: req.method, path: req.originalUrl });
 };

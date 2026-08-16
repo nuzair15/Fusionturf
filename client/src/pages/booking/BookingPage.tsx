@@ -8,21 +8,21 @@ import { api } from "@/lib/api";
 import type { Venue } from "@/types";
 import { Calendar, MapPin, Star, ChevronLeft, Clock } from "lucide-react";
 import { formatCurrency, formatTime } from "@/lib/utils";
+import { PageError, PageSkeleton } from "@/components/PageState";
 
 export function BookingPage() {
   const navigate = useNavigate();
   const [mapOpen, setMapOpen] = useState(false);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["venues"],
     queryFn: () => api.get<{ data: Venue[] }>("/bookings/venues", { limit: 10 }),
   });
 
   const venues = data?.data || [];
 
-  if (isLoading) {
-    return <div className="mx-auto max-w-7xl px-4 py-8"><div className="h-96 animate-pulse rounded-xl bg-muted" /></div>;
-  }
+  if (isLoading) return <PageSkeleton />;
+  if (isError) return <PageError title="Venues are unavailable right now" description="We couldn't retrieve booking venues. Try again in a moment." onRetry={() => void refetch()} action={<Button variant="outline" onClick={() => navigate("/")}>Return home</Button>} />;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">

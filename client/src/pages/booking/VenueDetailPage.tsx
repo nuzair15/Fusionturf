@@ -10,6 +10,7 @@ import { formatCurrency } from "@/lib/utils";
 import type { Venue, Booking } from "@/types";
 import { MapPin, Phone, Mail, Clock, ChevronLeft, CheckCircle, Info } from "lucide-react";
 import confetti from "canvas-confetti";
+import { PageError, PageSkeleton } from "@/components/PageState";
 
 function formatAmPm(time: string): string {
   const [h, m] = time.split(":").map(Number);
@@ -53,7 +54,7 @@ export function VenueDetailPage() {
     }
   }, [done]);
 
-  const { data: venue, isLoading } = useQuery({
+  const { data: venue, isLoading, isError, refetch } = useQuery({
     queryKey: ["venue", slug],
     queryFn: () => api.get<Venue>(`/bookings/venues/${slug}`),
     enabled: !!slug,
@@ -177,8 +178,8 @@ export function VenueDetailPage() {
     }
   };
 
-  if (isLoading) return <div className="mx-auto max-w-7xl px-4 py-8"><div className="h-96 animate-pulse rounded-xl bg-muted" /></div>;
-  if (!venue) return null;
+  if (isLoading) return <PageSkeleton />;
+  if (isError || !venue) return <PageError title="This venue isn't available" description="It may have been removed or there was a problem loading its booking details." onRetry={() => void refetch()} action={<Button variant="outline" onClick={() => navigate("/booking")}>Browse venues</Button>} />;
 
   if (done) {
     return (

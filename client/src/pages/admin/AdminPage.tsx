@@ -141,6 +141,12 @@ export function AdminPage() {
       setEditingItem(null);
       setShowForm(null);
       queryClient.invalidateQueries({ queryKey: [invalidateKey] });
+      if (type === "team") {
+        queryClient.invalidateQueries({ queryKey: ["admin-teams"] });
+        queryClient.invalidateQueries({ queryKey: ["teams"] });
+        queryClient.invalidateQueries({ queryKey: ["standings"] });
+        queryClient.invalidateQueries({ queryKey: ["standings-full"] });
+      }
       if (type === "player") queryClient.invalidateQueries({ queryKey: ["admin-player-detail"] });
     } catch (err: any) {
       setFormErrors(err.message || "Failed to save");
@@ -469,7 +475,7 @@ export function AdminPage() {
               data={teams || []}
               keyExtractor={(t) => t.id}
               onSearch={setTeamSearch}
-              onAdd={() => { setEditingItem(null); openForm("team", { name: "", shortName: "", city: "", seasonId: seasons?.[0]?.id || "", status: "active" }); }}
+              onAdd={() => { setEditingItem(null); openForm("team", { name: "", shortName: "", city: "", seasonId: selectedSeasonId || currentSeason?.id || "", status: "active" }); }}
               onEdit={(t) => { setEditingItem(t); openForm("team", { name: t.name, slug: t.slug, shortName: t.shortName || "", city: t.city || "", seasonId: t.seasonId, logoUrl: t.logoUrl || "", status: t.status || "active" }); }}
             />
             <Dialog open={showForm === "team"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Team" : "Add Team"}>

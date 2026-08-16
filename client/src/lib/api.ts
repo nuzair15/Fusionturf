@@ -44,6 +44,7 @@ class ApiClient {
     try {
       const response = await fetch(`${API_BASE}${path}`, {
         ...options,
+        cache: options.method && options.method !== "GET" ? undefined : "no-store",
         headers,
         signal: controller.signal,
       });

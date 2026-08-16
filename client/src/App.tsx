@@ -23,7 +23,9 @@ const DashboardPage = lazy(() => import("@/pages/dashboard/DashboardPage").then(
 const AdminPage = lazy(() => import("@/pages/admin/AdminPage").then((m) => ({ default: m.AdminPage })));
 const NewsPage = lazy(() => import("@/pages/league/NewsPage").then((m) => ({ default: m.NewsPage })));
 const SearchPage = lazy(() => import("@/pages/search/SearchPage").then((m) => ({ default: m.SearchPage })));
+const AuthPage = lazy(() => import("@/pages/auth/AuthPage").then((m) => ({ default: m.AuthPage })));
 import { ApiErrorNotice } from "@/components/ApiErrorNotice";
+import { PageSkeleton } from "@/components/PageState";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 
 const queryClient = new QueryClient({
@@ -44,7 +46,7 @@ export default function App() {
             <div className="flex min-h-screen flex-col pb-16 md:pb-0">
               <Navbar />
               <main className="flex-1">
-              <Suspense fallback={<div className="flex min-h-[50vh] items-center justify-center text-muted-foreground">Loading…</div>}>
+              <Suspense fallback={<PageSkeleton />}>
               <Routes>
                   <Route path="/" element={<HomePage />} />
                   <Route path="/booking" element={<BookingPage />} />
@@ -59,6 +61,7 @@ export default function App() {
                   <Route path="/league/players/:slug" element={<PlayerDetailPage />} />
                   <Route path="/league/fixtures/:id" element={<FixtureDetailPage />} />
                   <Route path="/search" element={<SearchPage />} />
+                  <Route path="/auth" element={<AuthPage />} />
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/admin" element={<AdminPage />} />
                   <Route path="/admin/*" element={<AdminPage />} />

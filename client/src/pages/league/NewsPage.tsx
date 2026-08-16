@@ -13,6 +13,8 @@ export function NewsPage() {
   const { data } = useQuery({
     queryKey: ["news"],
     queryFn: () => api.get<{ data: News[] }>("/league/news", { limit: "50" }),
+    refetchOnWindowFocus: true,
+    refetchInterval: 60000,
   });
 
   const list = data?.data || [];

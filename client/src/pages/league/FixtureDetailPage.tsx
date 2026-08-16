@@ -112,7 +112,8 @@ export function FixtureDetailPage() {
     queryKey: ["fixture", id],
     queryFn: () => api.get<Fixture>(`/league/fixtures/${id}`),
     enabled: !!id,
-    refetchInterval: (query) => query.state.data?.status === "LIVE" || query.state.data?.status === "PAUSED" || query.state.data?.status === "HALF_TIME" ? 5000 : false,
+    refetchOnWindowFocus: true,
+    refetchInterval: (query) => ["LIVE", "PAUSED", "HALF_TIME", "EXTRA_TIME", "PENALTIES"].includes(query.state.data?.status || "") ? 5000 : false,
   });
 
   const { data: rsvp, refetch: refetchRsvp } = useQuery({ queryKey: ["rsvp", id], queryFn: () => api.get<any>(`/league/fixtures/${id}/rsvp`), enabled: !!id && !!user });

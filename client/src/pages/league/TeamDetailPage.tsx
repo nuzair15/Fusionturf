@@ -11,23 +11,27 @@ import { ChevronLeft, MapPin, CalendarDays, Trophy, Users, GalleryVertical, Badg
 import { LeagueHero, LeagueCard, LeaguePills, LeagueEmptyState } from "@/components/league/LeagueUI";
 import { formatDate } from "@/lib/utils";
 import { FollowButton } from "@/components/league/FollowButton";
+import { PageError, PageSkeleton } from "@/components/PageState";
 
 export function TeamDetailPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const [tab, setTab] = useState("overview");
 
-  const { data: team, isLoading } = useQuery({
+  const { data: team, isLoading, isError, refetch } = useQuery({
     queryKey: ["team", slug],
     queryFn: () => api.get<Team>(`/league/teams/${slug}`),
     enabled: !!slug,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchInterval: 30000,
   });
 
   const allMatches = useMemo(() => [...(team?.homeMatches || []), ...(team?.awayMatches || [])].sort((a, b) => new Date(b.matchDate).getTime() - new Date(a.matchDate).getTime()), [team]);
   const standing = team?.standings?.[0];
 
-  if (isLoading) return <div className="mx-auto max-w-7xl px-4 py-8"><div className="h-96 animate-pulse rounded-xl bg-muted" /></div>;
-  if (!team) return null;
+  if (isLoading) return <PageSkeleton />;
+  if (isError || !team) return <PageError title="Team profile not found" description="This club may have been removed or its profile is temporarily unavailable." onRetry={() => void refetch()} action={<Button variant="outline" onClick={() => navigate("/league")}>Back to league</Button>} />;
 
   return (
     <div className="space-y-8 pb-8">

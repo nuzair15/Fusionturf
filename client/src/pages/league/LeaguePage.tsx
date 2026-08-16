@@ -15,12 +15,12 @@ export function LeaguePage() {
   const navigate = useNavigate();
   const [mode, setMode] = useState("overview");
 
-  const { data: currentSeason } = useQuery({ queryKey: ["current-season"], queryFn: () => api.get<Season>("/league/seasons/current"), retry: false });
-  const { data: fixtures } = useQuery({ queryKey: ["fixtures"], queryFn: () => api.get<{ data: Fixture[] }>("/league/fixtures", { limit: "20" }) });
-  const { data: standings } = useQuery({ queryKey: ["standings"], queryFn: () => api.get<Standing[]>("/league/standings") });
-  const { data: teams } = useQuery({ queryKey: ["teams"], queryFn: () => api.get<Team[]>("/league/teams") });
-  const { data: venues } = useQuery({ queryKey: ["venues"], queryFn: () => api.get<{ data: Venue[] }>("/booking/venues") });
-  const { data: newsData } = useQuery({ queryKey: ["league-news"], queryFn: () => api.get<PaginatedResponse<News>>("/league/news") });
+  const { data: currentSeason } = useQuery({ queryKey: ["current-season"], queryFn: () => api.get<Season>("/league/seasons/current"), retry: false, refetchOnWindowFocus: true, refetchInterval: 60000 });
+  const { data: fixtures } = useQuery({ queryKey: ["fixtures"], queryFn: () => api.get<{ data: Fixture[] }>("/league/fixtures", { limit: "20" }), staleTime: 0, refetchOnWindowFocus: true, refetchInterval: 15000 });
+  const { data: standings } = useQuery({ queryKey: ["standings"], queryFn: () => api.get<Standing[]>("/league/standings"), staleTime: 0, refetchOnWindowFocus: true, refetchOnMount: "always", refetchInterval: 10000 });
+  const { data: teams } = useQuery({ queryKey: ["teams"], queryFn: () => api.get<Team[]>("/league/teams"), staleTime: 0, refetchOnWindowFocus: true, refetchInterval: 15000 });
+  const { data: venues } = useQuery({ queryKey: ["venues"], queryFn: () => api.get<{ data: Venue[] }>("/bookings/venues"), refetchOnWindowFocus: true, refetchInterval: 60000 });
+  const { data: newsData } = useQuery({ queryKey: ["league-news"], queryFn: () => api.get<PaginatedResponse<News>>("/league/news"), refetchOnWindowFocus: true, refetchInterval: 60000 });
 
   const fixtureList = fixtures?.data || [];
   const standingsList = standings || [];

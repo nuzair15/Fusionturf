@@ -13,6 +13,8 @@ export function AwardsPage() {
   const { data: awards } = useQuery({
     queryKey: ["awards"],
     queryFn: () => api.get<Award[]>("/league/awards"),
+    refetchOnWindowFocus: true,
+    refetchInterval: 60000,
   });
 
   const list = awards || [];

@@ -23,9 +23,9 @@ export function FixturesPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [roundFilter, setRoundFilter] = useState("");
 
-  const { data: currentSeason } = useQuery({ queryKey: ["current-season"], queryFn: () => api.get<Season>("/league/seasons/current"), retry: false });
-  const { data: teams } = useQuery({ queryKey: ["fixture-teams"], queryFn: () => api.get<any[]>("/league/teams") });
-  const { data } = useQuery({ queryKey: ["fixtures-calendar", teamFilter, statusFilter, roundFilter], queryFn: () => api.get<PaginatedResponse<Fixture>>("/league/fixtures", { limit: "120", ...(teamFilter ? { teamId: teamFilter } : {}), ...(statusFilter ? { status: statusFilter } : {}), ...(roundFilter ? { round: roundFilter } : {}) }) });
+  const { data: currentSeason } = useQuery({ queryKey: ["current-season"], queryFn: () => api.get<Season>("/league/seasons/current"), retry: false, refetchOnWindowFocus: true, refetchInterval: 60000 });
+  const { data: teams } = useQuery({ queryKey: ["fixture-teams"], queryFn: () => api.get<any[]>("/league/teams"), refetchOnWindowFocus: true, refetchInterval: 60000 });
+  const { data } = useQuery({ queryKey: ["fixtures-calendar", teamFilter, statusFilter, roundFilter], queryFn: () => api.get<PaginatedResponse<Fixture>>("/league/fixtures", { limit: "120", ...(teamFilter ? { teamId: teamFilter } : {}), ...(statusFilter ? { status: statusFilter } : {}), ...(roundFilter ? { round: roundFilter } : {}) }), staleTime: 0, refetchOnWindowFocus: true, refetchInterval: 15000 });
 
   const fixtures = data?.data || [];
   const todayKey = today.toISOString().split("T")[0];

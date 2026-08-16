@@ -7,12 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ChevronLeft, ArrowUp, ArrowDown, Minus } from "lucide-react";
 import { LeagueHero, LeagueCard, LeagueEmptyState } from "@/components/league/LeagueUI";
+import { PageError, PageSkeleton } from "@/components/PageState";
 
 export function StandingsPage() {
   const navigate = useNavigate();
 
-  const { data: currentSeason } = useQuery({ queryKey: ["current-season"], queryFn: () => api.get<Season>("/league/seasons/current"), retry: false });
-  const { data: standings } = useQuery({ queryKey: ["standings-full"], queryFn: () => api.get<Standing[]>("/league/standings") });
+  const { data: currentSeason } = useQuery({ queryKey: ["current-season"], queryFn: () => api.get<Season>("/league/seasons/current"), retry: false, refetchOnWindowFocus: true, refetchInterval: 15000 });
+  const { data: standings, isLoading, isError, refetch } = useQuery({ queryKey: ["standings-full"], queryFn: () => api.get<Standing[]>("/league/standings"), staleTime: 0, refetchOnWindowFocus: true, refetchOnMount: "always", refetchInterval: 10000 });
 
   const list = standings || [];
   const topThree = list.slice(0, 3);
@@ -29,6 +30,9 @@ export function StandingsPage() {
     if (position >= list.length - 2) return <ArrowDown className="h-3.5 w-3.5 text-rose-600" />;
     return <Minus className="h-3.5 w-3.5 text-muted-foreground" />;
   };
+
+  if (isLoading) return <PageSkeleton />;
+  if (isError) return <PageError title="Standings could not be loaded" description="The table is updated from real match results. Please try again." onRetry={() => void refetch()} action={<Button variant="outline" onClick={() => navigate("/league")}>Back to league</Button>} />;
 
   return (
     <div className="space-y-8 pb-8">
@@ -173,7 +177,7 @@ export function StandingsPage() {
                 ))}
               </div>
             </>
-          ) : null}
+          ) : <div className="p-4"><LeagueEmptyState title="No teams in the table yet" description="Add teams to the active season, then publish fixtures and results to build the table." /></div>}
         </LeagueCard>
       </div>
     </div>
