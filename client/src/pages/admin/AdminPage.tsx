@@ -73,7 +73,7 @@ export function AdminPage() {
   // round-robin needs for the default 6-team format. The backend now
   // rejects a value too small to fit every round, so this must stay in
   // sync with that — see generateSeasonFixtures in league-system.ts.
-  const [fixtureOptions, setFixtureOptions] = useState({ teamCount: 6, leagueWeeks: 10, matchesPerPair: 2, startDate: "", fixtureDays: ["Friday", "Saturday", "Sunday"] as string[] });
+  const [fixtureOptions, setFixtureOptions] = useState({ teamCount: 6, leagueWeeks: 10, matchesPerPair: 2, matchesPerDay: null as number | null, startDate: "", fixtureDays: ["Friday", "Saturday", "Sunday"] as string[] });
   const [generating, setGenerating] = useState(false);
   const [liveStatsFixtureId, setLiveStatsFixtureId] = useState<string | null>(null);
   const [lineupFixture, setLineupFixture] = useState<Fixture | null>(null);
@@ -372,7 +372,7 @@ export function AdminPage() {
                 <Button size="sm" variant="outline" onClick={async () => {
                   const s = (seasons || []).find((s: Season) => s.isCurrent);
                   if (!s) return setActionError("No current season selected");
-                  setFixtureOptions({ teamCount: 6, leagueWeeks: 10, matchesPerPair: 2, startDate: s.startDate?.split("T")[0] || "", fixtureDays: ["Friday", "Saturday", "Sunday"] });
+                  setFixtureOptions({ teamCount: 6, leagueWeeks: 10, matchesPerPair: 2, matchesPerDay: null, startDate: s.startDate?.split("T")[0] || "", fixtureDays: ["Friday", "Saturday", "Sunday"] });
                   setShowForm("generateFixtures");
                 }}>Bulk Generate Fixtures</Button>
                 <Button size="sm" variant="outline" onClick={async () => {
@@ -443,6 +443,13 @@ export function AdminPage() {
                 <div>
                   <Label>Matches Per Pair</Label>
                   <Input type="number" min={1} max={4} value={fixtureOptions.matchesPerPair} onChange={(e) => setFixtureOptions({ ...fixtureOptions, matchesPerPair: Number(e.target.value) })} />
+                </div>
+                <div>
+                  <Label>Max Matches Per Day</Label>
+                  <Input type="number" min={1} max={20} value={fixtureOptions.matchesPerDay ?? ""} placeholder="Auto (spread across fixture days)" onChange={(e) => setFixtureOptions({ ...fixtureOptions, matchesPerDay: e.target.value === "" ? null : Number(e.target.value) })} />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Leave empty to spread each round evenly across the fixture days. Set a number (e.g. 1) to cap how many matches share a day — the round then stretches over more days.
+                  </p>
                 </div>
                 <div>
                   <Label>Start Date</Label>

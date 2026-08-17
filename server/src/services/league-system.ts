@@ -14,6 +14,7 @@ export async function generateSeasonFixtures(seasonId: string, options?: {
   matchesPerPair?: number;
   startDate?: string;
   fixtureDays?: string[];
+  matchesPerDay?: number;
 }): Promise<{ generated: number }> {
   const teams = await prisma.team.findMany({ where: { seasonId, isActive: true }, orderBy: { name: "asc" } });
 
@@ -46,7 +47,22 @@ export async function generateSeasonFixtures(seasonId: string, options?: {
   ) : [];
   const allRounds = [...firstLeg, ...secondLeg];
 
-  await prisma.fixture.deleteMany({ where: { seasonId, isGrandFinal: false, isRelegationPlayoff: false } });
+  // Replace only the fixtures this generator owns: unscheduled, plain league
+  // matches. Everything else is left alone — completed/resulted fixtures,
+  // cancelled/postponed ones, friendlies, cup/competition matches, and
+  // post-season knockout fixtures are all preserved so a bulk regeneration
+  // never wipes existing history.
+  await prisma.fixture.deleteMany({
+    where: {
+      seasonId,
+      status: "SCHEDULED",
+      isFriendly: false,
+      isGrandFinal: false,
+      isRelegationPlayoff: false,
+      competitionId: null,
+      bracketMatch: null,
+    },
+  });
 
   const season = await prisma.season.findUnique({ where: { id: seasonId } });
   if (!season) throw new Error("Season not found");
@@ -74,7 +90,11 @@ export async function generateSeasonFixtures(seasonId: string, options?: {
     const roundFixtures = allRounds[roundIdx];
     const weekendDays = weekDays.slice(0, Math.min(weekDays.length, roundFixtures.length));
 
-    const fixturesPerDay = Math.ceil(roundFixtures.length / weekendDays.length);
+    // How many fixtures can share a single match day. When not provided,
+    // spread the round evenly across the available fixture days; when
+    // provided, cap (or raise) the per-day load so e.g. one fixture per day
+    // stretches the round across more days, or all fixtures cram into one.
+    const fixturesPerDay = options?.matchesPerDay ?? Math.ceil(roundFixtures.length / weekendDays.length);
     let fixtureIdx = 0;
 
     for (const dayName of weekendDays) {
