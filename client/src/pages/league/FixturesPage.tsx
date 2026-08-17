@@ -7,16 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import type { Fixture, PaginatedResponse, Season } from "@/types";
-import { ChevronLeft, ChevronRight, CalendarDays, Clock3, Flame, Trophy } from "lucide-react";
+import { ChevronLeft, ChevronRight, Flame, Trophy } from "lucide-react";
 import { formatDate, formatTime, getMatchStatusColor } from "@/lib/utils";
-import { LeagueHero, LeagueCard, LeagueEmptyState, LeaguePills, TrendBadge } from "@/components/league/LeagueUI";
+import { LeagueHero, LeagueCard, LeagueEmptyState, TrendBadge } from "@/components/league/LeagueUI";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 export function FixturesPage() {
   const navigate = useNavigate();
   const today = new Date();
-  const [view, setView] = useState("list");
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [teamFilter, setTeamFilter] = useState("");
@@ -99,63 +98,56 @@ export function FixturesPage() {
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="h-10 rounded-md border bg-background px-3 text-sm"><option value="">All statuses</option><option value="LIVE">Live</option><option value="SCHEDULED">Upcoming</option><option value="COMPLETED">Completed</option></select>
           <input value={roundFilter} onChange={(e) => setRoundFilter(e.target.value.replace(/\D/g, ""))} placeholder="Filter by round" inputMode="numeric" className="h-10 rounded-md border bg-background px-3 text-sm" />
         </div>
-        <LeaguePills
-          active={view}
-          onChange={setView}
-          items={[
-            { key: "list", label: "List view", icon: <CalendarDays className="h-4 w-4" /> },
-            { key: "calendar", label: "Calendar", icon: <Clock3 className="h-4 w-4" /> },
-          ]}
-        />
       </div>
 
-      {view === "calendar" && (
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <LeagueCard
-            title={`${MONTHS[viewMonth]} ${viewYear}`}
-            action={(
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" onClick={prevMonth}><ChevronLeft className="h-5 w-5" /></Button>
-                <Button variant="ghost" size="icon" onClick={nextMonth}><ChevronRight className="h-5 w-5" /></Button>
+      <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        <LeagueCard
+          title={`${MONTHS[viewMonth]} ${viewYear}`}
+          action={(
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" onClick={prevMonth}><ChevronLeft className="h-5 w-5" /></Button>
+              <Button variant="ghost" size="icon" onClick={nextMonth}><ChevronRight className="h-5 w-5" /></Button>
+            </div>
+          )}
+        >
+          <div className="border-b bg-secondary/40 px-4 py-2 text-center text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Sun Mon Tue Wed Thu Fri Sat
+          </div>
+          <div className="grid grid-cols-7">
+            {calendarDays.map((cell, index) => (
+              <div key={index} className="min-h-[95px] border-b border-r p-2 last:border-r-0">
+                {cell && (
+                  <>
+                    <div className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
+                      cell.dateStr === todayKey ? "bg-primary text-primary-foreground" : "bg-secondary/60"
+                    }`}>
+                      {cell.day}
+                    </div>
+                    <div className="mt-2 space-y-1">
+                      {cell.fixtures.slice(0, 2).map((fixture) => (
+                        <button
+                          key={fixture.id}
+                          onClick={() => navigate(`/league/fixtures/${fixture.id}`)}
+                          className="flex w-full items-center gap-1 rounded-lg bg-primary/10 px-1.5 py-1 text-[10px] font-medium text-primary transition hover:bg-primary/20"
+                        >
+                          <img src={fixture.homeTeam.logoUrl || "/placeholder.svg"} alt="" className="h-4 w-4 shrink-0 rounded-full bg-muted object-cover" />
+                          <span className="truncate">{fixture.homeTeam.shortName || fixture.homeTeam.name}</span>
+                          <span className="text-[9px] text-muted-foreground">VS</span>
+                          <span className="truncate text-right">{fixture.awayTeam.shortName || fixture.awayTeam.name}</span>
+                          <img src={fixture.awayTeam.logoUrl || "/placeholder.svg"} alt="" className="h-4 w-4 shrink-0 rounded-full bg-muted object-cover" />
+                        </button>
+                      ))}
+                      {cell.fixtures.length > 2 && <p className="text-[10px] text-muted-foreground">+{cell.fixtures.length - 2} more</p>}
+                    </div>
+                  </>
+                )}
               </div>
-            )}
-          >
-            <div className="border-b bg-secondary/40 px-4 py-2 text-center text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Sun Mon Tue Wed Thu Fri Sat
-            </div>
-            <div className="grid grid-cols-7">
-              {calendarDays.map((cell, index) => (
-                <div key={index} className="min-h-[95px] border-b border-r p-2 last:border-r-0">
-                  {cell && (
-                    <>
-                      <div className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
-                        cell.dateStr === todayKey ? "bg-primary text-primary-foreground" : "bg-secondary/60"
-                      }`}>
-                        {cell.day}
-                      </div>
-                      <div className="mt-2 space-y-1">
-                        {cell.fixtures.slice(0, 2).map((fixture) => (
-                          <button
-                            key={fixture.id}
-                            onClick={() => navigate(`/league/fixtures/${fixture.id}`)}
-                            className="block w-full rounded-lg bg-primary/10 px-2 py-1 text-left text-[10px] font-medium text-primary transition hover:bg-primary/20"
-                          >
-                            {fixture.homeTeam.shortName || fixture.homeTeam.name} vs {fixture.awayTeam.shortName || fixture.awayTeam.name}
-                          </button>
-                        ))}
-                        {cell.fixtures.length > 2 && <p className="text-[10px] text-muted-foreground">+{cell.fixtures.length - 2} more</p>}
-                      </div>
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-          </LeagueCard>
-        </div>
-      )}
+            ))}
+          </div>
+        </LeagueCard>
+      </div>
 
-      {view === "list" && (
-        <div className="mx-auto grid max-w-7xl gap-6 px-4 sm:px-6 xl:grid-cols-[0.95fr_1.05fr]">
+      <div className="mx-auto grid max-w-7xl gap-6 px-4 sm:px-6 xl:grid-cols-[0.95fr_1.05fr]">
           <LeagueCard title="Matchday blocks" action={<Badge variant="secondary" className="rounded-full">{fixtures.length} fixtures</Badge>}>
             <div className="space-y-4 p-4">
               {groupedFixtures.length > 0 ? groupedFixtures.map((group) => (
@@ -241,7 +233,6 @@ export function FixturesPage() {
             </LeagueCard>
           </div>
         </div>
-      )}
     </div>
   );
 }
