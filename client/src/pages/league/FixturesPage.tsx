@@ -13,6 +13,24 @@ import { LeagueHero, LeagueCard, LeagueEmptyState, TrendBadge } from "@/componen
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
+function CompactMatchRow({ fixture, onOpen }: { fixture: Fixture; onOpen: (id: string) => void }) {
+  return (
+    <button
+      onClick={() => onOpen(fixture.id)}
+      className="flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition hover:bg-secondary/50"
+    >
+      <img src={fixture.homeTeam.logoUrl || "/placeholder.svg"} alt="" className="h-7 w-7 shrink-0 rounded-full bg-muted object-cover" />
+      <span className="min-w-0 flex-1 truncate text-sm font-semibold">{fixture.homeTeam.shortName || fixture.homeTeam.name}</span>
+      <span className="shrink-0 text-[10px] font-bold text-primary">
+        {fixture.status === "COMPLETED" ? `${fixture.homeScore ?? 0}-${fixture.awayScore ?? 0}` : "VS"}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-right text-sm font-semibold">{fixture.awayTeam.shortName || fixture.awayTeam.name}</span>
+      <img src={fixture.awayTeam.logoUrl || "/placeholder.svg"} alt="" className="h-7 w-7 shrink-0 rounded-full bg-muted object-cover" />
+      <span className="w-12 shrink-0 text-right text-[11px] text-muted-foreground">{fixture.kickoffTime ? formatTime(fixture.kickoffTime) : "TBD"}</span>
+    </button>
+  );
+}
+
 export function FixturesPage() {
   const navigate = useNavigate();
   const today = new Date();
@@ -21,6 +39,7 @@ export function FixturesPage() {
   const [teamFilter, setTeamFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [roundFilter, setRoundFilter] = useState("");
+  const [selectedDate, setSelectedDate] = useState("");
 
   const { data: currentSeason } = useQuery({ queryKey: ["current-season"], queryFn: () => api.get<Season>("/league/seasons/current"), retry: false, refetchOnWindowFocus: true, refetchInterval: 60000 });
   const { data: teams } = useQuery({ queryKey: ["fixture-teams"], queryFn: () => api.get<any[]>("/league/teams"), refetchOnWindowFocus: true, refetchInterval: 60000 });
@@ -43,6 +62,9 @@ export function FixturesPage() {
     const keys = Object.keys(fixturesByDate).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
     return keys.map((key) => ({ date: key, fixtures: fixturesByDate[key] }));
   }, [fixturesByDate]);
+
+  const effectiveSelectedDate = selectedDate || groupedFixtures[0]?.date || todayKey;
+  const selectedDayFixtures = fixturesByDate[effectiveSelectedDate] || [];
 
   const liveFixtures = useMemo(() => fixtures.filter((f) => f.status === "LIVE"), [fixtures]);
   const upcomingFixtures = useMemo(() => fixtures.filter((f) => f.status === "SCHEDULED"), [fixtures]);
@@ -115,15 +137,32 @@ export function FixturesPage() {
           </div>
           <div className="grid grid-cols-7">
             {calendarDays.map((cell, index) => (
-              <div key={index} className="min-h-[95px] border-b border-r p-2 last:border-r-0">
+              <div key={index} className="min-h-[84px] border-b border-r p-1.5 last:border-r-0 sm:min-h-[95px] sm:p-2">
                 {cell && (
                   <>
-                    <div className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
-                      cell.dateStr === todayKey ? "bg-primary text-primary-foreground" : "bg-secondary/60"
-                    }`}>
-                      {cell.day}
-                    </div>
-                    <div className="mt-2 space-y-1">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDate(cell.dateStr)}
+                      className={`flex w-full flex-col items-center gap-1 rounded-xl p-1.5 sm:hidden ${
+                        cell.dateStr === effectiveSelectedDate && cell.fixtures.length > 0 ? "bg-primary/10 ring-1 ring-primary/30" : ""
+                      }`}
+                    >
+                      <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium ${
+                        cell.dateStr === todayKey ? "bg-primary text-primary-foreground" : "bg-secondary/60"
+                      }`}>
+                        {cell.day}
+                      </span>
+                      {cell.fixtures.length > 0 && (
+                        <span className="rounded-full bg-primary/10 px-1.5 py-px text-[10px] font-bold text-primary">{cell.fixtures.length}</span>
+                      )}
+                    </button>
+                    <div className="hidden sm:block">
+                      <div className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
+                        cell.dateStr === todayKey ? "bg-primary text-primary-foreground" : "bg-secondary/60"
+                      }`}>
+                        {cell.day}
+                      </div>
+                      <div className="mt-2 space-y-1">
                       {cell.fixtures.slice(0, 2).map((fixture) => (
                         <button
                           key={fixture.id}
@@ -138,11 +177,29 @@ export function FixturesPage() {
                         </button>
                       ))}
                       {cell.fixtures.length > 2 && <p className="text-[10px] text-muted-foreground">+{cell.fixtures.length - 2} more</p>}
-                    </div>
+                      </div>
+                      </div>
                   </>
                 )}
               </div>
             ))}
+          </div>
+        </LeagueCard>
+      </div>
+
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 sm:hidden">
+        <LeagueCard
+          title={effectiveSelectedDate === todayKey ? "Today's matches" : `Matches on ${formatDate(effectiveSelectedDate)}`}
+          action={<Badge variant="secondary" className="rounded-full">{selectedDayFixtures.length}</Badge>}
+        >
+          <div className="space-y-2 p-4">
+            {selectedDayFixtures.length > 0 ? (
+              selectedDayFixtures.map((fixture) => (
+                <CompactMatchRow key={fixture.id} fixture={fixture} onOpen={(id) => navigate(`/league/fixtures/${id}`)} />
+              ))
+            ) : (
+              <LeagueEmptyState title="No matches this day" description="Tap a highlighted date to see its fixtures." />
+            )}
           </div>
         </LeagueCard>
       </div>
