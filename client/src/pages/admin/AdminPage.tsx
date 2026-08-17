@@ -54,6 +54,23 @@ const adminTabs = [
   { id: "users", label: "Users", icon: Users },
 ];
 
+// Response of the server's shared schedule planner (see
+// planFixtureSchedule in server roundRobin.ts) — the single source of truth
+// for whether the current bulk-generation settings will fit.
+interface FixturePreview {
+  preview: true;
+  feasible: boolean;
+  reason?: string;
+  matchesPerDay: number;
+  suggestedMatchesPerDay: number;
+  minWeeks: number | null;
+  teamCount: number;
+  activeTeams: number;
+  totalRounds: number;
+  totalMatches: number;
+  weeks: Array<{ week: number; roundCount: number; matchCount: number; perDay: number[]; dates: string[] }>;
+}
+
 export function AdminPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -255,23 +272,44 @@ export function AdminPage() {
 
   const stats = dashboard?.stats;
 
-  const ftRoundsPerLeg = fixtureOptions.teamCount % 2 === 0 ? fixtureOptions.teamCount - 1 : fixtureOptions.teamCount;
-  const ftTotalRounds = fixtureOptions.matchesPerPair >= 2 ? ftRoundsPerLeg * 2 : ftRoundsPerLeg;
-  const ftMatchesPerRound = Math.max(1, Math.floor(fixtureOptions.teamCount / 2));
-  const ftDays = Math.max(1, fixtureOptions.fixtureDays.length);
-  const ftBusiestWeek = ftTotalRounds > 0 ? Math.ceil(ftTotalRounds / Math.max(1, fixtureOptions.leagueWeeks || 1)) : 0;
-  const ftMinPerDay = Math.max(1, Math.ceil((ftBusiestWeek * ftMatchesPerRound) / ftDays));
-  const ftCapFeasible = !fixtureOptions.matchesPerDay || fixtureOptions.matchesPerDay * ftDays >= ftMatchesPerRound;
-  const ftMinWeeks = (() => {
-    if (!fixtureOptions.matchesPerDay) return 1;
-    const roundsPerWeekCap = Math.floor((ftDays * fixtureOptions.matchesPerDay) / ftMatchesPerRound);
-    return roundsPerWeekCap > 0 ? Math.ceil(ftTotalRounds / roundsPerWeekCap) : Infinity;
-  })();
-  const ftWeeksTooFew = fixtureOptions.matchesPerDay
-    ? fixtureOptions.matchesPerDay * ftDays < ftMatchesPerRound
-      ? false
-      : fixtureOptions.leagueWeeks < ftMinWeeks
-    : false;
+  // Live schedule preview: every settings change (debounced) asks the
+  // server's shared planner what it would actually generate, so the dialog
+  // can never disagree with the generator about feasibility or layout.
+  const [fixturePreview, setFixturePreview] = useState<FixturePreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  useEffect(() => {
+    if (showForm !== "generateFixtures") return;
+    const s = (seasons || []).find((x: Season) => x.isCurrent);
+    if (!s) return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setPreviewLoading(true);
+      try {
+        const res = await api.post<FixturePreview>(`/admin/seasons/${s.id}/generate-fixtures`, { ...fixtureOptions, preview: true });
+        if (!cancelled) setFixturePreview(res);
+      } catch (e: any) {
+        if (!cancelled) {
+          setFixturePreview({
+            preview: true,
+            feasible: false,
+            reason: e?.message || "Could not preview the schedule",
+            matchesPerDay: 0,
+            suggestedMatchesPerDay: 0,
+            minWeeks: null,
+            teamCount: fixtureOptions.teamCount,
+            activeTeams: fixtureOptions.teamCount,
+            totalRounds: 0,
+            totalMatches: 0,
+            weeks: [],
+          });
+        }
+      } finally {
+        if (!cancelled) setPreviewLoading(false);
+      }
+    }, 350);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [fixtureOptions, showForm, seasons]);
 
   const handleLogout = () => {
     api.setAdminToken(null);
@@ -393,6 +431,7 @@ export function AdminPage() {
                   const teams = s._count?.teams || 6;
                   const roundsPerLeg = teams % 2 === 0 ? teams - 1 : teams;
                   setFixtureOptions({ teamCount: teams, leagueWeeks: 2 * roundsPerLeg, matchesPerPair: 2, matchesPerDay: null, startDate: s.startDate?.split("T")[0] || "", fixtureDays: ["Friday", "Saturday", "Sunday"] });
+                  setFixturePreview(null);
                   setShowForm("generateFixtures");
                 }}>Bulk Generate Fixtures</Button>
                 <Button size="sm" variant="outline" onClick={async () => {
@@ -456,9 +495,12 @@ export function AdminPage() {
                 <div>
                   <Label>League Weeks</Label>
                   <Input type="number" min={1} max={52} value={fixtureOptions.leagueWeeks} onChange={(e) => setFixtureOptions({ ...fixtureOptions, leagueWeeks: Number(e.target.value) })} />
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {ftTotalRounds} round{ftTotalRounds === 1 ? "" : "s"} for {fixtureOptions.teamCount} teams playing {fixtureOptions.matchesPerPair >= 2 ? "home and away" : "once each"}. The generator spreads them across your {ftDays} fixture day{ftDays === 1 ? "" : "s"} — multiple matches can share a day, so it adapts: {!fixtureOptions.matchesPerDay ? `about ${ftMinPerDay} match(es)/day to fit ${fixtureOptions.leagueWeeks} week(s).` : ftCapFeasible ? (ftWeeksTooFew ? `at ${fixtureOptions.matchesPerDay} match(es)/day, ${ftMinWeeks} week(s) is the minimum — increase weeks or matches per day.` : `fits in ${ftMinWeeks} week(s) minimum at ${fixtureOptions.matchesPerDay} match(es)/day.`) : `one round needs ${ftMatchesPerRound} match(es) but a day only holds ${fixtureOptions.matchesPerDay} — raise matches per day.`}
-                  </p>
+                  {fixturePreview && fixturePreview.feasible && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {fixturePreview.totalRounds} round{fixturePreview.totalRounds === 1 ? "" : "s"} ({fixturePreview.totalMatches} match{fixturePreview.totalMatches === 1 ? "" : "es"}) across {fixturePreview.weeks.length} week{fixturePreview.weeks.length === 1 ? "" : "s"} at {fixturePreview.matchesPerDay} match{fixturePreview.matchesPerDay === 1 ? "" : "es"}/day.
+                    </p>
+                  )}
+                  {previewLoading && <p className="mt-1 text-xs text-muted-foreground">Calculating…</p>}
                 </div>
                 <div>
                   <Label>Matches Per Pair</Label>
@@ -467,11 +509,13 @@ export function AdminPage() {
                 <div>
                   <Label>Max Matches Per Day</Label>
                   <Input type="number" min={1} max={20} value={fixtureOptions.matchesPerDay ?? ""} placeholder="Auto" onChange={(e) => setFixtureOptions({ ...fixtureOptions, matchesPerDay: e.target.value === "" ? null : Number(e.target.value) })} />
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {!fixtureOptions.matchesPerDay
-                      ? `Auto: at least ${ftMinPerDay} match(es)/day are needed to fit ${fixtureOptions.leagueWeeks} week(s). Set a number to cap it.`
-                      : `Minimum needed for ${fixtureOptions.leagueWeeks} week(s): ${ftMinPerDay} match(es)/day. Capping at ${fixtureOptions.matchesPerDay} ${ftCapFeasible ? (ftWeeksTooFew ? "needs more weeks" : "works") : "is too low to hold one round"} — a round is ${ftMatchesPerRound} match(es).`}
-                  </p>
+                  {fixturePreview && fixturePreview.feasible && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {fixtureOptions.matchesPerDay
+                        ? `Needs ~${fixturePreview.suggestedMatchesPerDay} match(es)/day for ${fixtureOptions.leagueWeeks} week(s); at your cap of ${fixturePreview.matchesPerDay} the earliest finish is ${fixturePreview.minWeeks ?? "?"} week(s).`
+                        : `Auto: ~${fixturePreview.suggestedMatchesPerDay} match(es)/day will fit ${fixtureOptions.leagueWeeks} week(s). Set a number to cap it.`}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label>Start Date</Label>
@@ -481,10 +525,38 @@ export function AdminPage() {
                   <Label>Fixture Days (comma separated)</Label>
                   <Input type="text" value={fixtureOptions.fixtureDays.join(", ")} onChange={(e) => setFixtureOptions({ ...fixtureOptions, fixtureDays: e.target.value.split(",").map((d) => d.trim()).filter(Boolean) })} />
                 </div>
+                {fixturePreview && !fixturePreview.feasible && (
+                  <div className={`rounded-lg border p-3 text-xs ${fixturePreview.teamCount !== fixturePreview.activeTeams ? "border-amber-500/50 bg-amber-500/10 text-amber-600" : "border-destructive/50 bg-destructive/10 text-destructive"}`}>
+                    <p className="font-medium">Can't generate this schedule</p>
+                    <p className="mt-1">{fixturePreview.reason}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {fixturePreview.teamCount !== fixturePreview.activeTeams && fixturePreview.activeTeams > 0 && (
+                        <Button size="sm" variant="outline" onClick={() => setFixtureOptions({ ...fixtureOptions, teamCount: fixturePreview?.activeTeams ?? fixtureOptions.teamCount })}>Use {fixturePreview.activeTeams} teams</Button>
+                      )}
+                      {fixturePreview.minWeeks && fixturePreview.minWeeks !== Infinity && (
+                        <Button size="sm" variant="outline" onClick={() => setFixtureOptions({ ...fixtureOptions, leagueWeeks: fixturePreview?.minWeeks ?? fixtureOptions.leagueWeeks })}>Raise League Weeks to {fixturePreview.minWeeks}</Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {fixturePreview && fixturePreview.feasible && fixturePreview.weeks.length > 0 && (
+                  <div className="max-h-44 space-y-1 overflow-y-auto rounded-lg border bg-muted/40 p-2 text-xs">
+                    <p className="font-semibold uppercase tracking-wide text-muted-foreground">Schedule Preview</p>
+                    {fixturePreview.weeks.map((w) => (
+                      <div key={w.week} className="flex justify-between gap-2">
+                        <span className="shrink-0 font-medium">Week {w.week}</span>
+                        <span className="text-muted-foreground">
+                          {w.matchCount} match{w.matchCount === 1 ? "" : "es"}{w.perDay.length > 1 ? ` — ${w.perDay.map((n, i) => `${n} on ${w.dates[i]}`).join(", ")}` : ` on ${w.dates[0]}`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {actionError && <p className="text-sm text-destructive">{actionError}</p>}
-                <Button className="w-full" disabled={generating} onClick={async () => {
-                  const s = (seasons || []).find((s: Season) => s.isCurrent);
+                <Button className="w-full" disabled={generating || (!!fixturePreview && !fixturePreview.feasible)} onClick={async () => {
+                  const s = (seasons || []).find((x: Season) => x.isCurrent);
                   if (!s) return setActionError("No current season selected");
+                  if (!window.confirm("This replaces the season's unscheduled league fixtures with the new schedule. Completed matches, friendlies, cup and knockout fixtures are kept. Continue?")) return;
                   setGenerating(true);
                   try { setActionError(""); await api.post(`/admin/seasons/${s.id}/generate-fixtures`, fixtureOptions); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); setShowForm(null); } catch (e: any) { setActionError(e.message); }
                   finally { setGenerating(false); }
