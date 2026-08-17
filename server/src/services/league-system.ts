@@ -27,27 +27,49 @@ export async function generateSeasonFixtures(seasonId: string, options?: {
     throw new AppError(`Exactly ${teamCount} active teams required for this format — the season has ${teams.length}. Add teams or lower the number.`, 400);
   }
 
-  // This must be checked BEFORE we touch the database: previously, a
-  // `leagueWeeks` value too small to fit every round (e.g. the schema/UI
-  // default of 7 weeks against the 10 rounds a 6-team double round-robin
-  // actually needs) silently truncated the schedule — teams would play some
-  // opponents once, or not at all, home-and-away, with no error and no
-  // indication the table would never be a complete round-robin.
-  const neededWeeks = requiredLeagueWeeks(teamCount, matchesPerPair);
-  if (leagueWeeks < neededWeeks) {
-    throw new AppError(
-      `leagueWeeks (${leagueWeeks}) is too short for a complete schedule: ${teamCount} teams playing ` +
-      `${matchesPerPair >= 2 ? "home and away" : "once each"} needs ${neededWeeks} week(s), one round per week. ` +
-      `Increase leagueWeeks to at least ${neededWeeks}, or reduce matchesPerPair to 1 for a single round-robin.`,
-      400
-    );
-  }
-
   const firstLeg = generateRoundRobinPairings(teamCount);
   const secondLeg = matchesPerPair >= 2 ? firstLeg.map((round) =>
     round.map((f) => ({ homeTeamIdx: f.awayTeamIdx, awayTeamIdx: f.homeTeamIdx }))
   ) : [];
   const allRounds = [...firstLeg, ...secondLeg];
+  const totalRounds = allRounds.length;
+  const matchesPerRound = Math.floor(teamCount / 2);
+
+  // The old behavior rejected a leagueWeeks shorter than one-round-per-week.
+  // That was wrong: a week can host more than one round when multiple matches
+  // share a day, so instead we load-balance. With no cap the generator simply
+  // packs as many matches per day as needed to fit the requested weeks. With
+  // an explicit matches-per-day cap we only reject when the cap genuinely
+  // cannot hold a round (checked BEFORE any database writes).
+  const season = await prisma.season.findUnique({ where: { id: seasonId } });
+  if (!season) throw new AppError("Season not found", 404);
+
+  const seasonStart = options?.startDate ? new Date(options.startDate) : new Date(season.startDate);
+  const weekDays = (options?.fixtureDays?.length ? options.fixtureDays : (season.fixtureDays || "Friday,Saturday,Sunday").split(",")).map((d) => d.trim());
+  const firstMatchDay = findNextDay(seasonStart, weekDays[0]);
+  const daysPerWeek = Math.max(1, weekDays.length);
+
+  // With the rounds split across weeks evenly (ceil of remaining / weeks
+  // left), the busiest week holds ceil(totalRounds / leagueWeeks) rounds.
+  const busyWeekRounds = totalRounds === 0 ? 0 : Math.ceil(totalRounds / leagueWeeks);
+
+  let matchesPerDay: number;
+  if (options?.matchesPerDay) {
+    matchesPerDay = options.matchesPerDay;
+    const roundsPerWeekCapacity = Math.floor((daysPerWeek * matchesPerDay) / matchesPerRound);
+    const minWeeks = roundsPerWeekCapacity > 0 ? Math.ceil(totalRounds / roundsPerWeekCapacity) : Infinity;
+    if (leagueWeeks < minWeeks) {
+      const reason = roundsPerWeekCapacity === 0
+        ? `${matchesPerRound} matches per round cannot fit into ${daysPerWeek} day(s) at max ${matchesPerDay} match(es)/day`
+        : `${totalRounds} round(s) need as few as ${minWeeks} week(s) at ${matchesPerDay} match(es)/day over ${daysPerWeek} day(s)`;
+      throw new AppError(
+        `leagueWeeks (${leagueWeeks}) is too short: ${reason}. Raise leagueWeeks, add fixture days, or increase max matches per day.`,
+        400
+      );
+    }
+  } else {
+    matchesPerDay = Math.max(1, Math.ceil((busyWeekRounds * matchesPerRound) / daysPerWeek));
+  }
 
   // Replace only the fixtures this generator owns: unscheduled, plain league
   // matches. Everything else is left alone — completed/resulted fixtures,
@@ -66,13 +88,6 @@ export async function generateSeasonFixtures(seasonId: string, options?: {
     },
   });
 
-  const season = await prisma.season.findUnique({ where: { id: seasonId } });
-  if (!season) throw new AppError("Season not found", 404);
-
-  const seasonStart = options?.startDate ? new Date(options.startDate) : new Date(season.startDate);
-  const weekDays = (options?.fixtureDays?.length ? options.fixtureDays : (season.fixtureDays || "Friday,Saturday,Sunday").split(",")).map((d) => d.trim());
-  const firstMatchDay = findNextDay(seasonStart, weekDays[0]);
-
   const fixtures: Array<{
     seasonId: string;
     homeTeamId: string;
@@ -84,36 +99,44 @@ export async function generateSeasonFixtures(seasonId: string, options?: {
   }> = [];
 
   let matchDay = new Date(firstMatchDay);
+  let roundsPlaced = 0;
 
-  for (let week = 0; week < leagueWeeks; week++) {
-    const roundIdx = week < allRounds.length ? week : -1;
-    if (roundIdx === -1) break;
+  for (let week = 0; week < leagueWeeks && roundsPlaced < totalRounds; week++) {
+    const weeksLeft = leagueWeeks - week;
+    const roundsThisWeek = Math.ceil((totalRounds - roundsPlaced) / weeksLeft);
 
-    const roundFixtures = allRounds[roundIdx];
-    const weekendDays = weekDays.slice(0, Math.min(weekDays.length, roundFixtures.length));
+    const pool: Array<{ slot: { homeTeamIdx: number; awayTeamIdx: number }; round: number }> = [];
+    for (let r = 0; r < roundsThisWeek; r++) {
+      for (const slot of allRounds[roundsPlaced + r]) {
+        pool.push({ slot, round: roundsPlaced + r + 1 });
+      }
+    }
 
-    // How many fixtures can share a single match day. When not provided,
-    // spread the round evenly across the available fixture days; when
-    // provided, cap (or raise) the per-day load so e.g. one fixture per day
-    // stretches the round across more days, or all fixtures cram into one.
-    const fixturesPerDay = options?.matchesPerDay ?? Math.ceil(roundFixtures.length / weekendDays.length);
     let fixtureIdx = 0;
-
-    for (const dayName of weekendDays) {
+    for (const dayName of weekDays) {
       const dayDate = findNextDay(matchDay, dayName);
-      for (let i = 0; i < fixturesPerDay && fixtureIdx < roundFixtures.length; i++) {
-        const f = roundFixtures[fixtureIdx];
+      for (let i = 0; i < matchesPerDay && fixtureIdx < pool.length; i++) {
+        const { slot, round } = pool[fixtureIdx];
         fixtures.push({
           seasonId,
-          homeTeamId: teams[f.homeTeamIdx].id,
-          awayTeamId: teams[f.awayTeamIdx].id,
+          homeTeamId: teams[slot.homeTeamIdx].id,
+          awayTeamId: teams[slot.awayTeamIdx].id,
           matchDate: new Date(dayDate),
           leagueWeek: week + 1,
-          round: roundIdx + 1,
+          round,
           status: "SCHEDULED",
         });
         fixtureIdx++;
       }
+    }
+
+    // Belt-and-suspenders: if a week's rounds exceed the per-day capacity,
+    // fail loudly rather than silently dropping fixtures.
+    if (fixtureIdx < pool.length) {
+      throw new AppError(
+        `Schedule does not fit: week ${week + 1} has ${pool.length - fixtureIdx} match(es) left over at max ${matchesPerDay} match(es)/day over ${daysPerWeek} day(s). Raise leagueWeeks or max matches per day.`,
+        400
+      );
     }
 
     matchDay.setDate(matchDay.getDate() + 7);

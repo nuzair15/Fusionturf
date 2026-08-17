@@ -255,6 +255,24 @@ export function AdminPage() {
 
   const stats = dashboard?.stats;
 
+  const ftRoundsPerLeg = fixtureOptions.teamCount % 2 === 0 ? fixtureOptions.teamCount - 1 : fixtureOptions.teamCount;
+  const ftTotalRounds = fixtureOptions.matchesPerPair >= 2 ? ftRoundsPerLeg * 2 : ftRoundsPerLeg;
+  const ftMatchesPerRound = Math.max(1, Math.floor(fixtureOptions.teamCount / 2));
+  const ftDays = Math.max(1, fixtureOptions.fixtureDays.length);
+  const ftBusiestWeek = ftTotalRounds > 0 ? Math.ceil(ftTotalRounds / Math.max(1, fixtureOptions.leagueWeeks || 1)) : 0;
+  const ftMinPerDay = Math.max(1, Math.ceil((ftBusiestWeek * ftMatchesPerRound) / ftDays));
+  const ftCapFeasible = !fixtureOptions.matchesPerDay || fixtureOptions.matchesPerDay * ftDays >= ftMatchesPerRound;
+  const ftMinWeeks = (() => {
+    if (!fixtureOptions.matchesPerDay) return 1;
+    const roundsPerWeekCap = Math.floor((ftDays * fixtureOptions.matchesPerDay) / ftMatchesPerRound);
+    return roundsPerWeekCap > 0 ? Math.ceil(ftTotalRounds / roundsPerWeekCap) : Infinity;
+  })();
+  const ftWeeksTooFew = fixtureOptions.matchesPerDay
+    ? fixtureOptions.matchesPerDay * ftDays < ftMatchesPerRound
+      ? false
+      : fixtureOptions.leagueWeeks < ftMinWeeks
+    : false;
+
   const handleLogout = () => {
     api.setAdminToken(null);
     api.logout();
@@ -439,7 +457,7 @@ export function AdminPage() {
                   <Label>League Weeks</Label>
                   <Input type="number" min={1} max={52} value={fixtureOptions.leagueWeeks} onChange={(e) => setFixtureOptions({ ...fixtureOptions, leagueWeeks: Number(e.target.value) })} />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Needs at least {fixtureOptions.matchesPerPair >= 2 ? 2 * (fixtureOptions.teamCount % 2 === 0 ? fixtureOptions.teamCount - 1 : fixtureOptions.teamCount) : (fixtureOptions.teamCount % 2 === 0 ? fixtureOptions.teamCount - 1 : fixtureOptions.teamCount)} weeks for {fixtureOptions.teamCount} teams playing {fixtureOptions.matchesPerPair >= 2 ? "home and away" : "once each"} — fewer than that and generation will be rejected. This is prefilled from your season's {fixtureOptions.teamCount} active teams.
+                    {ftTotalRounds} round{ftTotalRounds === 1 ? "" : "s"} for {fixtureOptions.teamCount} teams playing {fixtureOptions.matchesPerPair >= 2 ? "home and away" : "once each"}. The generator spreads them across your {ftDays} fixture day{ftDays === 1 ? "" : "s"} — multiple matches can share a day, so it adapts: {!fixtureOptions.matchesPerDay ? `about ${ftMinPerDay} match(es)/day to fit ${fixtureOptions.leagueWeeks} week(s).` : ftCapFeasible ? (ftWeeksTooFew ? `at ${fixtureOptions.matchesPerDay} match(es)/day, ${ftMinWeeks} week(s) is the minimum — increase weeks or matches per day.` : `fits in ${ftMinWeeks} week(s) minimum at ${fixtureOptions.matchesPerDay} match(es)/day.`) : `one round needs ${ftMatchesPerRound} match(es) but a day only holds ${fixtureOptions.matchesPerDay} — raise matches per day.`}
                   </p>
                 </div>
                 <div>
@@ -448,9 +466,11 @@ export function AdminPage() {
                 </div>
                 <div>
                   <Label>Max Matches Per Day</Label>
-                  <Input type="number" min={1} max={20} value={fixtureOptions.matchesPerDay ?? ""} placeholder="Auto (spread across fixture days)" onChange={(e) => setFixtureOptions({ ...fixtureOptions, matchesPerDay: e.target.value === "" ? null : Number(e.target.value) })} />
+                  <Input type="number" min={1} max={20} value={fixtureOptions.matchesPerDay ?? ""} placeholder="Auto" onChange={(e) => setFixtureOptions({ ...fixtureOptions, matchesPerDay: e.target.value === "" ? null : Number(e.target.value) })} />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Leave empty to spread each round evenly across the fixture days. Set a number (e.g. 1) to cap how many matches share a day — the round then stretches over more days.
+                    {!fixtureOptions.matchesPerDay
+                      ? `Auto: at least ${ftMinPerDay} match(es)/day are needed to fit ${fixtureOptions.leagueWeeks} week(s). Set a number to cap it.`
+                      : `Minimum needed for ${fixtureOptions.leagueWeeks} week(s): ${ftMinPerDay} match(es)/day. Capping at ${fixtureOptions.matchesPerDay} ${ftCapFeasible ? (ftWeeksTooFew ? "needs more weeks" : "works") : "is too low to hold one round"} — a round is ${ftMatchesPerRound} match(es).`}
                   </p>
                 </div>
                 <div>
