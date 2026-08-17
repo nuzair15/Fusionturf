@@ -332,6 +332,16 @@ export const getFixtures = async (req: Request, res: Response, next: NextFunctio
       where.matchDate = { gte: new Date(date.setHours(0, 0, 0, 0)), lte: new Date(date.setHours(23, 59, 59, 999)) };
     }
 
+    // `upcoming=true` returns the nearest unplayed fixtures first (ascending
+    // date, starting now) instead of the default newest-date-first order —
+    // the default put the season's final rounds on the home page instead of
+    // the matches about to be played.
+    const upcoming = req.query.upcoming === "true";
+    if (upcoming) {
+      where.matchDate = { ...(where.matchDate || {}), gte: new Date() };
+      where.status = { in: ["SCHEDULED", "LIVE", "HALF_TIME", "PAUSED", "EXTRA_TIME", "PENALTIES"] };
+    }
+
     const [data, total] = await Promise.all([
       prisma.fixture.findMany({
         where,
@@ -344,7 +354,7 @@ export const getFixtures = async (req: Request, res: Response, next: NextFunctio
         },
         skip,
         take: limit,
-        orderBy: { matchDate: "desc" },
+        orderBy: upcoming ? { matchDate: "asc" } : { matchDate: "desc" },
       }),
       prisma.fixture.count({ where }),
     ]);
