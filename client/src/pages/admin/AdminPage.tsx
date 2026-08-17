@@ -372,7 +372,9 @@ export function AdminPage() {
                 <Button size="sm" variant="outline" onClick={async () => {
                   const s = (seasons || []).find((s: Season) => s.isCurrent);
                   if (!s) return setActionError("No current season selected");
-                  setFixtureOptions({ teamCount: 6, leagueWeeks: 10, matchesPerPair: 2, matchesPerDay: null, startDate: s.startDate?.split("T")[0] || "", fixtureDays: ["Friday", "Saturday", "Sunday"] });
+                  const teams = s._count?.teams || 6;
+                  const roundsPerLeg = teams % 2 === 0 ? teams - 1 : teams;
+                  setFixtureOptions({ teamCount: teams, leagueWeeks: 2 * roundsPerLeg, matchesPerPair: 2, matchesPerDay: null, startDate: s.startDate?.split("T")[0] || "", fixtureDays: ["Friday", "Saturday", "Sunday"] });
                   setShowForm("generateFixtures");
                 }}>Bulk Generate Fixtures</Button>
                 <Button size="sm" variant="outline" onClick={async () => {
@@ -437,7 +439,7 @@ export function AdminPage() {
                   <Label>League Weeks</Label>
                   <Input type="number" min={1} max={52} value={fixtureOptions.leagueWeeks} onChange={(e) => setFixtureOptions({ ...fixtureOptions, leagueWeeks: Number(e.target.value) })} />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Needs at least {fixtureOptions.matchesPerPair >= 2 ? 2 * (fixtureOptions.teamCount - 1) : fixtureOptions.teamCount - 1} weeks for {fixtureOptions.teamCount} teams playing {fixtureOptions.matchesPerPair >= 2 ? "home and away" : "once each"} — fewer than that and generation will be rejected.
+                    Needs at least {fixtureOptions.matchesPerPair >= 2 ? 2 * (fixtureOptions.teamCount % 2 === 0 ? fixtureOptions.teamCount - 1 : fixtureOptions.teamCount) : (fixtureOptions.teamCount % 2 === 0 ? fixtureOptions.teamCount - 1 : fixtureOptions.teamCount)} weeks for {fixtureOptions.teamCount} teams playing {fixtureOptions.matchesPerPair >= 2 ? "home and away" : "once each"} — fewer than that and generation will be rejected. This is prefilled from your season's {fixtureOptions.teamCount} active teams.
                   </p>
                 </div>
                 <div>

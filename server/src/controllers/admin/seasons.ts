@@ -16,7 +16,7 @@ export const getSeasons = async (_req: Request, res: Response, next: NextFunctio
   try {
     const seasons = await prisma.season.findMany({
       orderBy: { startDate: "desc" },
-      include: { _count: { select: { teams: true, players: true, fixtures: true } } },
+      include: { _count: { select: { teams: { where: { isActive: true } }, players: true, fixtures: true } } },
     });
     res.json(seasons);
   } catch (error) {

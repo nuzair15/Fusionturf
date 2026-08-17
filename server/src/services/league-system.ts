@@ -1,6 +1,7 @@
 import prisma from "../config/database.js";
 import { Prisma } from "@prisma/client";
 import { generateRoundRobinPairings, requiredLeagueWeeks } from "../utils/roundRobin.js";
+import { AppError } from "../middleware/errorHandler.js";
 
 const TEAM_COUNT = 6;
 const MATCHES_PER_PAIR = 2;
@@ -23,7 +24,7 @@ export async function generateSeasonFixtures(seasonId: string, options?: {
   const leagueWeeks = options?.leagueWeeks || requiredLeagueWeeks(teamCount, matchesPerPair);
 
   if (teams.length !== teamCount) {
-    throw new Error(`Exactly ${teamCount} teams required, got ${teams.length}`);
+    throw new AppError(`Exactly ${teamCount} active teams required for this format — the season has ${teams.length}. Add teams or lower the number.`, 400);
   }
 
   // This must be checked BEFORE we touch the database: previously, a
@@ -34,10 +35,11 @@ export async function generateSeasonFixtures(seasonId: string, options?: {
   // indication the table would never be a complete round-robin.
   const neededWeeks = requiredLeagueWeeks(teamCount, matchesPerPair);
   if (leagueWeeks < neededWeeks) {
-    throw new Error(
+    throw new AppError(
       `leagueWeeks (${leagueWeeks}) is too short for a complete schedule: ${teamCount} teams playing ` +
       `${matchesPerPair >= 2 ? "home and away" : "once each"} needs ${neededWeeks} week(s), one round per week. ` +
-      `Increase leagueWeeks to at least ${neededWeeks}, or reduce matchesPerPair to 1 for a single round-robin.`
+      `Increase leagueWeeks to at least ${neededWeeks}, or reduce matchesPerPair to 1 for a single round-robin.`,
+      400
     );
   }
 
@@ -65,7 +67,7 @@ export async function generateSeasonFixtures(seasonId: string, options?: {
   });
 
   const season = await prisma.season.findUnique({ where: { id: seasonId } });
-  if (!season) throw new Error("Season not found");
+  if (!season) throw new AppError("Season not found", 404);
 
   const seasonStart = options?.startDate ? new Date(options.startDate) : new Date(season.startDate);
   const weekDays = (options?.fixtureDays?.length ? options.fixtureDays : (season.fixtureDays || "Friday,Saturday,Sunday").split(",")).map((d) => d.trim());
@@ -262,12 +264,12 @@ function calculateHeadToHead(fixtures: Array<{ homeTeamId: string; awayTeamId: s
 
 export async function processMatchResult(fixtureId: string, homeScore: number, awayScore: number, knockoutWinnerTeamId?: string): Promise<void> {
   const fixture = await prisma.fixture.findUnique({ where: { id: fixtureId }, include: { season: true, bracketMatch: true } });
-  if (!fixture) throw new Error("Fixture not found");
-  if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore) || homeScore < 0 || awayScore < 0) throw new Error("Scores must be non-negative integers");
-  if (fixture.status === "CANCELLED" || fixture.status === "POSTPONED") throw new Error("Cancelled or postponed fixtures cannot be completed");
+  if (!fixture) throw new AppError("Fixture not found", 404);
+  if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore) || homeScore < 0 || awayScore < 0) throw new AppError("Scores must be non-negative integers", 400);
+  if (fixture.status === "CANCELLED" || fixture.status === "POSTPONED") throw new AppError("Cancelled or postponed fixtures cannot be completed", 400);
   const validKnockoutWinner = fixture.bracketMatch && knockoutWinnerTeamId && [fixture.homeTeamId, fixture.awayTeamId].includes(knockoutWinnerTeamId);
-  if (fixture.bracketMatch && homeScore === awayScore && !validKnockoutWinner) throw new Error("Knockout matches require a winner; provide the penalty winner team");
-  if (fixture.bracketMatch && homeScore !== awayScore && knockoutWinnerTeamId && knockoutWinnerTeamId !== (homeScore > awayScore ? fixture.homeTeamId : fixture.awayTeamId)) throw new Error("Knockout winner does not match the score");
+  if (fixture.bracketMatch && homeScore === awayScore && !validKnockoutWinner) throw new AppError("Knockout matches require a winner; provide the penalty winner team", 400);
+  if (fixture.bracketMatch && homeScore !== awayScore && knockoutWinnerTeamId && knockoutWinnerTeamId !== (homeScore > awayScore ? fixture.homeTeamId : fixture.awayTeamId)) throw new AppError("Knockout winner does not match the score", 400);
   const wasCompleted = fixture.status === "COMPLETED";
 
   await prisma.fixture.update({
@@ -335,7 +337,7 @@ export async function generatePostSeasonFixtures(seasonId: string): Promise<void
     include: { team: true },
   });
 
-  if (standings.length < 6) throw new Error("Need at least 6 teams for post-season");
+  if (standings.length < 6) throw new AppError("Need at least 6 teams for post-season", 400);
 
   const firstPlace = standings[0].team;
   const secondPlace = standings[1].team;
@@ -343,7 +345,7 @@ export async function generatePostSeasonFixtures(seasonId: string): Promise<void
   const sixthPlace = standings[5].team;
 
   const season = await prisma.season.findUnique({ where: { id: seasonId } });
-  if (!season) throw new Error("Season not found");
+  if (!season) throw new AppError("Season not found", 404);
   const seasonEnd = new Date(season.endDate);
 
   const grandFinalDate = new Date(seasonEnd);
@@ -401,7 +403,7 @@ export async function createNextSeason(currentSeasonId: string, newSeasonName: s
     where: { id: currentSeasonId },
     include: { teams: { include: { players: true } }, standings: { orderBy: { position: "asc" } } },
   });
-  if (!currentSeason) throw new Error("Current season not found");
+  if (!currentSeason) throw new AppError("Current season not found", 404);
 
   await prisma.season.update({ where: { id: currentSeasonId }, data: { isCurrent: false } });
 
@@ -470,24 +472,24 @@ export async function validateSquad(teamId: string, seasonId: string): Promise<{
 
 export async function selectMatchdaySquad(fixtureId: string, teamId: string, playerIds: string[]): Promise<void> {
   const fixture = await prisma.fixture.findUnique({ where: { id: fixtureId } });
-  if (!fixture) throw new Error("Fixture not found");
-  if (fixture.status !== "SCHEDULED") throw new Error("Cannot change squad for a non-scheduled fixture");
-  if (teamId !== fixture.homeTeamId && teamId !== fixture.awayTeamId) throw new Error("Team is not participating in this fixture");
+  if (!fixture) throw new AppError("Fixture not found", 404);
+  if (fixture.status !== "SCHEDULED") throw new AppError("Cannot change squad for a non-scheduled fixture", 400);
+  if (teamId !== fixture.homeTeamId && teamId !== fixture.awayTeamId) throw new AppError("Team is not participating in this fixture", 400);
   if (!Array.isArray(playerIds) || playerIds.length !== 8 || new Set(playerIds).size !== playerIds.length) {
-    throw new Error("Matchday squad must contain 8 different players");
+    throw new AppError("Matchday squad must contain 8 different players", 400);
   }
 
   const players = await prisma.player.findMany({ where: { id: { in: playerIds }, teamId, seasonId: fixture.seasonId, isActive: true } });
-  if (players.length !== 8) throw new Error("Matchday squad must have exactly 8 players");
+  if (players.length !== 8) throw new AppError("Matchday squad must have exactly 8 players", 400);
   const starters = players.filter((player) => player.squadType === "STARTER").length;
   const substitutes = players.filter((player) => player.squadType === "SUBSTITUTE").length;
-  if (starters !== 6 || substitutes !== 2) throw new Error("Matchday squad must contain 6 starters and 2 substitutes");
+  if (starters !== 6 || substitutes !== 2) throw new AppError("Matchday squad must contain 6 starters and 2 substitutes", 400);
 
   const activeSuspensions = await prisma.suspension.findMany({
     where: { playerId: { in: playerIds }, isActive: true, seasonId: fixture.seasonId },
   });
   if (activeSuspensions.length > 0) {
-    throw new Error(`Suspended players cannot be selected: ${activeSuspensions.map((s) => s.playerId).join(", ")}`);
+    throw new AppError(`Suspended players cannot be selected: ${activeSuspensions.map((s) => s.playerId).join(", ")}`, 400);
   }
 
   await prisma.$transaction(async (tx) => {
