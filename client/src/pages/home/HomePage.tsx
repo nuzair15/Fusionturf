@@ -78,7 +78,7 @@ export function HomePage() {
       {/* Today's Matches */}
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <LeagueCard
-          title="Today's Matches"
+          title="Fixtures"
           action={<SectionLink onClick={() => navigate("/league/fixtures")}>All fixtures</SectionLink>}
         >
           <div className="grid gap-3 p-4 sm:grid-cols-2">

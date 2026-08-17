@@ -30,6 +30,7 @@ export async function generateSeasonFixtures(seasonId: string, options?: {
   startDate?: string;
   fixtureDays?: string[];
   matchesPerDay?: number;
+  kickoffTime?: string;
   preview?: boolean;
 }): Promise<{ generated: number } | FixtureSchedulePreview> {
   const teams = await prisma.team.findMany({ where: { seasonId, isActive: true }, orderBy: { name: "asc" } });
@@ -143,6 +144,7 @@ export async function generateSeasonFixtures(seasonId: string, options?: {
     matchDate: Date;
     leagueWeek: number;
     round: number;
+    kickoffTime: string | null;
     status: "SCHEDULED";
   }> = [];
 
@@ -171,6 +173,7 @@ export async function generateSeasonFixtures(seasonId: string, options?: {
           matchDate: new Date(dayDate),
           leagueWeek: weekPlan.week,
           round,
+          kickoffTime: options?.kickoffTime?.trim() ? options.kickoffTime.trim() : null,
           status: "SCHEDULED",
         });
         fixtureIdx++;

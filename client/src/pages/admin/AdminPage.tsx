@@ -90,7 +90,7 @@ export function AdminPage() {
   // round-robin needs for the default 6-team format. The backend now
   // rejects a value too small to fit every round, so this must stay in
   // sync with that — see generateSeasonFixtures in league-system.ts.
-  const [fixtureOptions, setFixtureOptions] = useState({ teamCount: 6, leagueWeeks: 10, matchesPerPair: 2, matchesPerDay: null as number | null, startDate: "", fixtureDays: ["Friday", "Saturday", "Sunday"] as string[] });
+  const [fixtureOptions, setFixtureOptions] = useState({ teamCount: 6, leagueWeeks: 10, matchesPerPair: 2, matchesPerDay: null as number | null, kickoffTime: "", startDate: "", fixtureDays: ["Friday", "Saturday", "Sunday"] as string[] });
   const [generating, setGenerating] = useState(false);
   const [liveStatsFixtureId, setLiveStatsFixtureId] = useState<string | null>(null);
   const [lineupFixture, setLineupFixture] = useState<Fixture | null>(null);
@@ -430,7 +430,7 @@ export function AdminPage() {
                   if (!s) return setActionError("No current season selected");
                   const teams = s._count?.teams || 6;
                   const roundsPerLeg = teams % 2 === 0 ? teams - 1 : teams;
-                  setFixtureOptions({ teamCount: teams, leagueWeeks: 2 * roundsPerLeg, matchesPerPair: 2, matchesPerDay: null, startDate: s.startDate?.split("T")[0] || "", fixtureDays: ["Friday", "Saturday", "Sunday"] });
+                  setFixtureOptions({ teamCount: teams, leagueWeeks: 2 * roundsPerLeg, matchesPerPair: 2, matchesPerDay: null, kickoffTime: "", startDate: s.startDate?.split("T")[0] || "", fixtureDays: ["Friday", "Saturday", "Sunday"] });
                   setFixturePreview(null);
                   setShowForm("generateFixtures");
                 }}>Bulk Generate Fixtures</Button>
@@ -520,6 +520,11 @@ export function AdminPage() {
                 <div>
                   <Label>Start Date</Label>
                   <Input type="date" value={fixtureOptions.startDate} onChange={(e) => setFixtureOptions({ ...fixtureOptions, startDate: e.target.value })} />
+                </div>
+                <div>
+                  <Label>Kickoff Time</Label>
+                  <Input type="time" value={fixtureOptions.kickoffTime} onChange={(e) => setFixtureOptions({ ...fixtureOptions, kickoffTime: e.target.value })} />
+                  <p className="mt-1 text-xs text-muted-foreground">Applied to every generated fixture (e.g. 18:30). Leave empty for no time.</p>
                 </div>
                 <div>
                   <Label>Fixture Days (comma separated)</Label>
