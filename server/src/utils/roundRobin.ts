@@ -14,6 +14,35 @@ export interface FixtureSlot {
   awayTeamIdx: number;
 }
 
+export const WEEK_DAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+
+/**
+ * Normalize a raw fixture-day list (user typed or stored on a season) to
+ * canonical lowercase weekday names, keeping order and dropping duplicates.
+ * Invalid names are returned separately so callers can surface them — a bad
+ * day name used to fall through to `findNextDay`, which silently mapped it
+ * to the week's start date: the first fixture day then looked "skipped",
+ * and a bad name later in the list stacked matches onto that same first
+ * date (the "counts it twice" report).
+ */
+export function normalizeFixtureDays(raw: string[]): { days: string[]; invalid: string[] } {
+  const days: string[] = [];
+  const invalid: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw) {
+    const name = entry.trim().toLowerCase();
+    if (!name) continue;
+    if (!WEEK_DAY_KEYS.includes(name)) {
+      invalid.push(entry.trim());
+      continue;
+    }
+    if (seen.has(name)) continue;
+    seen.add(name);
+    days.push(name);
+  }
+  return { days, invalid };
+}
+
 export function generateRoundRobinPairings(teams: number): FixtureSlot[][] {
   const rounds: FixtureSlot[][] = [];
   const n = teams % 2 === 0 ? teams : teams + 1;

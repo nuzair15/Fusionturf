@@ -1,6 +1,6 @@
 import prisma from "../config/database.js";
 import { Prisma } from "@prisma/client";
-import { generateRoundRobinPairings, planFixtureSchedule, type WeekPlan } from "../utils/roundRobin.js";
+import { generateRoundRobinPairings, normalizeFixtureDays, planFixtureSchedule, type WeekPlan } from "../utils/roundRobin.js";
 import { AppError } from "../middleware/errorHandler.js";
 
 const TEAM_COUNT = 6;
@@ -51,9 +51,34 @@ export async function generateSeasonFixtures(seasonId: string, options?: {
   if (!season) throw new AppError("Season not found", 404);
 
   const seasonStart = options?.startDate ? new Date(options.startDate) : new Date(season.startDate);
-  const weekDays = (options?.fixtureDays?.length ? options.fixtureDays : (season.fixtureDays || "Friday,Saturday,Sunday").split(",")).map((d) => d.trim());
-  const firstMatchDay = findNextDay(seasonStart, weekDays[0]);
+  const { days: weekDays, invalid: invalidDays } = normalizeFixtureDays(
+    options?.fixtureDays?.length ? options.fixtureDays : (season.fixtureDays || "Friday,Saturday,Sunday").split(",")
+  );
   const daysPerWeek = Math.max(1, weekDays.length);
+
+  // A bad day name (typo, abbreviation, non-English) used to silently map to
+  // the week's start date — the first fixture day looked skipped and a bad
+  // name later in the list double-booked that first date. Surface it instead.
+  if (invalidDays.length > 0) {
+    const reason = `Unknown fixture day(s): ${invalidDays.join(", ")}. Use full weekday names: Sunday, Monday, Tuesday, Wednesday, Thursday, Friday, Saturday.`;
+    if (options?.preview) {
+      return {
+        preview: true,
+        feasible: false,
+        reason,
+        matchesPerDay: 0,
+        suggestedMatchesPerDay: 0,
+        minWeeks: null,
+        teamCount,
+        activeTeams: teams.length,
+        totalRounds,
+        totalMatches: totalRounds * matchesPerRound,
+        weeks: [],
+      };
+    }
+    throw new AppError(reason, 400);
+  }
+  const firstMatchDay = findNextDay(seasonStart, weekDays[0]);
 
   // A team-count mismatch is surfaced through the preview plan (so the UI can
   // offer a one-click "use N teams" fix); real generation still rejects it.

@@ -85,6 +85,7 @@ export function AdminPage() {
   // Form state for modals
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [formErrors, setFormErrors] = useState<string>("");
+  const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const [actionError, setActionError] = useState<string>("");
   // leagueWeeks: 10 = 2 * (6 teams - 1), the weeks a full home-and-away
   // round-robin needs for the default 6-team format. The backend now
@@ -527,8 +528,27 @@ export function AdminPage() {
                   <p className="mt-1 text-xs text-muted-foreground">Applied to every generated fixture (e.g. 18:30). Leave empty for no time.</p>
                 </div>
                 <div>
-                  <Label>Fixture Days (comma separated)</Label>
-                  <Input type="text" value={fixtureOptions.fixtureDays.join(", ")} onChange={(e) => setFixtureOptions({ ...fixtureOptions, fixtureDays: e.target.value.split(",").map((d) => d.trim()).filter(Boolean) })} />
+                  <Label>Fixture Days</Label>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {WEEKDAYS.map((day) => {
+                      const selected = fixtureOptions.fixtureDays.some((d) => d.toLowerCase() === day.toLowerCase());
+                      return (
+                        <label key={day} className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-medium transition ${selected ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-muted-foreground hover:border-primary/40"}`}>
+                          <input
+                            type="checkbox"
+                            className="sr-only"
+                            checked={selected}
+                            onChange={() => setFixtureOptions({
+                              ...fixtureOptions,
+                              fixtureDays: selected ? fixtureOptions.fixtureDays.filter((d) => d.toLowerCase() !== day.toLowerCase()) : [...fixtureOptions.fixtureDays, day],
+                            })}
+                          />
+                          {day.slice(0, 3)}
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {fixtureOptions.fixtureDays.length === 0 && <p className="mt-1 text-xs text-destructive">Pick at least one day.</p>}
                 </div>
                 {fixturePreview && !fixturePreview.feasible && (
                   <div className={`rounded-lg border p-3 text-xs ${fixturePreview.teamCount !== fixturePreview.activeTeams ? "border-amber-500/50 bg-amber-500/10 text-amber-600" : "border-destructive/50 bg-destructive/10 text-destructive"}`}>

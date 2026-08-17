@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { generateRoundRobinPairings, planFixtureSchedule, requiredLeagueWeeks } from "./roundRobin.js";
+import { generateRoundRobinPairings, normalizeFixtureDays, planFixtureSchedule, requiredLeagueWeeks } from "./roundRobin.js";
 
 // A season's full round list, home-and-away when requested — same shape the
 // generator feeds the planner (FixtureSlot[][]).
@@ -39,6 +39,33 @@ describe("generateRoundRobinPairings", () => {
     }
     // 6 teams -> C(6,2) = 15 unique pairings across the whole single round-robin
     expect(pairings.size).toBe(15);
+  });
+});
+
+describe("normalizeFixtureDays", () => {
+  // A bad day name (typo or abbreviation) used to reach findNextDay, which
+  // silently returned the week's start date: the first fixture day looked
+  // skipped and a bad name later in the list double-booked that date.
+  it("keeps valid full weekday names in order, case-insensitive", () => {
+    expect(normalizeFixtureDays(["Friday", "saturday", "SUNDAY"])).toEqual({ days: ["friday", "saturday", "sunday"], invalid: [] });
+  });
+
+  it("collects invalid names instead of letting them corrupt dates", () => {
+    const result = normalizeFixtureDays(["Fri", "Saturday", "fridayy", "Sunday"]);
+    expect(result.days).toEqual(["saturday", "sunday"]);
+    expect(result.invalid).toEqual(["Fri", "fridayy"]);
+  });
+
+  it("drops duplicate days so a day can never be counted twice", () => {
+    expect(normalizeFixtureDays(["Friday", "Sunday", "friday"])).toEqual({ days: ["friday", "sunday"], invalid: [] });
+  });
+
+  it("ignores empty entries", () => {
+    expect(normalizeFixtureDays(["", "Friday", " ", "Sunday"])).toEqual({ days: ["friday", "sunday"], invalid: [] });
+  });
+
+  it("yields an empty day list when nothing valid is given", () => {
+    expect(normalizeFixtureDays([])).toEqual({ days: [], invalid: [] });
   });
 });
 
