@@ -95,12 +95,13 @@ describe("requiredLeagueWeeks", () => {
 });
 
 describe("planFixtureSchedule", () => {
-  // The exact configuration a user reported as failing: 5 teams playing
-  // home and away (10 rounds of 2 matches), 7 weeks, max 2 matches/day
-  // over 3 fixture days. It must be feasible, with every fixture placed
-  // and no team scheduled twice on the same date.
-  it("fits the reported 5-team / 7-week / 2-per-day configuration", () => {
-    const plan = planFixtureSchedule({ rounds: seasonRounds(5, 2), leagueWeeks: 7, daysPerWeek: 3, matchesPerDay: 2 });
+  // The config a user originally reported as failing: 5 teams playing home
+  // and away (10 rounds of 2 matches), max 2 matches/day over 3 fixture
+  // days. Odd team counts need two rounds a week so each round's bye team
+  // still plays in the other round, so 5 weeks is the longest this can run
+  // while every team plays every week.
+  it("fits the reported 5-team / 2-per-day config with every team playing every week", () => {
+    const plan = planFixtureSchedule({ rounds: seasonRounds(5, 2), leagueWeeks: 5, daysPerWeek: 3, matchesPerDay: 2 });
     expect(plan.feasible).toBe(true);
     expect(plan.matchesPerDay).toBe(2);
     expect(plan.minWeeks).toBe(4);
@@ -115,7 +116,26 @@ describe("planFixtureSchedule", () => {
         const teams = day.flatMap((x) => [x.slot.homeTeamIdx, x.slot.awayTeamIdx]);
         expect(new Set(teams).size).toBe(teams.length); // one match per team per day
       }
+      const teamsInWeek = new Set<number>();
+      for (const day of w.days) for (const x of day) { teamsInWeek.add(x.slot.homeTeamIdx); teamsInWeek.add(x.slot.awayTeamIdx); }
+      expect(teamsInWeek.size).toBe(5); // every team plays every week
     }
+  });
+
+  it("rejects weeks that would leave a team without a match", () => {
+    // 5 teams / 10 rounds over 7 weeks: weeks 1-3 hold 2 rounds, weeks 4-7
+    // hold 1 — each single-round week lets its bye team rest the whole week.
+    const plan = planFixtureSchedule({ rounds: seasonRounds(5, 2), leagueWeeks: 7, daysPerWeek: 3, matchesPerDay: 2 });
+    expect(plan.feasible).toBe(false);
+    expect(plan.reason).toMatch(/at least 1 match per week/);
+  });
+
+  it("rejects trailing weeks with no matches at all", () => {
+    // 6 teams / 10 rounds over 12 weeks: the season ends after week 10, so
+    // nobody plays weeks 11-12.
+    const plan = planFixtureSchedule({ rounds: seasonRounds(6, 2), leagueWeeks: 12, daysPerWeek: 3 });
+    expect(plan.feasible).toBe(false);
+    expect(plan.reason).toMatch(/finish after week 10/);
   });
 
   it("rejects a week count a matches-per-day cap genuinely cannot hold", () => {
@@ -188,9 +208,11 @@ describe("planFixtureSchedule", () => {
               const plan = planFixtureSchedule({ rounds, leagueWeeks, daysPerWeek, matchesPerDay: cap });
               if (plan.feasible) {
                 // Every fixture is placed, day loads respect the effective
-                // cap, and no team ever plays twice on one day.
+                // cap, no team ever plays twice on one day, and every team
+                // plays at least once every week (no trailing idle weeks).
                 const placed = plan.weeks.reduce((sum, w) => sum + w.matchCount, 0);
                 expect(placed).toBe(totalMatches);
+                expect(plan.weeks.length).toBe(leagueWeeks);
                 for (const w of plan.weeks) {
                   expect(w.perDay.reduce((a, b) => a + b, 0)).toBe(w.matchCount);
                   expect(w.days.length).toBeLessThanOrEqual(daysPerWeek);
@@ -200,6 +222,17 @@ describe("planFixtureSchedule", () => {
                     expect(teams.length).toBeGreaterThan(0);
                     expect(day.length).toBeLessThanOrEqual(effectiveCap ?? maxLegalPerDay);
                   }
+                  const teamsInWeek = new Set<number>();
+                  const weekKeys = new Set<string>();
+                  for (const day of w.days) for (const x of day) {
+                    teamsInWeek.add(x.slot.homeTeamIdx);
+                    teamsInWeek.add(x.slot.awayTeamIdx);
+                    const key = `${x.slot.homeTeamIdx}v${x.slot.awayTeamIdx}`;
+                    expect(weekKeys.has(key)).toBe(false); // no match scheduled twice
+                    weekKeys.add(key);
+                  }
+                  expect(weekKeys.size).toBe(w.matchCount);
+                  expect(teamsInWeek.size).toBe(teamCount);
                 }
                 // Feasibility implies the upfront capacity check passes.
                 if (effectiveCap) {
@@ -208,13 +241,17 @@ describe("planFixtureSchedule", () => {
                   expect(leagueWeeks).toBeGreaterThanOrEqual(minWeeks);
                 }
               } else {
-                // With a cap, infeasibility must be explainable by minWeeks.
+                // Upfront cap rejections must carry the minWeeks explanation.
                 if (effectiveCap) {
-                  expect(plan.minWeeks).toBeDefined();
-                  if (plan.minWeeks && plan.minWeeks !== Infinity) {
-                    expect(leagueWeeks).toBeLessThan(plan.minWeeks);
+                  const roundsPerWeekCapacity = Math.floor((daysPerWeek * effectiveCap) / maxLegalPerDay);
+                  const minWeeks = roundsPerWeekCapacity > 0 ? Math.ceil(rounds.length / roundsPerWeekCapacity) : Infinity;
+                  if (leagueWeeks < minWeeks) {
+                    expect(plan.reason).toMatch(/need at least|cannot fit into/);
                   }
                 }
+                // Placement-stage rejections (team twice per day, a team
+                // missing a week, trailing idle weeks) still say why.
+                expect(plan.reason).toBeTruthy();
               }
             }
           }

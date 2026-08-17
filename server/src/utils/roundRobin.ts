@@ -122,6 +122,11 @@ export interface SchedulePlan {
  *  - a team never plays twice on the same day — this is what the old
  *    count-only math missed: it could schedule a team into two matches on
  *    one date (and skip a fixture day doing so)
+ *  - every team plays at least once per week: a week whose matches leave a
+ *    team out (a one-round week in an odd team count lets that round's bye
+ *    team rest), or weeks that trail the season with no matches at all, are
+ *    rejected up front instead of silently producing a team with nothing to
+ *    play that week
  *
  * The placement is greedy (first eligible match in round order per day).
  * With a cap, infeasible week counts are reported up front; anything the
@@ -140,6 +145,9 @@ export function planFixtureSchedule(opts: {
   if (totalRounds === 0) {
     return { feasible: true, matchesPerDay: 1, suggestedMatchesPerDay: 1, totalMatches: 0, weeks: [] };
   }
+
+  // Every team must appear at least once in every week.
+  const teamCount = Math.max(...rounds.flatMap((r) => r.flatMap((f) => [f.homeTeamIdx, f.awayTeamIdx]))) + 1;
 
   // Team-once-per-day caps a single day at floor(teams/2) matches — i.e. the
   // size of the largest round. No cap option can raise that.
@@ -187,27 +195,55 @@ export function planFixtureSchedule(opts: {
       }
     }
 
+    const remaining: PlacedSlot[] = [...pool];
     const days: PlacedSlot[][] = [];
-    let unplaced = pool.length;
 
-    for (let d = 0; d < daysPerWeek && unplaced > 0; d++) {
+    // Each placed match is removed from the pool — a match can only ever be
+    // scheduled once. (An earlier version just walked the pool with a
+    // placed-count, so every day re-placed the same earliest matches and
+    // the rest of the round silently vanished.)
+    for (let d = 0; d < daysPerWeek && remaining.length > 0; d++) {
       const day: PlacedSlot[] = [];
       const teamsToday = new Set<number>();
-      for (const item of pool) {
-        if (unplaced === 0 || day.length >= matchesPerDay) break;
-        if (teamsToday.has(item.slot.homeTeamIdx) || teamsToday.has(item.slot.awayTeamIdx)) continue;
+      for (let i = 0; i < remaining.length && day.length < matchesPerDay; ) {
+        const item = remaining[i];
+        if (teamsToday.has(item.slot.homeTeamIdx) || teamsToday.has(item.slot.awayTeamIdx)) {
+          i++;
+          continue;
+        }
         day.push(item);
         teamsToday.add(item.slot.homeTeamIdx);
         teamsToday.add(item.slot.awayTeamIdx);
-        unplaced--;
+        remaining.splice(i, 1);
       }
       days.push(day);
     }
 
-    if (unplaced > 0) {
+    if (remaining.length > 0) {
       return {
         feasible: false,
         reason: `Week ${week + 1} cannot fit ${pool.length} match(es) across ${daysPerWeek} day(s) without a team playing twice on the same day — add fixture days or more weeks.`,
+        matchesPerDay,
+        suggestedMatchesPerDay,
+        minWeeks,
+        totalMatches: totalRounds * maxRoundMatches,
+        weeks,
+      };
+    }
+
+    // Every team must play at least once this week — a single round in an
+    // odd team count lets that round's bye team sit out the whole week.
+    const teamsThisWeek = new Set<number>();
+    for (const day of days) {
+      for (const item of day) {
+        teamsThisWeek.add(item.slot.homeTeamIdx);
+        teamsThisWeek.add(item.slot.awayTeamIdx);
+      }
+    }
+    if (teamsThisWeek.size < teamCount) {
+      return {
+        feasible: false,
+        reason: `Week ${week + 1} would leave ${teamCount - teamsThisWeek.size} of ${teamCount} team(s) without a match — every team needs at least 1 match per week. Reduce league weeks so each week holds enough rounds to cover all teams.`,
         matchesPerDay,
         suggestedMatchesPerDay,
         minWeeks,
@@ -225,6 +261,20 @@ export function planFixtureSchedule(opts: {
     });
     totalMatches += pool.length;
     roundsPlaced += roundsThisWeek;
+  }
+
+  // Weeks that trail the season with no matches would leave every team idle
+  // — the "1 match per week" rule forbids them.
+  if (roundsPlaced === totalRounds && weeks.length < leagueWeeks) {
+    return {
+      feasible: false,
+      reason: `The ${totalRounds} round(s) finish after week ${weeks.length} — no team would play in weeks ${weeks.length + 1}-${leagueWeeks}. Every team needs at least 1 match per week: reduce league weeks to ${weeks.length} or fewer.`,
+      matchesPerDay,
+      suggestedMatchesPerDay,
+      minWeeks,
+      totalMatches: totalRounds * maxRoundMatches,
+      weeks,
+    };
   }
 
   return { feasible: true, matchesPerDay, suggestedMatchesPerDay, minWeeks, totalMatches, weeks };

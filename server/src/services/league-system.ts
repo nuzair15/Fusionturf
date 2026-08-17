@@ -128,7 +128,7 @@ export async function generateSeasonFixtures(seasonId: string, options?: {
     return {
       preview: true,
       feasible: plan.feasible,
-      reason: plan.feasible ? undefined : `${plan.reason}. Raise leagueWeeks, add fixture days, or increase max matches per day.`,
+      reason: plan.feasible ? undefined : plan.reason,
       matchesPerDay: plan.matchesPerDay,
       suggestedMatchesPerDay: plan.suggestedMatchesPerDay,
       minWeeks: plan.minWeeks ?? null,
@@ -141,7 +141,7 @@ export async function generateSeasonFixtures(seasonId: string, options?: {
   }
 
   if (!plan.feasible) {
-    throw new AppError(`Cannot generate schedule: ${plan.reason}. Raise leagueWeeks, add fixture days, or increase max matches per day.`, 400);
+    throw new AppError(`Cannot generate schedule: ${plan.reason}`, 400);
   }
 
   // Replace only the fixtures this generator owns: unscheduled, plain league

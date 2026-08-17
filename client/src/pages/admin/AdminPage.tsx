@@ -431,7 +431,10 @@ export function AdminPage() {
                   if (!s) return setActionError("No current season selected");
                   const teams = s._count?.teams || 6;
                   const roundsPerLeg = teams % 2 === 0 ? teams - 1 : teams;
-                  setFixtureOptions({ teamCount: teams, leagueWeeks: 2 * roundsPerLeg, matchesPerPair: 2, matchesPerDay: null, kickoffTime: "", startDate: s.startDate?.split("T")[0] || "", fixtureDays: ["Friday", "Saturday", "Sunday"] });
+                  // Even team counts play one round per week (2 legs = full
+                  // house every week). Odd counts need TWO rounds a week so
+                  // the bye team of one round still plays in the other.
+                  setFixtureOptions({ teamCount: teams, leagueWeeks: teams % 2 === 0 ? 2 * roundsPerLeg : roundsPerLeg, matchesPerPair: 2, matchesPerDay: null, kickoffTime: "", startDate: s.startDate?.split("T")[0] || "", fixtureDays: ["Friday", "Saturday", "Sunday"] });
                   setFixturePreview(null);
                   setShowForm("generateFixtures");
                 }}>Bulk Generate Fixtures</Button>
@@ -558,7 +561,7 @@ export function AdminPage() {
                       {fixturePreview.teamCount !== fixturePreview.activeTeams && fixturePreview.activeTeams > 0 && (
                         <Button size="sm" variant="outline" onClick={() => setFixtureOptions({ ...fixtureOptions, teamCount: fixturePreview?.activeTeams ?? fixtureOptions.teamCount })}>Use {fixturePreview.activeTeams} teams</Button>
                       )}
-                      {fixturePreview.minWeeks && fixturePreview.minWeeks !== Infinity && (
+                      {fixturePreview.minWeeks && fixturePreview.minWeeks !== Infinity && fixturePreview.minWeeks > fixtureOptions.leagueWeeks && (
                         <Button size="sm" variant="outline" onClick={() => setFixtureOptions({ ...fixtureOptions, leagueWeeks: fixturePreview?.minWeeks ?? fixtureOptions.leagueWeeks })}>Raise League Weeks to {fixturePreview.minWeeks}</Button>
                       )}
                     </div>
