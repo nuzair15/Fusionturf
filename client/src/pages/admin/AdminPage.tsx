@@ -69,7 +69,11 @@ export function AdminPage() {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [formErrors, setFormErrors] = useState<string>("");
   const [actionError, setActionError] = useState<string>("");
-  const [fixtureOptions, setFixtureOptions] = useState({ teamCount: 6, leagueWeeks: 7, matchesPerPair: 2, startDate: "", fixtureDays: ["Friday", "Saturday", "Sunday"] as string[] });
+  // leagueWeeks: 10 = 2 * (6 teams - 1), the weeks a full home-and-away
+  // round-robin needs for the default 6-team format. The backend now
+  // rejects a value too small to fit every round, so this must stay in
+  // sync with that — see generateSeasonFixtures in league-system.ts.
+  const [fixtureOptions, setFixtureOptions] = useState({ teamCount: 6, leagueWeeks: 10, matchesPerPair: 2, startDate: "", fixtureDays: ["Friday", "Saturday", "Sunday"] as string[] });
   const [generating, setGenerating] = useState(false);
   const [liveStatsFixtureId, setLiveStatsFixtureId] = useState<string | null>(null);
   const [lineupFixture, setLineupFixture] = useState<Fixture | null>(null);
@@ -368,7 +372,7 @@ export function AdminPage() {
                 <Button size="sm" variant="outline" onClick={async () => {
                   const s = (seasons || []).find((s: Season) => s.isCurrent);
                   if (!s) return setActionError("No current season selected");
-                  setFixtureOptions({ teamCount: 6, leagueWeeks: 7, matchesPerPair: 2, startDate: s.startDate?.split("T")[0] || "", fixtureDays: ["Friday", "Saturday", "Sunday"] });
+                  setFixtureOptions({ teamCount: 6, leagueWeeks: 10, matchesPerPair: 2, startDate: s.startDate?.split("T")[0] || "", fixtureDays: ["Friday", "Saturday", "Sunday"] });
                   setShowForm("generateFixtures");
                 }}>Bulk Generate Fixtures</Button>
                 <Button size="sm" variant="outline" onClick={async () => {
@@ -432,6 +436,9 @@ export function AdminPage() {
                 <div>
                   <Label>League Weeks</Label>
                   <Input type="number" min={1} max={52} value={fixtureOptions.leagueWeeks} onChange={(e) => setFixtureOptions({ ...fixtureOptions, leagueWeeks: Number(e.target.value) })} />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Needs at least {fixtureOptions.matchesPerPair >= 2 ? 2 * (fixtureOptions.teamCount - 1) : fixtureOptions.teamCount - 1} weeks for {fixtureOptions.teamCount} teams playing {fixtureOptions.matchesPerPair >= 2 ? "home and away" : "once each"} — fewer than that and generation will be rejected.
+                  </p>
                 </div>
                 <div>
                   <Label>Matches Per Pair</Label>

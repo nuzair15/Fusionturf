@@ -10,6 +10,7 @@ import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import { authenticate, authorize } from "./middleware/auth.js";
 import { stripeWebhook } from "./controllers/booking.js";
 import routes from "./routes/index.js";
+import prisma from "./config/database.js";
 
 if (config.nodeEnv === "production") {
   const required = ["DATABASE_URL", "JWT_SECRET", "ADMIN_PANEL_PASSWORD"];
@@ -134,11 +135,42 @@ app.use("/api", routes);
 app.use(notFoundHandler);
 app.use(errorHandler);
 
+// A rejected promise or thrown error with no handler anywhere in the chain
+// otherwise crashes the process with no log line explaining why, which on
+// Render shows up as "the API just restarted" with no diagnostic trail.
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled promise rejection:", reason);
+});
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught exception:", error);
+  // An exception that escaped every try/catch means the process is in an
+  // unknown state — exit and let the platform (Render/Docker) restart it
+  // cleanly rather than keep serving requests from a possibly-corrupted state.
+  process.exit(1);
+});
+
 // Start server
 if (process.env.NODE_ENV !== "test") {
-  app.listen(config.port, () => {
+  const server = app.listen(config.port, () => {
     console.log(`🚀 Server running on port ${config.port} in ${config.nodeEnv} mode`);
   });
+
+  // On deploy/restart, Render (and Docker) send SIGTERM and expect the
+  // process to finish in-flight requests and close cleanly within a grace
+  // period — not be killed mid-request. Without this, Prisma's connection
+  // pool is torn down abruptly on every deploy, which shows up as sporadic
+  // "connection closed" errors on whichever requests were in flight.
+  const shutdown = (signal: string) => {
+    console.log(`${signal} received: closing server gracefully`);
+    server.close(async () => {
+      await prisma.$disconnect();
+      process.exit(0);
+    });
+    // Force-exit if close() hangs (e.g. a long-lived connection never ends).
+    setTimeout(() => process.exit(1), 10_000).unref();
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
 export default app;

@@ -52,6 +52,21 @@ class ApiClient {
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: "Request failed" }));
         const message = error.error || `HTTP ${response.status}`;
+
+        // A 401 on a request that WAS sent with a token (as opposed to a
+        // login/register attempt, which has no token yet) means the server
+        // has rejected it — expired, malformed, or the user behind it was
+        // deactivated/role-changed since it was issued. Previously nothing
+        // cleared the stale token client-side, so every subsequent request
+        // kept resending it and kept failing the same way until the user
+        // happened to open dev tools or manually logged out. Clearing it
+        // here and telling AuthProvider fixes both the token and the UI
+        // state in one place instead of every call site handling its own 401.
+        if (response.status === 401 && authToken) {
+          this.logout();
+          window.dispatchEvent(new CustomEvent("fusion-auth-expired"));
+        }
+
         window.dispatchEvent(new CustomEvent("fusion-api-error", { detail: { message } }));
         throw new Error(message);
       }

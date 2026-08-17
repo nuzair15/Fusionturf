@@ -31,6 +31,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
     autoLogin();
+
+    // api.ts dispatches this when a request comes back 401 for a token we
+    // thought was valid (expired, revoked, or the user was deactivated) —
+    // it already clears the stored token, this just clears the in-memory
+    // user so the UI reflects "logged out" immediately instead of a stale
+    // authenticated view until the next full page load.
+    const onAuthExpired = () => setUser(null);
+    window.addEventListener("fusion-auth-expired", onAuthExpired);
+    return () => window.removeEventListener("fusion-auth-expired", onAuthExpired);
   }, []);
 
   const login = async (email: string, password: string) => {

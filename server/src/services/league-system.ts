@@ -1,45 +1,12 @@
 import prisma from "../config/database.js";
 import { Prisma } from "@prisma/client";
+import { generateRoundRobinPairings, requiredLeagueWeeks } from "../utils/roundRobin.js";
 
-const DAYS = ["Friday", "Saturday", "Sunday"] as const;
 const TEAM_COUNT = 6;
 const MATCHES_PER_PAIR = 2;
-const TOTAL_MATCHES = 30;
-const LEAGUE_WEEKS = 7;
-const MAX_MATCHES_PER_WEEKEND = 2;
 const POINTS_WIN = 3;
 const POINTS_DRAW = 1;
 const POINTS_LOSS = 0;
-
-interface FixtureSlot {
-  homeTeamIdx: number;
-  awayTeamIdx: number;
-}
-
-function generateRoundRobinPairings(teams: number): FixtureSlot[][] {
-  const rounds: FixtureSlot[][] = [];
-  const n = teams % 2 === 0 ? teams : teams + 1;
-  const half = n / 2;
-  const teamIndices = Array.from({ length: n }, (_, i) => i);
-
-  for (let round = 0; round < n - 1; round++) {
-    const fixtures: FixtureSlot[] = [];
-    for (let i = 0; i < half; i++) {
-      const home = teamIndices[i];
-      const away = teamIndices[n - 1 - i];
-      if (home < teams && away < teams) {
-        fixtures.push(round % 2 === 0
-          ? { homeTeamIdx: home, awayTeamIdx: away }
-          : { homeTeamIdx: away, awayTeamIdx: home }
-        );
-      }
-    }
-    rounds.push(fixtures);
-    teamIndices.splice(1, 0, teamIndices.pop()!);
-  }
-
-  return rounds;
-}
 
 export async function generateSeasonFixtures(seasonId: string, options?: {
   teamCount?: number;
@@ -51,12 +18,33 @@ export async function generateSeasonFixtures(seasonId: string, options?: {
   const teams = await prisma.team.findMany({ where: { seasonId, isActive: true }, orderBy: { name: "asc" } });
 
   const teamCount = options?.teamCount || TEAM_COUNT;
-  const leagueWeeks = options?.leagueWeeks || LEAGUE_WEEKS;
   const matchesPerPair = options?.matchesPerPair || MATCHES_PER_PAIR;
+  const leagueWeeks = options?.leagueWeeks || requiredLeagueWeeks(teamCount, matchesPerPair);
 
   if (teams.length !== teamCount) {
     throw new Error(`Exactly ${teamCount} teams required, got ${teams.length}`);
   }
+
+  // This must be checked BEFORE we touch the database: previously, a
+  // `leagueWeeks` value too small to fit every round (e.g. the schema/UI
+  // default of 7 weeks against the 10 rounds a 6-team double round-robin
+  // actually needs) silently truncated the schedule — teams would play some
+  // opponents once, or not at all, home-and-away, with no error and no
+  // indication the table would never be a complete round-robin.
+  const neededWeeks = requiredLeagueWeeks(teamCount, matchesPerPair);
+  if (leagueWeeks < neededWeeks) {
+    throw new Error(
+      `leagueWeeks (${leagueWeeks}) is too short for a complete schedule: ${teamCount} teams playing ` +
+      `${matchesPerPair >= 2 ? "home and away" : "once each"} needs ${neededWeeks} week(s), one round per week. ` +
+      `Increase leagueWeeks to at least ${neededWeeks}, or reduce matchesPerPair to 1 for a single round-robin.`
+    );
+  }
+
+  const firstLeg = generateRoundRobinPairings(teamCount);
+  const secondLeg = matchesPerPair >= 2 ? firstLeg.map((round) =>
+    round.map((f) => ({ homeTeamIdx: f.awayTeamIdx, awayTeamIdx: f.homeTeamIdx }))
+  ) : [];
+  const allRounds = [...firstLeg, ...secondLeg];
 
   await prisma.fixture.deleteMany({ where: { seasonId, isGrandFinal: false, isRelegationPlayoff: false } });
 
@@ -66,12 +54,6 @@ export async function generateSeasonFixtures(seasonId: string, options?: {
   const seasonStart = options?.startDate ? new Date(options.startDate) : new Date(season.startDate);
   const weekDays = (options?.fixtureDays?.length ? options.fixtureDays : (season.fixtureDays || "Friday,Saturday,Sunday").split(",")).map((d) => d.trim());
   const firstMatchDay = findNextDay(seasonStart, weekDays[0]);
-
-  const firstLeg = generateRoundRobinPairings(teamCount);
-  const secondLeg = matchesPerPair >= 2 ? firstLeg.map((round) =>
-    round.map((f) => ({ homeTeamIdx: f.awayTeamIdx, awayTeamIdx: f.homeTeamIdx }))
-  ) : [];
-  const allRounds = [...firstLeg, ...secondLeg];
 
   const fixtures: Array<{
     seasonId: string;
@@ -663,6 +645,24 @@ const [goals, assists, cards, fixtures, lineups, squadEntries] = await Promise.a
   }));
 }
 
+// Auto-detection runs after every completed fixture so the site always has a
+// current "who's leading" view, but it must never look like the season's
+// results are final:
+//   - It keeps recomputing (upsert), not create-once. Previously this ran
+//     once — on the FIRST fixture ever completed in a season — created the
+//     award row, and then `if (existing) return;` skipped every future call
+//     for that season. Whoever led Golden Boot/MVP/the table after matchday 1
+//     stayed the on-site "winner" all season, even as other players and teams
+//     overtook them, because nothing ever recalculated it.
+//   - It never sets `winnerAnnounced`. That flag means "an admin has
+//     officially announced this," and is otherwise only touched by
+//     announceWinner() (see the AWARD_WRITABLE_FIELDS comment in
+//     controllers/admin/awards.ts). Auto-detection used to set it to `true`
+//     on creation, so a mid-season leader was publicly badged as the
+//     announced season winner before a ball had barely been kicked.
+//   - Once an admin HAS announced a winner for an award, auto-detection
+//     leaves it alone — the season is decided for that award; recomputing
+//     over it would silently undo the admin's call.
 export async function autoDetectAwards(seasonId: string): Promise<void> {
   const stats = await prisma.playerStat.findMany({
     where: { seasonId },
@@ -681,7 +681,7 @@ async function autoCreateAward(seasonId: string, name: string, description: stri
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
   const existing = await prisma.award.findFirst({ where: { seasonId, slug } });
-  if (existing) return;
+  if (existing?.winnerAnnounced) return;
 
   let winnerId: string | undefined;
   if (sorter && Array.isArray(data) && data.length > 0) {
@@ -692,13 +692,20 @@ async function autoCreateAward(seasonId: string, name: string, description: stri
     if (teamPlayers) winnerId = teamPlayers.id;
   }
 
+  if (existing) {
+    // Leave a manually-edited name/description alone; only refresh the
+    // current-leader pointer, and never touch winnerAnnounced here.
+    await prisma.award.update({ where: { id: existing.id }, data: { winnerId } });
+    return;
+  }
+
   await prisma.award.create({
     data: {
       seasonId,
       name,
       slug,
       description,
-      winnerAnnounced: true,
+      winnerAnnounced: false,
       winnerId,
     },
   });

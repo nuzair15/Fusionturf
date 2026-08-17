@@ -26,6 +26,7 @@ const SearchPage = lazy(() => import("@/pages/search/SearchPage").then((m) => ({
 import { ApiErrorNotice } from "@/components/ApiErrorNotice";
 import { PageSkeleton } from "@/components/PageState";
 import { NotFoundPage } from "@/pages/NotFoundPage";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,44 +36,46 @@ const queryClient = new QueryClient({
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <AuthProvider>
-          <BrowserRouter>
-            <SEOHead />
-            <ApiErrorNotice />
-            <ScrollToTop />
-            <div className="flex min-h-screen flex-col pb-16 md:pb-0">
-              <Navbar />
-              <main className="flex-1">
-              <Suspense fallback={<PageSkeleton />}>
-              <Routes>
-                  <Route path="/" element={<HomePage />} />
-                  <Route path="/booking" element={<BookingPage />} />
-                  <Route path="/booking/:slug" element={<VenueDetailPage />} />
-                  <Route path="/league" element={<LeaguePage />} />
-                  <Route path="/league/fixtures" element={<FixturesPage />} />
-                  <Route path="/league/standings" element={<StandingsPage />} />
-                  <Route path="/league/stats" element={<StatsPage />} />
-                  <Route path="/league/awards" element={<AwardsPage />} />
-                  <Route path="/league/news" element={<NewsPage />} />
-                  <Route path="/league/teams/:slug" element={<TeamDetailPage />} />
-                  <Route path="/league/players/:slug" element={<PlayerDetailPage />} />
-                  <Route path="/league/fixtures/:id" element={<FixtureDetailPage />} />
-                  <Route path="/search" element={<SearchPage />} />
-                  <Route path="/dashboard" element={<DashboardPage />} />
-                  <Route path="/admin" element={<AdminPage />} />
-                  <Route path="/admin/*" element={<AdminPage />} />
-                  <Route path="*" element={<NotFoundPage />} />
-              </Routes>
-              </Suspense>
-              </main>
-              <BottomNav />
-              <Footer />
-            </div>
-          </BrowserRouter>
-        </AuthProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <AuthProvider>
+            <BrowserRouter>
+              <SEOHead />
+              <ApiErrorNotice />
+              <ScrollToTop />
+              <div className="flex min-h-screen flex-col pb-16 md:pb-0">
+                <Navbar />
+                <main className="flex-1">
+                <Suspense fallback={<PageSkeleton />}>
+                <Routes>
+                    <Route path="/" element={<HomePage />} />
+                    <Route path="/booking" element={<BookingPage />} />
+                    <Route path="/booking/:slug" element={<VenueDetailPage />} />
+                    <Route path="/league" element={<LeaguePage />} />
+                    <Route path="/league/fixtures" element={<FixturesPage />} />
+                    <Route path="/league/standings" element={<StandingsPage />} />
+                    <Route path="/league/stats" element={<StatsPage />} />
+                    <Route path="/league/awards" element={<AwardsPage />} />
+                    <Route path="/league/news" element={<NewsPage />} />
+                    <Route path="/league/teams/:slug" element={<TeamDetailPage />} />
+                    <Route path="/league/players/:slug" element={<PlayerDetailPage />} />
+                    <Route path="/league/fixtures/:id" element={<FixtureDetailPage />} />
+                    <Route path="/search" element={<SearchPage />} />
+                    <Route path="/dashboard" element={<DashboardPage />} />
+                    <Route path="/admin" element={<AdminPage />} />
+                    <Route path="/admin/*" element={<AdminPage />} />
+                    <Route path="*" element={<NotFoundPage />} />
+                </Routes>
+                </Suspense>
+                </main>
+                <BottomNav />
+                <Footer />
+              </div>
+            </BrowserRouter>
+          </AuthProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }

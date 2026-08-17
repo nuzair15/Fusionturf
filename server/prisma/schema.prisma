@@ -436,7 +436,11 @@ model Season {
   isActive               Boolean   @default(false)
   isCurrent              Boolean   @default(false)
   description            String?
-  leagueWeeks            Int       @default(7)
+  // 10 = 2 * (6 teams - 1): the number of weeks a full home-and-away
+  // round-robin actually needs for the default 6-team format. The previous
+  // default of 7 was too short by 3 rounds and silently produced an
+  // incomplete schedule — see the leagueWeeks check in generateSeasonFixtures.
+  leagueWeeks            Int       @default(10)
   fixtureDays            String    @default("Friday,Saturday,Sunday")
   transferWindowOpen     Boolean   @default(false)
   transferWindowStartsAt DateTime?

@@ -49,7 +49,11 @@ export function AwardsPage() {
                 <div className="mt-4">
                   {award.winner ? (
                     <div>
-                      <p className="text-xs text-muted-foreground">Winner</p>
+                      {/* winnerAnnounced distinguishes an admin's official
+                          announcement from the live, still-changing leader
+                          the backend auto-computes after every match — a
+                          season isn't over just because someone's ahead. */}
+                      <p className="text-xs text-muted-foreground">{award.winnerAnnounced ? "Winner" : "Currently Leading"}</p>
                       {award.type === "TEAM" && award.winnerTeam ? (
                         <p className="font-semibold">{award.winnerTeam.name}</p>
                       ) : (
