@@ -1,6 +1,6 @@
 import prisma from "../config/database.js";
 import { Prisma } from "@prisma/client";
-import { generateRoundRobinPairings, planFixtureSchedule, requiredLeagueWeeks, type WeekPlan } from "../utils/roundRobin.js";
+import { generateRoundRobinPairings, planFixtureSchedule, type WeekPlan } from "../utils/roundRobin.js";
 import { AppError } from "../middleware/errorHandler.js";
 
 const TEAM_COUNT = 6;
@@ -37,7 +37,6 @@ export async function generateSeasonFixtures(seasonId: string, options?: {
 
   const teamCount = options?.teamCount || TEAM_COUNT;
   const matchesPerPair = options?.matchesPerPair || MATCHES_PER_PAIR;
-  const leagueWeeks = options?.leagueWeeks || requiredLeagueWeeks(teamCount, matchesPerPair);
 
   const firstLeg = generateRoundRobinPairings(teamCount);
   const secondLeg = matchesPerPair >= 2 ? firstLeg.map((round) =>
@@ -46,6 +45,7 @@ export async function generateSeasonFixtures(seasonId: string, options?: {
   const allRounds = [...firstLeg, ...secondLeg];
   const totalRounds = allRounds.length;
   const matchesPerRound = Math.floor(teamCount / 2);
+  const leagueWeeks = options?.leagueWeeks ?? totalRounds;
 
   const season = await prisma.season.findUnique({ where: { id: seasonId } });
   if (!season) throw new AppError("Season not found", 404);
@@ -85,8 +85,7 @@ export async function generateSeasonFixtures(seasonId: string, options?: {
   // and only rejects when an explicit matches-per-day cap genuinely cannot
   // hold a round (checked BEFORE any database writes).
   const plan = planFixtureSchedule({
-    totalRounds,
-    matchesPerRound,
+    rounds: allRounds,
     leagueWeeks,
     daysPerWeek,
     matchesPerDay: options?.matchesPerDay,
@@ -148,49 +147,41 @@ export async function generateSeasonFixtures(seasonId: string, options?: {
     status: "SCHEDULED";
   }> = [];
 
-  // Place fixtures exactly as the plan laid them out: same rounds per week,
-  // same per-day counts — the planner already proved this fits.
+  // Place fixtures exactly as the plan laid them out: the planner already
+  // proved this fits and assigned every match to a concrete day while
+  // guaranteeing no team plays twice on the same date.
   let matchDay = new Date(firstMatchDay);
-  let roundsPlaced = 0;
 
   for (const weekPlan of plan.weeks) {
-    const pool: Array<{ slot: { homeTeamIdx: number; awayTeamIdx: number }; round: number }> = [];
-    for (let r = 0; r < weekPlan.roundCount; r++) {
-      for (const slot of allRounds[roundsPlaced + r]) {
-        pool.push({ slot, round: roundsPlaced + r + 1 });
-      }
-    }
+    let weekPlaced = 0;
 
-    let fixtureIdx = 0;
-    for (let d = 0; d < weekPlan.perDay.length && fixtureIdx < pool.length; d++) {
-      const dayDate = findNextDay(matchDay, weekDays[d]);
-      for (let i = 0; i < weekPlan.perDay[d] && fixtureIdx < pool.length; i++) {
-        const { slot, round } = pool[fixtureIdx];
+    for (let d = 0; d < weekPlan.days.length; d++) {
+      const dayDate = new Date(findNextDay(matchDay, weekDays[d]));
+      for (const item of weekPlan.days[d]) {
         fixtures.push({
           seasonId,
-          homeTeamId: teams[slot.homeTeamIdx].id,
-          awayTeamId: teams[slot.awayTeamIdx].id,
-          matchDate: new Date(dayDate),
+          homeTeamId: teams[item.slot.homeTeamIdx].id,
+          awayTeamId: teams[item.slot.awayTeamIdx].id,
+          matchDate: dayDate,
           leagueWeek: weekPlan.week,
-          round,
+          round: item.round,
           kickoffTime: options?.kickoffTime?.trim() ? options.kickoffTime.trim() : null,
           status: "SCHEDULED",
         });
-        fixtureIdx++;
+        weekPlaced++;
       }
     }
 
-    // Belt-and-suspenders: if a week's rounds exceed the per-day capacity,
+    // Belt-and-suspenders: if a week's rounds exceed what the planner placed,
     // fail loudly rather than silently dropping fixtures.
-    if (fixtureIdx < pool.length) {
+    if (weekPlaced < weekPlan.matchCount) {
       throw new AppError(
-        `Schedule does not fit: week ${weekPlan.week} has ${pool.length - fixtureIdx} match(es) left over at max ${plan.matchesPerDay} match(es)/day over ${daysPerWeek} day(s). Raise leagueWeeks or max matches per day.`,
+        `Schedule does not fit: week ${weekPlan.week} has ${weekPlan.matchCount - weekPlaced} match(es) left over at max ${plan.matchesPerDay} match(es)/day over ${daysPerWeek} day(s). Raise leagueWeeks or max matches per day.`,
         400
       );
     }
 
     matchDay.setDate(matchDay.getDate() + 7);
-    roundsPlaced += weekPlan.roundCount;
   }
 
   await prisma.fixture.createMany({ data: fixtures });

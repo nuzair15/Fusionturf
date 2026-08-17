@@ -49,11 +49,20 @@ export function requiredLeagueWeeks(teamCount: number, matchesPerPair: number): 
   return matchesPerPair >= 2 ? roundsPerLeg * 2 : roundsPerLeg;
 }
 
+export interface PlacedSlot {
+  slot: FixtureSlot;
+  /** 1-based round number this fixture belongs to. */
+  round: number;
+}
+
 export interface WeekPlan {
   week: number;
   roundCount: number;
   matchCount: number;
-  /** Matches assigned to each fixture day of this week, in day order. */
+  /** Matches assigned to each fixture day of this week, in day order. A team
+   * never appears twice in the same day's array — one match per day max. */
+  days: PlacedSlot[][];
+  /** Matches per day as counts (parallel to `days`), for preview consumers. */
   perDay: number[];
 }
 
@@ -61,7 +70,7 @@ export interface SchedulePlan {
   feasible: boolean;
   /** Why the plan is infeasible, when it is. */
   reason?: string;
-  /** The matches-per-day value the generated schedule will actually use. */
+  /** The effective matches-per-day limit the schedule will actually use. */
   matchesPerDay: number;
   /** The per-day load the round count would suggest if no cap is set. */
   suggestedMatchesPerDay: number;
@@ -77,42 +86,56 @@ export interface SchedulePlan {
  * "will this fit" math can never drift apart between the two (a stale
  * client-side copy of it was the cause of one reported false rejection).
  *
- * Rounds are split across weeks evenly (ceil of remaining / weeks left) and
- * matches within a week fill fixture days up to `matchesPerDay` each. When
- * no cap is given, `matchesPerDay` rises automatically so the requested
- * `leagueWeeks` always fit; with a cap, infeasible week counts are reported
- * up front instead of silently dropping fixtures.
+ * Rounds are split across weeks evenly (ceil of remaining / weeks left).
+ * Matches are then placed day by day with two hard rules:
+ *  - at most `matchesPerDay` per day (or as many as the round count needs,
+ *    when no cap is set — the generator packs to fit the requested weeks)
+ *  - a team never plays twice on the same day — this is what the old
+ *    count-only math missed: it could schedule a team into two matches on
+ *    one date (and skip a fixture day doing so)
+ *
+ * The placement is greedy (first eligible match in round order per day).
+ * With a cap, infeasible week counts are reported up front; anything the
+ * greedy pass cannot place is reported as infeasible instead of silently
+ * dropping fixtures.
  */
 export function planFixtureSchedule(opts: {
-  totalRounds: number;
-  matchesPerRound: number;
+  rounds: FixtureSlot[][];
   leagueWeeks: number;
   daysPerWeek: number;
   matchesPerDay?: number;
 }): SchedulePlan {
-  const { totalRounds, matchesPerRound, leagueWeeks, daysPerWeek } = opts;
+  const { rounds, leagueWeeks, daysPerWeek } = opts;
 
+  const totalRounds = rounds.length;
   if (totalRounds === 0) {
     return { feasible: true, matchesPerDay: 1, suggestedMatchesPerDay: 1, totalMatches: 0, weeks: [] };
   }
 
+  // Team-once-per-day caps a single day at floor(teams/2) matches — i.e. the
+  // size of the largest round. No cap option can raise that.
+  const maxRoundMatches = Math.max(...rounds.map((r) => r.length));
+  const maxLegalPerDay = maxRoundMatches;
+
   // The busiest week under the ceil-of-remaining split holds at most this
   // many rounds, which is what the per-day load must absorb.
   const busyWeekRounds = Math.ceil(totalRounds / Math.max(1, leagueWeeks));
-  const suggestedMatchesPerDay = Math.max(1, Math.ceil((busyWeekRounds * matchesPerRound) / daysPerWeek));
+  const suggestedMatchesPerDay = Math.min(maxLegalPerDay, Math.max(1, Math.ceil((busyWeekRounds * maxRoundMatches) / daysPerWeek)));
 
+  // Effective per-day load: the user's cap, clamped to what a day can
+  // legally hold (each team once), or the auto suggestion when unset.
   let matchesPerDay: number;
   let minWeeks: number | undefined;
 
   if (opts.matchesPerDay) {
-    matchesPerDay = opts.matchesPerDay;
-    const roundsPerWeekCapacity = Math.floor((daysPerWeek * matchesPerDay) / matchesPerRound);
+    matchesPerDay = Math.min(opts.matchesPerDay, maxLegalPerDay);
+    const roundsPerWeekCapacity = Math.floor((daysPerWeek * matchesPerDay) / maxRoundMatches);
     minWeeks = roundsPerWeekCapacity > 0 ? Math.ceil(totalRounds / roundsPerWeekCapacity) : Infinity;
     if (leagueWeeks < minWeeks) {
       const reason = roundsPerWeekCapacity === 0
-        ? `${matchesPerRound} matches per round cannot fit into ${daysPerWeek} day(s) at max ${matchesPerDay} match(es)/day`
+        ? `${maxRoundMatches} matches per round cannot fit into ${daysPerWeek} day(s) at max ${matchesPerDay} match(es)/day`
         : `${totalRounds} round(s) need at least ${minWeeks} week(s) at ${matchesPerDay} match(es)/day over ${daysPerWeek} day(s)`;
-      return { feasible: false, reason, matchesPerDay, suggestedMatchesPerDay, minWeeks, totalMatches: totalRounds * matchesPerRound, weeks: [] };
+      return { feasible: false, reason, matchesPerDay, suggestedMatchesPerDay, minWeeks, totalMatches: totalRounds * maxRoundMatches, weeks: [] };
     }
   } else {
     matchesPerDay = suggestedMatchesPerDay;
@@ -127,30 +150,51 @@ export function planFixtureSchedule(opts: {
   for (let week = 0; week < leagueWeeks && roundsPlaced < totalRounds; week++) {
     const weeksLeft = leagueWeeks - week;
     const roundsThisWeek = Math.ceil((totalRounds - roundsPlaced) / weeksLeft);
-    const poolSize = roundsThisWeek * matchesPerRound;
-    const perDay: number[] = [];
-    let remaining = poolSize;
 
-    for (let d = 0; d < daysPerWeek && remaining > 0; d++) {
-      const onDay = Math.min(matchesPerDay, remaining);
-      perDay.push(onDay);
-      remaining -= onDay;
+    const pool: PlacedSlot[] = [];
+    for (let r = 0; r < roundsThisWeek; r++) {
+      for (const slot of rounds[roundsPlaced + r]) {
+        pool.push({ slot, round: roundsPlaced + r + 1 });
+      }
     }
 
-    if (remaining > 0) {
+    const days: PlacedSlot[][] = [];
+    let unplaced = pool.length;
+
+    for (let d = 0; d < daysPerWeek && unplaced > 0; d++) {
+      const day: PlacedSlot[] = [];
+      const teamsToday = new Set<number>();
+      for (const item of pool) {
+        if (unplaced === 0 || day.length >= matchesPerDay) break;
+        if (teamsToday.has(item.slot.homeTeamIdx) || teamsToday.has(item.slot.awayTeamIdx)) continue;
+        day.push(item);
+        teamsToday.add(item.slot.homeTeamIdx);
+        teamsToday.add(item.slot.awayTeamIdx);
+        unplaced--;
+      }
+      days.push(day);
+    }
+
+    if (unplaced > 0) {
       return {
         feasible: false,
-        reason: `Week ${week + 1} cannot hold ${poolSize} match(es) at ${matchesPerDay} match(es)/day over ${daysPerWeek} day(s)`,
+        reason: `Week ${week + 1} cannot fit ${pool.length} match(es) across ${daysPerWeek} day(s) without a team playing twice on the same day — add fixture days or more weeks.`,
         matchesPerDay,
         suggestedMatchesPerDay,
         minWeeks,
-        totalMatches: totalRounds * matchesPerRound,
+        totalMatches: totalRounds * maxRoundMatches,
         weeks,
       };
     }
 
-    weeks.push({ week: week + 1, roundCount: roundsThisWeek, matchCount: poolSize, perDay });
-    totalMatches += poolSize;
+    weeks.push({
+      week: week + 1,
+      roundCount: roundsThisWeek,
+      matchCount: pool.length,
+      days,
+      perDay: days.map((d) => d.length),
+    });
+    totalMatches += pool.length;
     roundsPlaced += roundsThisWeek;
   }
 
