@@ -19,6 +19,12 @@ export function HomePage() {
   });
 
   const { data: fixtures } = useQuery({ queryKey: ["featured-fixtures"], queryFn: () => api.get<PaginatedResponse<Fixture>>("/league/fixtures?limit=6&upcoming=true"), staleTime: 0, refetchOnWindowFocus: true, refetchInterval: 15000 });
+  const { data: recentFixtures } = useQuery({
+    queryKey: ["featured-fixtures-recent"],
+    queryFn: () => api.get<PaginatedResponse<Fixture>>("/league/fixtures?limit=6"),
+    staleTime: 0,
+    enabled: (fixtures?.data?.length ?? 0) === 0,
+  });
   const { data: standings } = useQuery({ queryKey: ["standings"], queryFn: () => api.get<Standing[]>("/league/standings"), staleTime: 0, refetchOnWindowFocus: true, refetchInterval: 10000 });
   const { data: venues } = useQuery({ queryKey: ["venues"], queryFn: () => api.get<PaginatedResponse<Venue>>("/bookings/venues?limit=4"), refetchOnWindowFocus: true, refetchInterval: 60000 });
   const { data: news } = useQuery({ queryKey: ["home-news"], queryFn: () => api.get<PaginatedResponse<News>>("/league/news?limit=4"), refetchOnWindowFocus: true, refetchInterval: 60000 });
@@ -26,7 +32,7 @@ export function HomePage() {
   const { data: currentSeason } = useQuery({ queryKey: ["current-season"], queryFn: () => api.get<Season>("/league/seasons/current"), retry: false, refetchOnWindowFocus: true, refetchInterval: 60000 });
 
   const heroImage = settings?.site_hero_url || "/hero.jpeg";
-  const itemList = fixtures?.data || [];
+  const itemList = (fixtures?.data?.length ? fixtures.data : recentFixtures?.data) || [];
   const standingsList = standings || [];
   const venueList = venues?.data || [];
   const newsList = news?.data || [];
@@ -81,7 +87,10 @@ export function HomePage() {
           title="Fixtures"
           action={<SectionLink onClick={() => navigate("/league/fixtures")}>All fixtures</SectionLink>}
         >
-          <div className="grid gap-3 p-4 sm:grid-cols-2">
+          {itemList.length === 0 ? (
+            <LeagueEmptyState title="No fixtures yet" description="Matches will appear here once the season schedule is set." />
+          ) : (
+            <div className="grid gap-3 p-4 sm:grid-cols-2">
             {itemList.slice(0, 4).map((fixture) => (
               <Card key={fixture.id} className="overflow-hidden border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
                 <CardContent className="space-y-4 p-4">
@@ -115,7 +124,8 @@ export function HomePage() {
                 </CardContent>
               </Card>
             ))}
-          </div>
+            </div>
+          )}
         </LeagueCard>
       </div>
 
