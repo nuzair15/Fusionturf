@@ -682,8 +682,8 @@ export function AdminPage() {
               title="Players"
               columns={[
                 { key: "photo", label: "Photo", render: (p) => <img src={p.photoUrl || "/placeholder.svg"} alt="" className="h-10 w-10 rounded-xl bg-muted object-cover shadow-sm" /> },
-                { key: "name", label: "Name", sortable: true, render: (p) => <span className="font-medium">{p.firstName} {p.lastName}</span> },
-                { key: "team", label: "Team", sortable: true, render: (p) => p.team?.name || "-" },
+                { key: "name", label: "Name", sortable: true, sortValue: (p) => `${p.firstName} ${p.lastName}`, render: (p) => <span className="font-medium">{p.firstName} {p.lastName}</span> },
+                { key: "team", label: "Team", sortable: true, sortValue: (p) => p.team?.name || "", render: (p) => p.team?.name || "-" },
                 { key: "position", label: "Position", render: (p) => p.position || "-" },
                 { key: "jersey", label: "Jersey", render: (p) => p.jerseyNumber || "-" },
                 { key: "manage", label: "Manage", render: (p) => <div className="flex gap-1"><Button size="sm" variant="outline" onClick={() => setSelectedPlayerId(p.slug)}><Eye className="mr-1 h-3.5 w-3.5" /> Details</Button><Button size="sm" variant="outline" onClick={() => { setEditingItem(p); openForm("player", { firstName: p.firstName, lastName: p.lastName || "", position: p.position || "", teamId: p.teamId || "", jerseyNumber: p.jerseyNumber || "", squadType: p.squadType || "", photoUrl: p.photoUrl || "", nationality: p.nationality || "", age: p.age || "", height: p.height || "", weight: p.weight || "", preferredFoot: p.preferredFoot || "", biography: p.biography || "" }); }}><Edit2 className="mr-1 h-3.5 w-3.5" /> Edit</Button></div> },
@@ -797,7 +797,7 @@ export function AdminPage() {
             <DataTable<any>
               title={friendlyStatsMode ? "Friendly Player Stats" : "League Player Stats"}
               columns={[
-                { key: "player", label: "Player", sortable: true, render: (s) => <span className="font-medium">{s.player.firstName} {s.player.lastName}</span> },
+                { key: "player", label: "Player", sortable: true, sortValue: (s) => `${s.player.firstName} ${s.player.lastName}`, render: (s) => <span className="font-medium">{s.player.firstName} {s.player.lastName}</span> },
                 { key: "team", label: "Team", render: (s) => s.team?.name || "-" },
                 { key: "appearances", label: "Apps", render: (s) => s.appearances },
                 { key: "goals", label: "Goals", render: (s) => s.goals },
@@ -836,10 +836,10 @@ export function AdminPage() {
               title="Fixtures"
               filters={<Select value={fixtureTypeFilter} onChange={(e) => setFixtureTypeFilter(e.target.value as typeof fixtureTypeFilter)} className="w-40"><option value="all">All matches</option><option value="league">League only</option><option value="friendly">Friendly only</option></Select>}
               columns={[
-                { key: "home", label: "Home", sortable: true, render: (f) => <span className="font-medium">{f.homeTeam?.name || "?"}</span> },
+                { key: "home", label: "Home", sortable: true, sortValue: (f) => f.homeTeam?.name || "", render: (f) => <span className="font-medium">{f.homeTeam?.name || "?"}</span> },
                 { key: "score", label: "Score", render: (f) => <span className="font-bold">{f.status === "COMPLETED" ? `${f.homeScore ?? 0} - ${f.awayScore ?? 0}` : "vs"}</span> },
-                { key: "away", label: "Away", sortable: true, render: (f) => <span className="font-medium">{f.awayTeam?.name || "?"}</span> },
-                { key: "date", label: "Date", sortable: true, render: (f) => <span className="text-muted-foreground">{formatDate(f.matchDate)}</span> },
+                { key: "away", label: "Away", sortable: true, sortValue: (f) => f.awayTeam?.name || "", render: (f) => <span className="font-medium">{f.awayTeam?.name || "?"}</span> },
+                { key: "date", label: "Date", sortable: true, sortValue: (f) => f.matchDate, render: (f) => <span className="text-muted-foreground">{formatDate(f.matchDate)}</span> },
                 { key: "status", label: "Status", render: (f) => <Badge variant="secondary">{f.status}</Badge> },
                 { key: "type", label: "Type", render: (f) => <Badge variant={f.isFriendly ? "outline" : "secondary"}>{f.isFriendly ? "Friendly" : "League"}</Badge> },
                 { key: "manage", label: "Manage", render: (f) => (
@@ -1547,11 +1547,11 @@ export function AdminPage() {
               title=""
               columns={[
                 { key: "bookingNumber", label: "#", render: (b) => <span className="font-medium">{b.bookingNumber}</span> },
-                { key: "customer", label: "Customer", sortable: true, render: (b) => <>{b.user?.firstName || "?"} {b.user?.lastName || ""}<br /><span className="text-xs text-muted-foreground">{b.user?.phone || ""}</span></> },
+                { key: "customer", label: "Customer", sortable: true, sortValue: (b) => `${b.user?.firstName || ""} ${b.user?.lastName || ""}`, render: (b) => <>{b.user?.firstName || "?"} {b.user?.lastName || ""}<br /><span className="text-xs text-muted-foreground">{b.user?.phone || ""}</span></> },
                 { key: "venue", label: "Venue", render: (b) => <>{b.turf?.venue?.name || "?"}<br /><span className="text-xs text-muted-foreground">{b.turf?.name || ""}</span></> },
                 { key: "date", label: "Date", sortable: true, render: (b) => <span className="text-muted-foreground">{formatDate(b.date)}</span> },
                 { key: "time", label: "Time", render: (b) => <>{b.startTime} - {b.endTime}</> },
-                { key: "amount", label: "Amount", sortable: true, render: (b) => <>₹{(b.totalAmount / 100).toFixed(2)}</> },
+                { key: "amount", label: "Amount", sortable: true, sortValue: (b) => b.totalAmount, render: (b) => <>₹{(b.totalAmount / 100).toFixed(2)}</> },
                 { key: "status", label: "Status", render: (b) => <Badge variant={b.status === "CONFIRMED" ? "default" : b.status === "CANCELLED" ? "destructive" : "secondary"}>{b.status}</Badge> },
                 { key: "whatsapp", label: "", render: (b) => {
                   const phone = b.user?.phone?.replace(/[^0-9]/g, "");
@@ -1619,7 +1619,7 @@ export function AdminPage() {
                 { key: "image", label: "Image", render: (n) => n.imageUrl ? <img src={n.imageUrl} alt="" className="h-10 w-16 rounded object-cover bg-muted" /> : <div className="h-10 w-16 rounded bg-muted" /> },
                 { key: "title", label: "Title", sortable: true, render: (n) => <span className="font-medium line-clamp-1">{n.title}</span> },
                 { key: "author", label: "Author", render: (n) => n.author || "-" },
-                { key: "published", label: "Published", sortable: true, render: (n) => n.publishedAt ? formatDate(n.publishedAt) : "-" },
+                { key: "published", label: "Published", sortable: true, sortValue: (n) => n.publishedAt || "", render: (n) => n.publishedAt ? formatDate(n.publishedAt) : "-" },
                 { key: "featured", label: "Featured", render: (n) => n.isFeatured ? <Badge>Featured</Badge> : "-" },
               ]}
               data={news?.data || []}
@@ -2194,11 +2194,11 @@ export function AdminPage() {
           <DataTable<User>
             title="Users"
             columns={[
-              { key: "name", label: "Name", sortable: true, render: (u) => <>{u.firstName} {u.lastName}</> },
+              { key: "name", label: "Name", sortable: true, sortValue: (u) => `${u.firstName} ${u.lastName}`, render: (u) => <>{u.firstName} {u.lastName}</> },
               { key: "email", label: "Email", sortable: true, render: (u) => <span className="text-muted-foreground">{u.email}</span> },
               { key: "role", label: "Role", render: (u) => <Badge variant="secondary">{u.role.replace("_", " ")}</Badge> },
               { key: "status", label: "Status", render: (u) => <Badge variant={u.isActive ? "default" : "destructive"}>{u.isActive ? "Active" : "Inactive"}</Badge> },
-              { key: "joined", label: "Joined", sortable: true, render: (u) => <span className="text-muted-foreground">{formatDate(u.createdAt)}</span> },
+              { key: "joined", label: "Joined", sortable: true, sortValue: (u) => u.createdAt, render: (u) => <span className="text-muted-foreground">{formatDate(u.createdAt)}</span> },
             ]}
             data={users?.data || []}
             keyExtractor={(u) => u.id}

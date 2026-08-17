@@ -22,6 +22,7 @@ export interface ColumnDef<T> {
   sortable?: boolean;
   hidden?: boolean;
   render: (item: T) => React.ReactNode;
+  sortValue?: (item: T) => string | number;
 }
 
 export interface BulkAction<T> {
@@ -136,14 +137,25 @@ export function DataTable<T>({
 
   const processed = useMemo(() => {
     let items = [...data];
-    if (!isServerDriven && clientSort) {
-      items.sort((a, b) => {
-        const aVal = String(clientSort.field === "id" ? keyExtractor(a) : clientSort.field);
-        const bVal = String(clientSort.field === "id" ? keyExtractor(b) : clientSort.field);
-        const cmp = aVal.localeCompare(bVal);
-        return clientSort.dir === "asc" ? cmp : -cmp;
-      });
-    }
+if (!isServerDriven && clientSort) {
+    const { field, dir } = clientSort;
+    const col = columns.find((c) => c.key === field);
+    const valueOf = (item: T): string | number => {
+      if (field === "id") return keyExtractor(item);
+      if (col?.sortValue) return col.sortValue(item);
+      const raw = (item as Record<string, unknown>)[field];
+      return raw == null ? "" : (raw as string | number);
+    };
+    items.sort((a, b) => {
+      const va = valueOf(a);
+      const vb = valueOf(b);
+      const cmp =
+        typeof va === "number" && typeof vb === "number"
+          ? va - vb
+          : String(va).localeCompare(String(vb), undefined, { numeric: true });
+      return dir === "asc" ? cmp : -cmp;
+    });
+  }
     if (!isServerDriven) {
       const start = (page - 1) * propPageSize;
       items = items.slice(start, start + propPageSize);
