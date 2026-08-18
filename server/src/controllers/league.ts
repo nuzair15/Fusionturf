@@ -71,7 +71,7 @@ export const getTeams = async (req: Request, res: Response, next: NextFunction) 
     const teams = await prisma.team.findMany({
       where,
       include: {
-        _count: { select: { players: true, homeMatches: true } },
+        _count: { select: { players: { where: { isActive: true } }, homeMatches: true } },
         standings: true,
       },
       orderBy: { name: "asc" },
@@ -87,7 +87,7 @@ export const getTeamBySlug = async (req: Request, res: Response, next: NextFunct
     const team = await prisma.team.findFirst({
       where: { slug: req.params.slug, isActive: true },
       include: {
-        players: { orderBy: { jerseyNumber: "asc" }, include: { homeStats: true } },
+        players: { where: { isActive: true }, orderBy: { jerseyNumber: "asc" }, include: { homeStats: true } },
         staff: true,
         standings: { include: { season: true } },
         homeMatches: {
