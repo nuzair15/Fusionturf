@@ -1,6 +1,7 @@
 ﻿import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import compression from "compression";
 import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import multer from "multer";
@@ -66,6 +67,14 @@ const corsOptions: cors.CorsOptions = {
 };
 app.use(cors(corsOptions));
 
+// gzip API responses. JSON payloads (fixtures, standings, league lists)
+// compress very well, and shrinking what actually goes over the wire
+// matters more on a small, likely bandwidth/CPU-constrained EC2 instance
+// than the small amount of CPU compression costs — express's compression
+// default threshold (1kb) already skips it for tiny responses where it
+// wouldn't help.
+app.use(compression());
+
 // Global rate limit — a coarse backstop. Endpoints that are meaningfully
 // more sensitive (auth, admin login, booking creation) get their own
 // tighter limiter below, since a 500-req/15min global ceiling does very
@@ -93,12 +102,14 @@ const authRateLimit = rateLimit({
 app.post("/api/webhooks/stripe", express.raw({ type: "application/json" }), stripeWebhook);
 
 // Body parsing
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: config.bodyLimit }));
+app.use(express.urlencoded({ extended: true, limit: config.bodyLimit }));
 
-// Logging
+// Logging. "dev" is fine for local work but builds a colorized string per
+// request; "tiny" in production keeps request logging (still useful for
+// debugging on a single small instance) without the extra formatting work.
 if (config.nodeEnv !== "test") {
-  app.use(morgan("dev"));
+  app.use(morgan(config.nodeEnv === "production" ? "tiny" : "dev"));
 }
 
 app.use("/api/auth/login", authRateLimit);

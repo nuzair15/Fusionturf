@@ -61,4 +61,13 @@ export const config = {
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || "900000", 10),
     max: parseInt(process.env.RATE_LIMIT_MAX || "500", 10),
   },
+
+  // Actual API payloads here (bookings, admin forms, league data) are all
+  // small JSON objects — file uploads go through the separate multipart
+  // /api/upload route with its own 5MB multer limit, not this one. A
+  // generous body limit only matters as a worst-case: how much memory a
+  // handful of concurrent large requests can force the process to buffer
+  // before rejecting them. 1mb is comfortably above any real payload this
+  // app sends while capping that worst case on a small instance.
+  bodyLimit: process.env.BODY_LIMIT || "1mb",
 };

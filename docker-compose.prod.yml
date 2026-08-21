@@ -1,0 +1,87 @@
+# Production compose file for a single small EC2 instance (this repo's
+# default docker-compose.yml is dev-oriented: bind-mounts, NODE_ENV=development,
+# no memory limits). Run with:
+#
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+#
+# See .env.example for the variables this file expects.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: ${POSTGRES_DB:-fusion_league}
+    # Postgres's own defaults (max_connections=100, shared_buffers=128MB)
+    # assume a dedicated database host. Each connection slot costs memory
+    # whether or not it's used, and this app's own Prisma pool is already
+    # capped at 5 (see server/src/config/database.ts) -- 20 leaves headroom
+    # for `prisma migrate`/psql without paying for 100 unused slots.
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=20"
+      - "-c"
+      - "shared_buffers=64MB"
+      - "-c"
+      - "work_mem=4MB"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    mem_limit: 256m
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Not published to the host -- only the api service needs to reach it,
+    # and there's no reason to expose Postgres on the instance's public
+    # network interface at all.
+    expose:
+      - "5432"
+
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-fusion_league}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      NODE_ENV: production
+      ADMIN_PANEL_PASSWORD: ${ADMIN_PANEL_PASSWORD:?ADMIN_PANEL_PASSWORD must be set}
+      ADMIN_PANEL_EMAIL: ${ADMIN_PANEL_EMAIL:-super-admin@fusionturf.internal}
+      CORS_ORIGIN: ${CORS_ORIGIN:?CORS_ORIGIN must be set}
+      FRONTEND_URL: ${FRONTEND_URL:?FRONTEND_URL must be set}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # No source bind-mounts here (unlike docker-compose.yml) -- the image
+    # already contains the built dist/ and pruned node_modules, so the
+    # container is self-contained and doesn't depend on the host filesystem.
+    mem_limit: 320m
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:?VITE_API_URL must be set}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    mem_limit: 48m
+
+volumes:
+  pgdata:

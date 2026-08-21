@@ -1,5 +1,14 @@
 generator client {
   provider = "prisma-client-js"
+  // Restrict downloaded query-engine binaries to what's actually used:
+  // "native" covers local dev on whatever OS you're developing on, and
+  // "linux-musl-openssl-3.0.x" covers the Alpine-based Docker image this
+  // project ships (node:20-alpine). Without this, `prisma generate` fetches
+  // engine binaries for every platform Prisma supports (Debian/RHEL/etc,
+  // ~50-80MB each) into node_modules, which get shipped into the runtime
+  // image even though only one of them is ever executed. Pinning this
+  // shrinks node_modules considerably and cuts image size/startup disk I/O.
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {

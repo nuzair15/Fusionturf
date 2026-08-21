@@ -109,6 +109,37 @@ If Blueprint doesn't work, create three resources manually:
   - `VITE_API_URL` = your API URL + /api
 - Add a rewrite rule: `/*` → `/index.html`
 
+## Deploy to a small EC2 instance
+
+This repo also ships `docker-compose.prod.yml`, tuned to run comfortably on
+a small single instance (e.g. a 1GB `t3.micro`/`t4g.micro`) alongside
+Postgres on the same box:
+
+1. Copy `.env.example` to `.env` and fill in `POSTGRES_PASSWORD`,
+   `JWT_SECRET`, `ADMIN_PANEL_PASSWORD`, `CORS_ORIGIN`, `FRONTEND_URL`, and
+   `VITE_API_URL` (your instance's public URL) at minimum.
+2. `docker compose -f docker-compose.prod.yml --env-file .env up -d --build`
+
+What's different from the local `docker-compose.yml`:
+- No source bind-mounts — each container only has the built, pruned
+  artifacts it needs, not the full dev `node_modules`.
+- Per-service memory ceilings (`mem_limit`) so one container can't crowd
+  out the others on a box with little RAM to spare.
+- The API container caps its own V8 heap via `NODE_OPTIONS` in
+  `server/Dockerfile` — override it (e.g. a larger `--max-old-space-size`)
+  if you move to a bigger instance.
+- Postgres runs with a smaller `max_connections`/`shared_buffers` than its
+  defaults assume, matching the app's own capped connection pool (see
+  `server/src/config/database.ts`), and isn't published on the host's
+  public interface.
+- Nginx (serving the client) gzips responses and long-caches the
+  content-hashed `/assets/` bundle.
+
+If Postgres, the API, and Nginx together still don't fit your instance's
+RAM, the next lever is running Postgres on a separate small instance (or
+a managed service) so the app box only has to hold the API + client
+containers.
+
 ## Project Structure
 
 ```
