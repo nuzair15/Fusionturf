@@ -3,14 +3,18 @@ import { z } from "zod";
 import { randomBytes } from "crypto";
 import { Prisma } from "@prisma/client";
 import prisma from "../config/database.js";
-import { config } from "../config/index.js";
-import { getStripeClient } from "../lib/stripe.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { paginate, paginatedResponse, generateBookingNumber } from "../utils/helpers.js";
 import bcrypt from "bcryptjs";
-import { sendBookingConfirmation } from "../services/email.js";
+import { sendAdminBookingNotification, sendBookingConfirmation } from "../services/email.js";
 import { createNotification } from "../services/notification.js";
 import { calculateBookingPrice, calculateDiscount, formatThirtyMinuteSlots, timeToMinutes } from "../utils/booking.js";
+
+const isValidDateOnly = (value: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+};
 
 const createBookingSchema = z.object({
   body: z.object({
@@ -24,6 +28,7 @@ const createBookingSchema = z.object({
     notes: z.string().optional(),
     couponCode: z.string().trim().max(50).optional(),
   }).superRefine((body, ctx) => {
+    if (!isValidDateOnly(body.date)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["date"], message: "invalid calendar date" });
     if (body.startTime >= body.endTime) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["endTime"], message: "endTime must be after startTime" });
     if (new Date(`${body.date}T00:00:00`).getTime() < new Date(new Date().toDateString()).getTime()) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["date"], message: "booking date cannot be in the past" });
@@ -170,16 +175,24 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
       throw new AppError("Selected time is outside the venue booking hours", 400);
     }
 
-    // Create or find guest user for walk-in bookings. IMPORTANT: this must
+    // Authenticated customers always own their own booking. For an anonymous
+    // booking, use an internal unique guest address rather than looking up the
+    // submitted email: otherwise anyone could attach a booking to an existing
+    // account merely by knowing its address.
+    //
+    // Create a non-loginable guest identity. IMPORTANT: this must
     // never use a predictable/shared password. An earlier version hashed the
     // literal string "guest" here, which meant anyone who knew (or guessed)
     // a real person's email could book as a guest using that email and then
     // log in as them with password "guest" — full account takeover. A random
     // password means the account is created but simply isn't loginable
     // until the owner goes through a real password-reset flow.
-    const guestEmail = data.customerEmail || `guest-${Date.now()}@fusionturf.com`;
-    let guest = await prisma.user.findUnique({ where: { email: guestEmail } });
-    if (!guest) {
+    let guest;
+    if (req.user) {
+      guest = await prisma.user.findUnique({ where: { id: req.user.userId } });
+      if (!guest) throw new AppError("Authentication required", 401);
+    } else {
+      const guestEmail = `guest-${randomBytes(16).toString("hex")}@guest.fusionturf.internal`;
       const randomPassword = randomBytes(32).toString("hex");
       const hashed = await bcrypt.hash(randomPassword, 10);
       guest = await prisma.user.create({
@@ -245,6 +258,7 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
               totalAmount,
               discountAmount,
               couponCode: data.couponCode ? data.couponCode.toUpperCase() : null,
+              customerEmail: data.customerEmail || null,
               notes: data.notes || null,
               status: "PENDING",
               payments: {
@@ -271,87 +285,9 @@ export const createBooking = async (req: Request, res: Response, next: NextFunct
     res.status(201).json(booking);
 
     // Send confirmation email (non-blocking)
-    if (guest.email) sendBookingConfirmation(guest.email, booking).catch(() => {});
-  } catch (error) {
-    next(error);
-  }
-};
-
-// ─── Payments (Stripe) ───
-//
-// Bookings were previously created with a Payment row that stayed PENDING
-// forever — nothing in the codebase ever called Stripe, so there was no way
-// to actually collect money online. These two endpoints implement the
-// minimum real flow: create a PaymentIntent for a pending payment, and
-// confirm it via a signature-verified webhook (never trust a client-side
-// "it succeeded" call for this). The client still needs to be wired up to
-// Stripe Elements/Checkout using the returned clientSecret — that's a
-// frontend task tracked separately.
-
-export const createPaymentIntent = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const stripe = getStripeClient();
-    if (!stripe) throw new AppError("Online payments are not configured", 503);
-
-    const payment = await prisma.payment.findFirst({
-      where: { bookingId: req.params.id },
-      include: { booking: true },
-    });
-    if (!payment) throw new AppError("Payment not found for this booking", 404);
-    if (payment.status === "PAID") throw new AppError("This booking has already been paid", 400);
-
-    const intent = await stripe.paymentIntents.create({
-      amount: payment.amount,
-      currency: (payment.currency || "inr").toLowerCase(),
-      metadata: { bookingId: payment.bookingId, paymentId: payment.id },
-    });
-
-    await prisma.payment.update({
-      where: { id: payment.id },
-      data: { stripePaymentId: intent.id },
-    });
-
-    res.json({ clientSecret: intent.client_secret });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const stripeWebhook = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const stripe = getStripeClient();
-    if (!stripe || !config.stripe.webhookSecret) throw new AppError("Online payments are not configured", 503);
-
-    const signature = req.headers["stripe-signature"];
-    if (!signature) throw new AppError("Missing Stripe signature", 400);
-
-    let event;
-    try {
-      // req.body must be the raw, unparsed request body for signature
-      // verification to work — see the express.raw() wiring in index.ts.
-      event = stripe.webhooks.constructEvent(req.body, signature, config.stripe.webhookSecret);
-    } catch (err: any) {
-      throw new AppError(`Webhook signature verification failed: ${err.message}`, 400);
-    }
-
-    if (event.type === "payment_intent.succeeded" || event.type === "payment_intent.payment_failed") {
-      const intent = event.data.object as { id: string; metadata?: Record<string, string> };
-      const paymentId = intent.metadata?.paymentId;
-      if (paymentId) {
-        const succeeded = event.type === "payment_intent.succeeded";
-        await prisma.$transaction([
-          prisma.payment.update({
-            where: { id: paymentId },
-            data: { status: succeeded ? "PAID" : "FAILED", transactionId: intent.id },
-          }),
-          ...(succeeded && intent.metadata?.bookingId
-            ? [prisma.booking.update({ where: { id: intent.metadata.bookingId }, data: { status: "CONFIRMED" } })]
-            : []),
-        ]);
-      }
-    }
-
-    res.json({ received: true });
+    const confirmationEmail = data.customerEmail || (req.user ? guest.email : undefined);
+    if (confirmationEmail) sendBookingConfirmation(confirmationEmail, booking).catch(() => {});
+    sendAdminBookingNotification(booking).catch((error) => console.error("Failed to send booking admin notification:", error));
   } catch (error) {
     next(error);
   }
@@ -497,15 +433,19 @@ export const adminUpdateBookingDiscount = async (req: Request, res: Response, ne
 export const adminUpdateBooking = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { date, startTime, endTime } = req.body;
+    if (date !== undefined && (typeof date !== "string" || !isValidDateOnly(date))) throw new AppError("date must be a valid YYYY-MM-DD date", 400);
+    if (startTime !== undefined && (typeof startTime !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime))) throw new AppError("startTime must use HH:MM", 400);
+    if (endTime !== undefined && (typeof endTime !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime))) throw new AppError("endTime must use HH:MM", 400);
     const current = await prisma.booking.findUnique({ where: { id: req.params.id }, include: { turf: { include: { venue: true } } }, });
     if (!current) throw new AppError("Booking not found", 404);
     if (current.status === "CANCELLED" || current.status === "COMPLETED") {
       throw new AppError("Cancelled or completed bookings cannot be rescheduled", 400);
     }
-    const nextDate = date ? new Date(date) : current.date;
+    const nextDate = date ? new Date(`${date}T00:00:00Z`) : current.date;
     if (Number.isNaN(nextDate.getTime())) throw new AppError("Invalid booking date", 400);
     const nextStart = startTime || current.startTime;
     const nextEnd = endTime || current.endTime;
+    if (nextStart >= nextEnd) throw new AppError("endTime must be after startTime", 400);
     let pricing;
     try { pricing = calculateBookingPrice(current.turf, nextDate, nextStart, nextEnd); }
     catch (error: any) { throw new AppError(error.message, 400); }
@@ -568,8 +508,12 @@ export const adminGetAllBookings = async (req: Request, res: Response, next: Nex
 export const adminBlockDate = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { venueId, date, reason } = req.body;
+    if (typeof venueId !== "string" || !venueId || typeof date !== "string" || !isValidDateOnly(date)) {
+      throw new AppError("venueId and a valid YYYY-MM-DD date are required", 400);
+    }
+    if (reason !== undefined && typeof reason !== "string") throw new AppError("reason must be a string", 400);
     const blocked = await prisma.blockedDate.create({
-      data: { venueId, date: new Date(date), reason },
+      data: { venueId, date: new Date(`${date}T00:00:00Z`), reason },
     });
     res.status(201).json(blocked);
   } catch (error) {
@@ -604,10 +548,14 @@ export const adminRevenueAnalytics = async (_req: Request, res: Response, next: 
 export const getCalendarBookings = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { venueId, month, year } = req.query;
-    if (!venueId || !month || !year) return res.status(400).json({ error: "venueId, month, year required" });
+    const monthNumber = typeof month === "string" ? Number(month) : NaN;
+    const yearNumber = typeof year === "string" ? Number(year) : NaN;
+    if (typeof venueId !== "string" || !venueId || !Number.isInteger(monthNumber) || monthNumber < 1 || monthNumber > 12 || !Number.isInteger(yearNumber) || yearNumber < 2000 || yearNumber > 2100) {
+      throw new AppError("venueId, a month (1-12), and a valid year are required", 400);
+    }
 
-    const startDate = new Date(Number(year), Number(month) - 1, 1);
-    const endDate = new Date(Number(year), Number(month), 0, 23, 59, 59);
+    const startDate = new Date(yearNumber, monthNumber - 1, 1);
+    const endDate = new Date(yearNumber, monthNumber, 0, 23, 59, 59);
 
     const bookings = await prisma.booking.findMany({
       where: {

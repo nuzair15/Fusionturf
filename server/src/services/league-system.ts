@@ -384,6 +384,8 @@ export async function processMatchResult(fixtureId: string, homeScore: number, a
   }
 
   await recalculatePlayerStats(fixture.seasonId);
+  await recalculateFriendlyPlayerStats(fixture.seasonId);
+  await recalculateTeamStats(fixture.seasonId);
 
   await autoDetectAwards(fixture.seasonId);
   if (fixture.bracketMatch && !wasCompleted) await advanceBracketWinner(fixtureId, knockoutWinnerTeamId);
@@ -602,6 +604,9 @@ export async function selectMatchdaySquad(fixtureId: string, teamId: string, pla
 }
 
 export async function processSuspensions(fixtureId: string): Promise<void> {
+  const fixture = await prisma.fixture.findUnique({ where: { id: fixtureId }, select: { seasonId: true, isFriendly: true, competition: { select: { type: true } } } });
+  // Friendlies are intentionally outside competitive discipline.
+  if (!fixture || fixture.isFriendly || fixture.competition?.type === "FRIENDLY") return;
   const cards = await prisma.card.findMany({ where: { fixtureId }, include: { player: true } });
 
   for (const card of cards) {
@@ -622,11 +627,12 @@ export async function processSuspensions(fixtureId: string): Promise<void> {
 }
 
 async function checkYellowCardAccumulation(fixtureId: string): Promise<void> {
-  const fixture = await prisma.fixture.findUnique({ where: { id: fixtureId }, select: { seasonId: true } });
+  const fixture = await prisma.fixture.findUnique({ where: { id: fixtureId }, select: { seasonId: true, isFriendly: true, competition: { select: { type: true } } } });
   if (!fixture) return;
+  if (fixture.isFriendly || fixture.competition?.type === "FRIENDLY") return;
 
   const allCards = await prisma.card.findMany({
-    where: { player: { seasonId: fixture.seasonId }, type: "YELLOW" },
+    where: { player: { seasonId: fixture.seasonId }, fixture: countedFixturesWhere(fixture.seasonId), type: "YELLOW" },
     select: { playerId: true },
   });
 
@@ -689,16 +695,16 @@ export async function recalculatePlayerStats(seasonId: string): Promise<void> {
 
   const playerIds = players.map((player) => player.id);
   const teamIds = [...new Set(players.map((player) => player.teamId).filter((id): id is string => !!id))];
-const [goals, assists, cards, fixtures, lineups, squadEntries] = await Promise.all([
+const [goals, assists, cards, fixtures, appearances, substitutions] = await Promise.all([
     prisma.goal.groupBy({ by: ["playerId"], where: { playerId: { in: playerIds }, fixture: countedFixturesWhere(seasonId) }, _count: { _all: true } }),
     prisma.assist.groupBy({ by: ["playerId"], where: { playerId: { in: playerIds }, fixture: countedFixturesWhere(seasonId) }, _count: { _all: true } }),
     prisma.card.groupBy({ by: ["playerId", "type"], where: { playerId: { in: playerIds }, fixture: countedFixturesWhere(seasonId) }, _count: { _all: true } }),
     prisma.fixture.findMany({
       where: { ...countedFixturesWhere(seasonId), AND: [{ OR: [{ homeTeamId: { in: teamIds } }, { awayTeamId: { in: teamIds } }] }] },
-      select: { id: true, homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true },
+      select: { id: true, homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, matchClockSeconds: true },
     }),
-    prisma.lineup.findMany({ where: { playerId: { in: playerIds }, fixture: countedFixturesWhere(seasonId) }, select: { playerId: true, fixtureId: true } }),
-    prisma.matchdaySquadEntry.findMany({ where: { playerId: { in: playerIds }, squad: { fixture: countedFixturesWhere(seasonId) } }, select: { playerId: true, squad: { select: { fixtureId: true } } } }),
+    prisma.matchAppearance.findMany({ where: { playerId: { in: playerIds }, fixture: countedFixturesWhere(seasonId) }, select: { playerId: true, fixtureId: true } }),
+    prisma.substitution.findMany({ where: { fixture: countedFixturesWhere(seasonId) }, select: { fixtureId: true, playerOffId: true, playerOnId: true, minute: true } }),
   ]);
 
   const goalCounts = new Map(goals.map((row) => [row.playerId, row._count._all]));
@@ -712,15 +718,22 @@ const [goals, assists, cards, fixtures, lineups, squadEntries] = await Promise.a
   }
 
   const playerAppearances = new Map<string, Set<string>>();
-  for (const row of lineups) {
+  const playerMinutes = new Map<string, number>();
+  for (const row of appearances) {
     const matches = playerAppearances.get(row.playerId) || new Set<string>();
     matches.add(row.fixtureId);
     playerAppearances.set(row.playerId, matches);
   }
-  for (const row of squadEntries) {
-    const matches = playerAppearances.get(row.playerId) || new Set<string>();
-    matches.add(row.squad.fixtureId);
-    playerAppearances.set(row.playerId, matches);
+
+  const fixtureDuration = new Map(fixtures.map((fixture) => [fixture.id, Math.max(1, Math.round((fixture.matchClockSeconds || 90 * 60) / 60))]));
+  const subOn = new Map(substitutions.map((sub) => [`${sub.fixtureId}:${sub.playerOnId}`, sub.minute]));
+  const subOff = new Map(substitutions.map((sub) => [`${sub.fixtureId}:${sub.playerOffId}`, sub.minute]));
+  for (const [playerId, fixtureIds] of playerAppearances) for (const fixtureId of fixtureIds) {
+    const duration = fixtureDuration.get(fixtureId) || 90;
+    const entered = subOn.get(`${fixtureId}:${playerId}`);
+    const left = subOff.get(`${fixtureId}:${playerId}`);
+    const played = entered === undefined ? Math.min(left ?? duration, duration) : Math.max(0, Math.min(left ?? duration, duration) - entered);
+    playerMinutes.set(playerId, (playerMinutes.get(playerId) || 0) + played);
   }
 
   const teamStats = new Map<string, { appearances: number; cleanSheets: number; conceded: number }>();
@@ -742,6 +755,7 @@ const [goals, assists, cards, fixtures, lineups, squadEntries] = await Promise.a
     const goalkeeper = player.position === "GK";
     const data = {
       appearances: playerAppearances.get(player.id)?.size || 0,
+      minutesPlayed: playerMinutes.get(player.id) || 0,
       goals: goalCounts.get(player.id) || 0,
       assists: assistCounts.get(player.id) || 0,
       yellowCards: card.yellow,
@@ -755,6 +769,47 @@ const [goals, assists, cards, fixtures, lineups, squadEntries] = await Promise.a
       update: data,
     });
   }));
+}
+
+const friendlyFixturesWhere = (seasonId: string): Prisma.FixtureWhereInput => ({
+  seasonId, status: "COMPLETED", OR: [{ isFriendly: true }, { competition: { is: { type: "FRIENDLY" } } }],
+});
+
+// Friendlies deliberately live in their own table: they never feed league
+// standings, awards, competitive stats, or disciplinary accumulation.
+export async function recalculateFriendlyPlayerStats(seasonId: string): Promise<void> {
+  const rows = await prisma.matchAppearance.findMany({ where: { fixture: friendlyFixturesWhere(seasonId) }, select: { playerId: true, teamId: true, fixtureId: true } });
+  const playerIds = [...new Set(rows.map((row) => row.playerId))];
+  if (!playerIds.length) return;
+  const [goals, assists, cards, fixtures, substitutions] = await Promise.all([
+    prisma.goal.groupBy({ by: ["playerId"], where: { playerId: { in: playerIds }, fixture: friendlyFixturesWhere(seasonId) }, _count: { _all: true } }),
+    prisma.assist.groupBy({ by: ["playerId"], where: { playerId: { in: playerIds }, fixture: friendlyFixturesWhere(seasonId) }, _count: { _all: true } }),
+    prisma.card.groupBy({ by: ["playerId", "type"], where: { playerId: { in: playerIds }, fixture: friendlyFixturesWhere(seasonId) }, _count: { _all: true } }),
+    prisma.fixture.findMany({ where: friendlyFixturesWhere(seasonId), select: { id: true, matchClockSeconds: true } }),
+    prisma.substitution.findMany({ where: { fixture: friendlyFixturesWhere(seasonId) }, select: { fixtureId: true, playerOffId: true, playerOnId: true, minute: true } }),
+  ]);
+  const count = (items: typeof goals) => new Map(items.map((item) => [item.playerId, item._count._all]));
+  const goalMap = count(goals), assistMap = count(assists);
+  const cardsByPlayer = new Map<string, { yellowCards: number; redCards: number }>();
+  for (const card of cards) { const entry = cardsByPlayer.get(card.playerId) || { yellowCards: 0, redCards: 0 }; if (card.type === "YELLOW") entry.yellowCards += card._count._all; else entry.redCards += card._count._all; cardsByPlayer.set(card.playerId, entry); }
+  const grouped = new Map<string, { playerId: string; teamId: string; fixtures: Set<string> }>();
+  for (const row of rows) { const key = `${row.playerId}:${row.teamId}`; const entry = grouped.get(key) || { playerId: row.playerId, teamId: row.teamId, fixtures: new Set<string>() }; entry.fixtures.add(row.fixtureId); grouped.set(key, entry); }
+  const duration = new Map(fixtures.map((fixture) => [fixture.id, Math.max(1, Math.round((fixture.matchClockSeconds || 90 * 60) / 60))]));
+  const on = new Map(substitutions.map((sub) => [`${sub.fixtureId}:${sub.playerOnId}`, sub.minute]));
+  const off = new Map(substitutions.map((sub) => [`${sub.fixtureId}:${sub.playerOffId}`, sub.minute]));
+  const minutes = (entry: { playerId: string; fixtures: Set<string> }) => [...entry.fixtures].reduce((total, fixtureId) => { const length = duration.get(fixtureId) || 90; const entered = on.get(`${fixtureId}:${entry.playerId}`); return total + (entered === undefined ? Math.min(off.get(`${fixtureId}:${entry.playerId}`) ?? length, length) : Math.max(0, Math.min(off.get(`${fixtureId}:${entry.playerId}`) ?? length, length) - entered)); }, 0);
+  await prisma.$transaction([...grouped.values()].map((entry) => prisma.friendlyPlayerStat.upsert({ where: { seasonId_playerId_teamId: { seasonId, playerId: entry.playerId, teamId: entry.teamId } }, create: { seasonId, playerId: entry.playerId, teamId: entry.teamId, appearances: entry.fixtures.size, minutesPlayed: minutes(entry), goals: goalMap.get(entry.playerId) || 0, assists: assistMap.get(entry.playerId) || 0, ...(cardsByPlayer.get(entry.playerId) || {}) }, update: { appearances: entry.fixtures.size, minutesPlayed: minutes(entry), goals: goalMap.get(entry.playerId) || 0, assists: assistMap.get(entry.playerId) || 0, ...(cardsByPlayer.get(entry.playerId) || {}) } })));
+}
+
+export async function recalculateTeamStats(seasonId: string): Promise<void> {
+  const [fixtures, assists] = await Promise.all([
+    prisma.fixture.findMany({ where: countedFixturesWhere(seasonId), select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, homeShots: true, awayShots: true, homeCorners: true, awayCorners: true, homeFouls: true, awayFouls: true, homeOffsides: true, awayOffsides: true, homePossession: true, awayPossession: true } }),
+    prisma.assist.groupBy({ by: ["teamId"], where: { teamId: { not: null }, fixture: countedFixturesWhere(seasonId) }, _count: { _all: true } }),
+  ]);
+  const assistsByTeam = new Map(assists.flatMap((row) => row.teamId ? [[row.teamId, row._count._all] as const] : []));
+  const stats = new Map<string, { totalGoals: number; totalShots: number; totalCorners: number; totalFouls: number; totalOffsides: number; cleanSheets: number; possession: number[] }>();
+  for (const fixture of fixtures) for (const [teamId, goals, against, shots, corners, fouls, offsides, possession] of [[fixture.homeTeamId, fixture.homeScore, fixture.awayScore, fixture.homeShots, fixture.homeCorners, fixture.homeFouls, fixture.homeOffsides, fixture.homePossession], [fixture.awayTeamId, fixture.awayScore, fixture.homeScore, fixture.awayShots, fixture.awayCorners, fixture.awayFouls, fixture.awayOffsides, fixture.awayPossession]] as const) { const row = stats.get(teamId) || { totalGoals: 0, totalShots: 0, totalCorners: 0, totalFouls: 0, totalOffsides: 0, cleanSheets: 0, possession: [] }; row.totalGoals += goals || 0; row.totalShots += shots || 0; row.totalCorners += corners || 0; row.totalFouls += fouls || 0; row.totalOffsides += offsides || 0; if (against === 0) row.cleanSheets++; if (possession !== null) row.possession.push(possession || 0); stats.set(teamId, row); }
+  await prisma.$transaction([...stats.entries()].map(([teamId, row]) => prisma.teamStat.upsert({ where: { seasonId_teamId: { seasonId, teamId } }, create: { seasonId, teamId, ...row, totalAssists: assistsByTeam.get(teamId) || 0, avgPossession: row.possession.length ? row.possession.reduce((a, b) => a + b, 0) / row.possession.length : null }, update: { totalGoals: row.totalGoals, totalAssists: assistsByTeam.get(teamId) || 0, totalShots: row.totalShots, totalCorners: row.totalCorners, totalFouls: row.totalFouls, totalOffsides: row.totalOffsides, cleanSheets: row.cleanSheets, avgPossession: row.possession.length ? row.possession.reduce((a, b) => a + b, 0) / row.possession.length : null } })));
 }
 
 // Auto-detection runs after every completed fixture so the site always has a

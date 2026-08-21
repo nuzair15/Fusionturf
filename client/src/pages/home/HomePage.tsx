@@ -25,7 +25,7 @@ export function HomePage() {
     staleTime: 0,
     enabled: (fixtures?.data?.length ?? 0) === 0,
   });
-  const { data: standings } = useQuery({ queryKey: ["standings"], queryFn: () => api.get<Standing[]>("/league/standings"), staleTime: 0, refetchOnWindowFocus: true, refetchInterval: 10000 });
+  const { data: standings } = useQuery({ queryKey: ["standings"], queryFn: () => api.get<Standing[]>("/league/standings"), staleTime: 60_000, refetchOnWindowFocus: false });
   const { data: venues } = useQuery({ queryKey: ["venues"], queryFn: () => api.get<PaginatedResponse<Venue>>("/bookings/venues?limit=4"), refetchOnWindowFocus: true, refetchInterval: 60000 });
   const { data: news } = useQuery({ queryKey: ["home-news"], queryFn: () => api.get<PaginatedResponse<News>>("/league/news?limit=4"), refetchOnWindowFocus: true, refetchInterval: 60000 });
   const { data: sponsors } = useQuery({ queryKey: ["sponsors"], queryFn: () => api.get<{ data: Sponsor[] }>("/league/sponsors"), refetchOnWindowFocus: true, refetchInterval: 60000 });

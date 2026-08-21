@@ -11,6 +11,23 @@ import * as leagueSystem from "../../services/league-system.js";
 
 // Live match console: stats, goals, substitutions, ratings, MOTM
 
+const assertMutableFixture = (status: string, correctionReason?: unknown) => {
+  if (status !== "COMPLETED") return false;
+  if (typeof correctionReason !== "string" || !correctionReason.trim()) {
+    throw new AppError("Completed matches require a correctionReason", 400);
+  }
+  return true;
+};
+
+const rebuildIfCorrected = async (fixture: { status: string; seasonId: string }, correctionReason?: unknown) => {
+  if (assertMutableFixture(fixture.status, correctionReason)) {
+    await leagueSystem.recalculateStandings(fixture.seasonId);
+    await leagueSystem.recalculatePlayerStats(fixture.seasonId);
+    await leagueSystem.recalculateFriendlyPlayerStats(fixture.seasonId);
+    await leagueSystem.recalculateTeamStats(fixture.seasonId);
+  }
+};
+
 
 export const getLiveStats = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -127,8 +144,9 @@ export const updateLiveStat = async (req: Request, res: Response, next: NextFunc
 
     const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id } });
     if (!fixture) throw new AppError("Fixture not found", 404);
+    assertMutableFixture(fixture.status, req.body.correctionReason);
     const player = await prisma.player.findUnique({ where: { id: playerId }, select: { teamId: true } });
-    if (!player || (player.teamId !== fixture.homeTeamId && player.teamId !== fixture.awayTeamId) || ![fixture.homeTeamId, fixture.awayTeamId].includes(teamId)) {
+    if (!player || player.teamId !== teamId || ![fixture.homeTeamId, fixture.awayTeamId].includes(teamId)) {
       throw new AppError("Player or team does not belong to this fixture", 400);
     }
 
@@ -139,7 +157,7 @@ export const updateLiveStat = async (req: Request, res: Response, next: NextFunc
       const existing = await prisma.goal.findFirst({ where: { fixtureId: fixture.id, playerId }, orderBy: { createdAt: "desc" } });
       if (isIncrement) {
         const goal = await prisma.goal.create({
-          data: { fixtureId: fixture.id, playerId, minute: eventMinute },
+          data: { fixtureId: fixture.id, playerId, teamId, minute: eventMinute },
         });
         const goalCount = await prisma.goal.count({ where: { fixtureId: fixture.id, playerId } });
         await recalcScore(fixture.id);
@@ -156,7 +174,7 @@ export const updateLiveStat = async (req: Request, res: Response, next: NextFunc
       const existing = await prisma.assist.findFirst({ where: { fixtureId: fixture.id, playerId }, orderBy: { createdAt: "desc" } });
       if (isIncrement) {
         const assist = await prisma.assist.create({
-          data: { fixtureId: fixture.id, playerId, minute: eventMinute },
+          data: { fixtureId: fixture.id, playerId, teamId, minute: eventMinute },
         });
         const count = await prisma.assist.count({ where: { fixtureId: fixture.id, playerId } });
         res.json({ action: "added", assist, count });
@@ -172,7 +190,7 @@ export const updateLiveStat = async (req: Request, res: Response, next: NextFunc
       const existing = await prisma.card.findFirst({ where: { fixtureId: fixture.id, playerId, type: cardType }, orderBy: { createdAt: "desc" } });
       if (isIncrement) {
         const card = await prisma.card.create({
-          data: { fixtureId: fixture.id, playerId, type: cardType, minute: eventMinute },
+          data: { fixtureId: fixture.id, playerId, teamId, type: cardType, minute: eventMinute },
         });
         const count = await prisma.card.count({ where: { fixtureId: fixture.id, playerId, type: cardType } });
         res.json({ action: "added", card, count });
@@ -198,8 +216,9 @@ export const setMatchRating = async (req: Request, res: Response, next: NextFunc
     const value = Math.max(0, Math.min(10, Number(rating)));
     if (Number.isNaN(value)) throw new AppError("Invalid rating", 400);
 
-    const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { id: true, homeTeamId: true, awayTeamId: true } });
+    const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { id: true, homeTeamId: true, awayTeamId: true, status: true, seasonId: true } });
     if (!fixture) throw new AppError("Fixture not found", 404);
+    assertMutableFixture(fixture.status, req.body.correctionReason);
     const player = await prisma.player.findUnique({ where: { id: playerId }, select: { id: true, teamId: true } });
     if (!player || (player.teamId !== fixture.homeTeamId && player.teamId !== fixture.awayTeamId)) {
       throw new AppError("Player does not belong to this fixture", 400);
@@ -210,6 +229,7 @@ export const setMatchRating = async (req: Request, res: Response, next: NextFunc
       create: { fixtureId: fixture.id, playerId, rating: value },
       update: { rating: value },
     });
+    await rebuildIfCorrected(fixture, req.body.correctionReason);
     res.json(row);
   } catch (error) {
     next(error);
@@ -247,6 +267,7 @@ export const addGoal = async (req: Request, res: Response, next: NextFunction) =
 
     const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id } });
     if (!fixture) throw new AppError("Fixture not found", 404);
+    assertMutableFixture(fixture.status, req.body.correctionReason);
     const eventMinute = Number(minute);
     if (!Number.isInteger(eventMinute) || eventMinute < 0 || eventMinute > 150) throw new AppError("Minute must be an integer between 0 and 150", 400);
     const scorer = await prisma.player.findUnique({ where: { id: scorerId }, select: { teamId: true, seasonId: true, isActive: true } });
@@ -258,17 +279,13 @@ export const addGoal = async (req: Request, res: Response, next: NextFunction) =
       if (!assister || !assister.isActive || assister.seasonId !== fixture.seasonId || assister.teamId !== teamId) throw new AppError("Assister must belong to the scoring team", 400);
     }
 
-    const goal = await prisma.goal.create({
-      data: { fixtureId: fixture.id, playerId: scorerId, minute: eventMinute, isOwnGoal: !!isOwnGoal, isPenalty: !!isPenalty },
+    const goal = await prisma.$transaction(async (tx) => {
+      const created = await tx.goal.create({ data: { fixtureId: fixture.id, playerId: scorerId, teamId, minute: eventMinute, isOwnGoal: !!isOwnGoal, isPenalty: !!isPenalty } });
+      if (assistId) await tx.assist.create({ data: { fixtureId: fixture.id, playerId: assistId, teamId, minute: eventMinute, goalId: created.id } });
+      return created;
     });
-
-    if (assistId) {
-      await prisma.assist.create({
-        data: { fixtureId: fixture.id, playerId: assistId, minute: eventMinute, goalId: goal.id },
-      });
-    }
-
     await recalcScore(fixture.id);
+    await rebuildIfCorrected(fixture, req.body.correctionReason);
     res.status(201).json(goal);
   } catch (error) {
     next(error);
@@ -280,21 +297,14 @@ export const removeGoal = async (req: Request, res: Response, next: NextFunction
     const { playerId } = req.body;
     const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id } });
     if (!fixture) throw new AppError("Fixture not found", 404);
+    assertMutableFixture(fixture.status, req.body.correctionReason);
 
     const goal = await prisma.goal.findFirst({ where: { fixtureId: fixture.id, playerId }, orderBy: { createdAt: "desc" } });
     if (!goal) throw new AppError("No goal found for this player", 404);
 
-    const assist = await prisma.assist.findFirst({ where: { fixtureId: fixture.id }, orderBy: { createdAt: "desc" } });
-    if (assist) {
-      const goalTime = goal.createdAt;
-      const assistTime = assist.createdAt;
-      if (Math.abs(assistTime.getTime() - goalTime.getTime()) < 1000) {
-        await prisma.assist.delete({ where: { id: assist.id } });
-      }
-    }
-
-    await prisma.goal.delete({ where: { id: goal.id } });
+    await prisma.$transaction([prisma.assist.deleteMany({ where: { goalId: goal.id } }), prisma.goal.delete({ where: { id: goal.id } })]);
     await recalcScore(fixture.id);
+    await rebuildIfCorrected(fixture, req.body.correctionReason);
     res.json({ message: "Goal removed" });
   } catch (error) {
     next(error);
@@ -316,8 +326,9 @@ export const addSubstitution = async (req: Request, res: Response, next: NextFun
     if (players.length !== 2) throw new AppError("Both players must belong to the selected team", 400);
 
     const sub = await prisma.substitution.create({
-      data: { fixtureId: req.params.id, playerOffId, playerOnId, minute: eventMinute },
+      data: { fixtureId: req.params.id, playerOffId, playerOnId, teamId, minute: eventMinute },
     });
+    await prisma.matchAppearance.upsert({ where: { fixtureId_playerId: { fixtureId: fixture.id, playerId: playerOnId } }, create: { fixtureId: fixture.id, playerId: playerOnId, teamId, isStarter: false, enteredAt: eventMinute }, update: {} });
     res.status(201).json(sub);
   } catch (error) {
     next(error);
@@ -331,8 +342,9 @@ export const removeMatchEvent = async (req: Request, res: Response, next: NextFu
   try {
     const { type, id } = req.body;
     if (!type || !id) throw new AppError("type and id required", 400);
-    const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { id: true, status: true, seasonId: true } });
     if (!fixture) throw new AppError("Fixture not found", 404);
+    assertMutableFixture(fixture.status, req.body.correctionReason);
 
     if (type === "goal") {
       const goal = await prisma.goal.findFirst({ where: { id, fixtureId: fixture.id } });
@@ -361,6 +373,7 @@ export const removeMatchEvent = async (req: Request, res: Response, next: NextFu
       throw new AppError("Invalid event type", 400);
     }
 
+    await rebuildIfCorrected(fixture, req.body.correctionReason);
     res.json({ message: "Event removed" });
   } catch (error) {
     next(error);
@@ -407,7 +420,11 @@ export const updateTeamStats = async (req: Request, res: Response, next: NextFun
       }
     }
     if (Object.keys(data).length === 0) throw new AppError("No stats to update", 400);
+    const current = await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { id: true, status: true, seasonId: true } });
+    if (!current) throw new AppError("Fixture not found", 404);
+    assertMutableFixture(current.status, req.body.correctionReason);
     const fixture = await prisma.fixture.update({ where: { id: req.params.id }, data });
+    await rebuildIfCorrected(current, req.body.correctionReason);
     res.json(fixture);
   } catch (error) {
     next(error);
@@ -426,7 +443,7 @@ async function recalcScore(fixtureId: string) {
   let homeGoals = 0;
   let awayGoals = 0;
   for (const g of goals) {
-    const scorerIsHome = g.player.teamId === fixture.homeTeamId;
+    const scorerIsHome = (g.teamId || g.player.teamId) === fixture.homeTeamId;
     if (g.isOwnGoal) {
       // Own goals count for the opposing team.
       if (scorerIsHome) awayGoals += 1;

@@ -13,7 +13,7 @@ export function StandingsPage() {
   const navigate = useNavigate();
 
   const { data: currentSeason } = useQuery({ queryKey: ["current-season"], queryFn: () => api.get<Season>("/league/seasons/current"), retry: false, refetchOnWindowFocus: true, refetchInterval: 15000 });
-  const { data: standings, isLoading, isError, refetch } = useQuery({ queryKey: ["standings-full"], queryFn: () => api.get<Standing[]>("/league/standings"), staleTime: 0, refetchOnWindowFocus: true, refetchOnMount: "always", refetchInterval: 10000 });
+  const { data: standings, isLoading, isError, refetch } = useQuery({ queryKey: ["standings-full"], queryFn: () => api.get<Standing[]>("/league/standings"), staleTime: 60_000, refetchOnWindowFocus: false });
 
   const list = standings || [];
   const topThree = list.slice(0, 3);

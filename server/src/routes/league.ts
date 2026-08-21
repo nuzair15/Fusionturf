@@ -64,7 +64,7 @@ router.get("/stats/awards", getAwardLeaderboard);
 router.get("/search", fan.search);
 router.get("/head-to-head", fan.getHeadToHead);
 router.get("/polls", fan.getPolls);
-router.post("/polls/:id/vote", optionalAuth, fan.votePoll);
+router.post("/polls/:id/vote", authenticate, fan.votePoll);
 router.get("/fan/dashboard", authenticate, fan.getFanDashboard);
 router.get("/fan/follows", authenticate, fan.getFollows);
 router.post("/fan/follows/toggle", authenticate, fan.toggleFollow);

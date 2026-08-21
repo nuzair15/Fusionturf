@@ -4,7 +4,6 @@ import prisma from "../config/database.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { paginate, paginatedResponse, calculateMatchStats, searchPlayerIds } from "../utils/helpers.js";
 import { LineupRow, serializeTeamLineup } from "../utils/lineup.js";
-import { recalculateStandings } from "../services/league-system.js";
 
 async function resolveSeasonId(requested?: unknown): Promise<string | undefined> {
   if (requested) return String(requested);
@@ -444,7 +443,6 @@ export const getStandings = async (req: Request, res: Response, next: NextFuncti
     const seasonId = await resolveSeasonId(req.query.seasonId);
     if (seasonId) {
       where.seasonId = seasonId;
-      await recalculateStandings(String(seasonId));
     }
     if (req.query.competitionId) {
       const fixtures = await prisma.fixture.findMany({

@@ -343,9 +343,10 @@ export const updateFixtureLineups = async (req: Request, res: Response, next: Ne
   try {
     const fixture = await prisma.fixture.findUnique({
       where: { id: req.params.id },
-      select: { id: true, homeTeamId: true, awayTeamId: true },
+      select: { id: true, homeTeamId: true, awayTeamId: true, status: true },
     });
     if (!fixture) throw new AppError("Fixture not found", 404);
+    if (fixture.status === "COMPLETED") throw new AppError("Use the audited correction flow for a completed fixture lineup", 400);
 
     const { home, away } = req.body || {};
     if (!Array.isArray(home) || !Array.isArray(away)) {
@@ -428,6 +429,14 @@ export const updateFixtureLineups = async (req: Request, res: Response, next: Ne
         ],
       }),
     ]);
+
+    // A saved lineup is an appearance under the agreed competition rule;
+    // unused matchday-squad entries are intentionally not inserted here.
+    await prisma.matchAppearance.deleteMany({ where: { fixtureId: fixture.id, isStarter: true } });
+    await prisma.matchAppearance.createMany({
+      data: [...homeEntries.map((entry) => ({ fixtureId: fixture.id, playerId: entry.playerId, teamId: fixture.homeTeamId, isStarter: entry.isStarter !== false })), ...awayEntries.map((entry) => ({ fixtureId: fixture.id, playerId: entry.playerId, teamId: fixture.awayTeamId, isStarter: entry.isStarter !== false }))],
+      skipDuplicates: true,
+    });
 
     res.json({ success: true });
   } catch (error) {

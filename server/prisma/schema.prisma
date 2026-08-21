@@ -334,6 +334,7 @@ model Booking {
   totalAmount        Int               @default(0)
   discountAmount     Int               @default(0)
   couponCode         String?
+  customerEmail      String?
   status             BookingStatus     @default(PENDING)
   notes              String?
   qrCodeData         String?
@@ -593,6 +594,7 @@ model Player {
   followers          UserFollow[]
   pollOptions        PollOption[]
   friendlyStats      FriendlyPlayerStat[]
+  matchAppearances   MatchAppearance[]
   transfers          PlayerTransfer[]
 
   @@unique([seasonId, slug])
@@ -695,6 +697,7 @@ model Fixture {
   matchPlayerRatings MatchPlayerRating[]
   comments           MatchComment[]
   matchdaySquads     MatchdaySquad[]
+  appearances        MatchAppearance[]
   galleries          Gallery[]
   rsvps              MatchRsvp[]
   polls              Poll[]
@@ -775,12 +778,15 @@ model Goal {
   fixture   Fixture  @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
   playerId  String
   player    Player   @relation(fields: [playerId], references: [id])
+  // Snapshot of the club credited at the time of the event. Players can move
+  // during a season, so Player.teamId is not safe historical data.
+  teamId    String?
   minute    Int
   isOwnGoal Boolean  @default(false)
   isPenalty Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  @@index([fixtureId])
+  @@index([fixtureId, teamId])
   @@index([playerId])
   @@map("goals")
 }
@@ -791,11 +797,12 @@ model Assist {
   fixture   Fixture  @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
   playerId  String
   player    Player   @relation(fields: [playerId], references: [id])
+  teamId    String?
   goalId    String?
   minute    Int
   createdAt DateTime @default(now())
 
-  @@index([fixtureId])
+  @@index([fixtureId, teamId])
   @@index([playerId])
   @@map("assists")
 }
@@ -806,12 +813,13 @@ model Card {
   fixture   Fixture  @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
   playerId  String
   player    Player   @relation(fields: [playerId], references: [id])
+  teamId    String?
   type      String // YELLOW, RED, SECOND_YELLOW
   minute    Int
   reason    String?
   createdAt DateTime @default(now())
 
-  @@index([fixtureId])
+  @@index([fixtureId, teamId])
   @@index([playerId, type])
   @@map("cards")
 }
@@ -825,9 +833,10 @@ model Substitution {
   playerOnId  String
   playerOn    Player   @relation("PlayerOn", fields: [playerOnId], references: [id])
   minute      Int
+  teamId      String?
   createdAt   DateTime @default(now())
 
-  @@index([fixtureId])
+  @@index([fixtureId, teamId])
   @@map("substitutions")
 }
 
@@ -868,9 +877,28 @@ model Lineup {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  @@unique([fixtureId, playerId])
   @@index([fixtureId])
   @@index([teamId])
   @@map("lineups")
+}
+
+// A player appears when listed in a lineup or when brought on. It captures
+// their club for that fixture, preventing transfers from rewriting history.
+model MatchAppearance {
+  id        String   @id @default(uuid())
+  fixtureId String
+  fixture   Fixture  @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
+  playerId  String
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  teamId    String
+  isStarter Boolean  @default(false)
+  enteredAt Int?
+  createdAt DateTime @default(now())
+
+  @@unique([fixtureId, playerId])
+  @@index([playerId, teamId])
+  @@map("match_appearances")
 }
 
 model MatchPlayerRating {
@@ -1359,6 +1387,7 @@ model PollOption {
   votes    PollVote[]
 
   @@map("poll_options")
+  @@index([pollId, id])
 }
 
 model PollVote {
@@ -1372,6 +1401,7 @@ model PollVote {
   createdAt DateTime   @default(now())
 
   @@unique([pollId, userId])
+  @@index([pollId, optionId])
   @@index([optionId])
   @@map("poll_votes")
 }

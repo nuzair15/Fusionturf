@@ -9,7 +9,6 @@ import cloudinary from "./lib/cloudinary.js";
 import { config } from "./config/index.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import { authenticate, authorize } from "./middleware/auth.js";
-import { stripeWebhook } from "./controllers/booking.js";
 import routes from "./routes/index.js";
 import prisma from "./config/database.js";
 
@@ -95,11 +94,6 @@ const authRateLimit = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many attempts, please try again later" },
 });
-
-// Stripe webhook must receive the raw, unparsed request body for signature
-// verification — it has to be registered before express.json() below, and
-// excluded from that JSON body-parsing entirely.
-app.post("/api/webhooks/stripe", express.raw({ type: "application/json" }), stripeWebhook);
 
 // Body parsing
 app.use(express.json({ limit: config.bodyLimit }));

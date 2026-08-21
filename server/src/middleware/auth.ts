@@ -65,10 +65,15 @@ export const optionalAuth = async (req: Request, res: Response, next: NextFuncti
     if (authHeader && authHeader.startsWith("Bearer ")) {
       const token = authHeader.split(" ")[1];
       const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
-      req.user = decoded;
+      // Optional authentication is anonymous only when no valid session is
+      // supplied. Never promote a request from claims in an old JWT: roles and
+      // active state are revocable server-side.
+      const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+      if (user?.isActive) req.user = { userId: user.id, role: user.role };
     }
   } catch {
-    // ignore
+    // This middleware intentionally leaves invalid optional credentials
+    // anonymous. Routes which require a session use `authenticate` instead.
   }
   next();
 };

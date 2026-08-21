@@ -31,12 +31,6 @@ export const config = {
     bootstrapEmail: process.env.ADMIN_PANEL_EMAIL || "super-admin@fusionturf.internal",
   },
 
-  stripe: {
-    secretKey: process.env.STRIPE_SECRET_KEY || "",
-    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || "",
-    publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || "",
-  },
-
   cloudinary: {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME || "",
     apiKey: process.env.CLOUDINARY_API_KEY || "",
@@ -49,6 +43,7 @@ export const config = {
     user: process.env.SMTP_USER || "",
     pass: process.env.SMTP_PASS || "",
     from: process.env.EMAIL_FROM || "noreply@fusionturf.com",
+    adminBookingEmail: process.env.ADMIN_BOOKING_EMAIL || "",
   },
 
   twilio: {

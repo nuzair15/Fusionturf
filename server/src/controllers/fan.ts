@@ -82,5 +82,26 @@ export const getPolls = async (_req: Request, res: Response, next: NextFunction)
 };
 
 export const votePoll = async (req: Request, res: Response, next: NextFunction) => {
-  try { const vote = await prisma.pollVote.create({ data: { pollId: req.params.id, optionId: req.body.optionId, userId: req.user?.userId } }); res.status(201).json(vote); } catch (e) { next(e); }
+  try {
+    const pollId = req.params.id;
+    const optionId = typeof req.body.optionId === "string" ? req.body.optionId : "";
+    if (!optionId) throw new AppError("optionId is required", 400);
+
+    const poll = await prisma.poll.findUnique({ where: { id: pollId }, select: { id: true, isActive: true, closesAt: true } });
+    if (!poll) throw new AppError("Poll not found", 404);
+    if (!poll.isActive || (poll.closesAt && poll.closesAt <= new Date())) throw new AppError("Poll is closed", 400);
+
+    // Checking the relation in the same query prevents an option from a
+    // different poll being injected into this vote.
+    const option = await prisma.pollOption.findFirst({ where: { id: optionId, pollId }, select: { id: true } });
+    if (!option) throw new AppError("Option does not belong to this poll", 400);
+
+    try {
+      const vote = await prisma.pollVote.create({ data: { pollId, optionId, userId: req.user!.userId } });
+      res.status(201).json(vote);
+    } catch (error: any) {
+      if (error?.code === "P2002") throw new AppError("You have already voted in this poll", 409);
+      throw error;
+    }
+  } catch (e) { next(e); }
 };
