@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
@@ -6,11 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 import type { Venue, Booking } from "@/types";
 import { MapPin, Phone, Mail, Clock, ChevronLeft, CheckCircle, Info } from "lucide-react";
 import confetti from "canvas-confetti";
 import { PageError, PageSkeleton } from "@/components/PageState";
+import { businessDateKey } from "@/lib/fixtures";
 
 function formatAmPm(time: string): string {
   const [h, m] = time.split(":").map(Number);
@@ -18,18 +19,9 @@ function formatAmPm(time: string): string {
   const hour = h === 0 ? 12 : h > 12 ? h - 12 : h;
   return `${hour}:${String(m).padStart(2, "0")} ${period}`;
 }
-
-function generateSlots(open: string, close: string): string[] {
-  const [oh, om] = open.split(":").map(Number);
-  const [ch, cm] = close.split(":").map(Number);
-  const start = oh * 60 + om;
-  const end = ch * 60 + cm;
-  const slots: string[] = [];
-  for (let t = start; t < end; t += 30) {
-    slots.push(String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(t % 60).padStart(2, "0"));
-  }
-  return slots;
-}
+interface AvailableSlot { startTime: string; endTime: string; startAt: string; endAt: string; }
+interface BookingQuote { baseAmount: number; servicesTotal: number; discountAmount: number; totalAmount: number; currency: string; duration: number; priceOverride?: { price: number; reason?: string } | null; }
+interface BookingResult { booking: Booking; guestManagementToken?: string | null; idempotencyKey?: string; }
 
 export function VenueDetailPage() {
   const { slug } = useParams();
@@ -38,21 +30,22 @@ export function VenueDetailPage() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [couponCode, setCouponCode] = useState("");
-  const [couponDiscount, setCouponDiscount] = useState(0);
-  const [couponMessage, setCouponMessage] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [appliedCoupon, setAppliedCoupon] = useState("");
+  const [date, setDate] = useState(businessDateKey());
   const [startSlot, setStartSlot] = useState("");
   const [endSlot, setEndSlot] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [done, setDone] = useState(false);
+  const [result, setResult] = useState<BookingResult | null>(null);
   const [error, setError] = useState("");
   const [selectedTurfId, setSelectedTurfId] = useState<string>("");
+  const [selectedServices, setSelectedServices] = useState<string[]>([]);
+  const idempotencyKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (done) {
+    if (result) {
       confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
     }
-  }, [done]);
+  }, [result]);
 
   const { data: venue, isLoading, isError, refetch } = useQuery({
     queryKey: ["venue", slug],
@@ -68,88 +61,50 @@ export function VenueDetailPage() {
 
   const turf = venue?.turfs?.find((t) => t.id === selectedTurfId);
 
-  const computedPrice = useMemo(() => {
-    if (!turf) return 0;
-    let price = turf.basePrice;
-    if (date) {
-      const day = new Date(date).getDay();
-      if (day === 0 || day === 6) {
-        price = turf.weekendPrice || turf.basePrice;
-      }
-    }
-    if (startSlot) {
-      const hour = parseInt(startSlot.split(":")[0], 10);
-      if (hour >= 17 && hour <= 21) {
-        price = turf.peakPrice || price;
-      }
-    }
-    return price;
-  }, [turf, date, startSlot]);
-
-  const computedTotal = useMemo(() => {
-    if (!startSlot || !endSlot) return 0;
-    const startMin = parseInt(startSlot.slice(0, 2), 10) * 60 + parseInt(startSlot.slice(3), 10);
-    const endMin = parseInt(endSlot.slice(0, 2), 10) * 60 + parseInt(endSlot.slice(3), 10);
-    const duration = endMin - startMin;
-    const hours = turf?.halfHourBilling
-      ? Math.ceil(duration / 30) / 2
-      : Math.ceil(duration / 60);
-    return computedPrice * hours;
-  }, [startSlot, endSlot, computedPrice, turf?.halfHourBilling]);
-
-  const { data: bookedData } = useQuery({
-    queryKey: ["booked-slots", selectedTurfId, date],
-    queryFn: () => api.get<Booking[]>(`/bookings/booked-slots/${selectedTurfId}?date=${date}`),
+  const availability = useQuery({
+    queryKey: ["booking-availability", selectedTurfId, date],
+    queryFn: () => api.get<AvailableSlot[]>("/bookings/slots", { turfId: selectedTurfId, date }),
     enabled: !!selectedTurfId && !!date,
+    retry: 1,
   });
 
-  const bookedSlots = useMemo(() => {
-    if (!bookedData) return [];
-    const slots: string[] = [];
-    for (const b of bookedData) {
-      let t = b.startTime;
-      while (t < b.endTime) {
-        slots.push(t);
-        t = addMinutes(t, 30);
-      }
-    }
-    return slots;
-  }, [bookedData]);
-
-  const opening = venue?.openingTime || "06:00";
-  const closing = venue?.closingTime || "23:00";
-  const lastBooking = venue?.lastBookingTime || closing;
-  const lastStart = lastBooking < closing ? lastBooking : addMinutes(closing, -30);
-
-  // Start slots: from opening up to and including the last booking time
-  const startTimeSlots = useMemo(() => {
-    return generateSlots(opening, addMinutes(lastStart, 30));
-  }, [opening, lastStart]);
-
-  // End slots: from start+30min up to and including closing time
-  const endTimeSlots = useMemo(() => {
-    if (!startSlot) return [];
-    return generateSlots(addMinutes(startSlot, 30), addMinutes(closing, 30));
-  }, [startSlot, closing]);
-
-  const isSlotBooked = (slot: string) => bookedSlots.includes(slot);
-
-  // A slot is invalid as an end time if [startSlot, slot) overlaps any existing booking
-  const isEndSlotInvalid = (slot: string) => {
-    if (!bookedData || !startSlot) return false;
-    return bookedData.some((b) => startSlot < b.endTime && slot > b.startTime);
-  };
-
   const validEndSlots = useMemo(() => {
-    if (!startSlot) return [];
-    return endTimeSlots.filter((s) => !isEndSlotInvalid(s));
-  }, [startSlot, endTimeSlots, bookedData]);
+    if (!startSlot || !availability.data) return [];
+    const sorted = [...availability.data].sort((a, b) => a.startAt.localeCompare(b.startAt));
+    const startIndex = sorted.findIndex((slot) => slot.startTime === startSlot);
+    if (startIndex < 0) return [];
+    const ends: string[] = [];
+    let expected = startSlot;
+    for (let index = startIndex; index < sorted.length && sorted[index].startTime === expected; index += 1) {
+      ends.push(sorted[index].endTime);
+      expected = sorted[index].endTime;
+    }
+    return ends;
+  }, [startSlot, availability.data]);
+
+  const quoteInput = useMemo(() => ({
+    turfId: selectedTurfId,
+    date,
+    startTime: startSlot,
+    endTime: endSlot,
+    ...(appliedCoupon ? { couponCode: appliedCoupon } : {}),
+    services: selectedServices.map((id) => ({ id, quantity: 1 })),
+  }), [selectedTurfId, date, startSlot, endSlot, appliedCoupon, selectedServices]);
+
+  const quote = useQuery({
+    queryKey: ["booking-quote", quoteInput],
+    queryFn: () => api.post<BookingQuote>("/bookings/quote", quoteInput),
+    enabled: !!selectedTurfId && !!date && !!startSlot && !!endSlot,
+    retry: false,
+  });
+
+  useEffect(() => { idempotencyKeyRef.current = null; }, [selectedTurfId, date, startSlot, endSlot, appliedCoupon, selectedServices]);
 
   useEffect(() => {
-    if (endSlot && (!startSlot || !endTimeSlots.includes(endSlot) || isEndSlotInvalid(endSlot))) {
+    if (endSlot && (!startSlot || !validEndSlots.includes(endSlot))) {
       setEndSlot("");
     }
-  }, [startSlot, endSlot, endTimeSlots, bookedData]);
+  }, [startSlot, endSlot, validEndSlots]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -160,7 +115,9 @@ export function VenueDetailPage() {
     setSubmitting(true);
     setError("");
     try {
-      await api.post("/bookings", {
+      if (!quote.data) throw new Error("Wait for the server price quote before booking");
+      idempotencyKeyRef.current ||= crypto.randomUUID();
+      const created = await api.post<BookingResult>("/bookings", {
         turfId: selectedTurfId,
         date,
         startTime: startSlot,
@@ -168,9 +125,10 @@ export function VenueDetailPage() {
         customerName: name,
         customerPhone: phone,
         customerEmail: email || undefined,
-        couponCode: couponCode.trim() || undefined,
-      });
-      setDone(true);
+        couponCode: appliedCoupon || undefined,
+        services: selectedServices.map((id) => ({ id, quantity: 1 })),
+      }, { "Idempotency-Key": idempotencyKeyRef.current });
+      setResult(created);
     } catch (err: any) {
       setError(err.message || "Booking failed");
     } finally {
@@ -181,13 +139,16 @@ export function VenueDetailPage() {
   if (isLoading) return <PageSkeleton />;
   if (isError || !venue) return <PageError title="This venue isn't available" description="It may have been removed or there was a problem loading its booking details." onRetry={() => void refetch()} action={<Button variant="outline" onClick={() => navigate("/booking")}>Browse venues</Button>} />;
 
-  if (done) {
+  if (result) {
+    const managementUrl = result.guestManagementToken ? `${window.location.origin}/booking/manage#token=${encodeURIComponent(result.guestManagementToken)}` : null;
     return (
       <div className="mx-auto max-w-md px-4 py-20 text-center">
         <CheckCircle className="mx-auto h-16 w-16 text-green-500" />
         <h1 className="mt-4 text-2xl font-bold">Booking Submitted!</h1>
-        <p className="mt-2 text-muted-foreground">We'll contact {name} at {phone} to confirm your slot.</p>
-        <p className="mt-1 text-sm text-muted-foreground">You will receive a confirmation call or text once your booking is verified.</p>
+        <p className="mt-2 text-lg font-semibold">Booking #{result.booking.bookingNumber}</p>
+        <p className="mt-1 text-muted-foreground">Status: {result.booking.status} · Total: {formatCurrency(result.booking.totalAmount)}</p>
+        <p className="mt-1 text-sm text-muted-foreground">Your request is pending until venue staff confirms it.</p>
+        {managementUrl && <a href={managementUrl} className="mt-4 block break-all rounded-lg border p-3 text-sm font-medium text-primary hover:bg-muted">Manage or cancel this guest booking</a>}
         <Button className="mt-6" onClick={() => navigate("/")}>Back to Home</Button>
       </div>
     );
@@ -220,7 +181,7 @@ export function VenueDetailPage() {
                       <button
                         key={t.id}
                         type="button"
-                        onClick={() => { setSelectedTurfId(t.id); setStartSlot(""); setEndSlot(""); }}
+                        onClick={() => { setSelectedTurfId(t.id); setStartSlot(""); setEndSlot(""); setSelectedServices([]); setAppliedCoupon(""); }}
                         className={`w-full rounded-lg border p-3 text-left text-sm transition ${
                           selectedTurfId === t.id
                             ? "border-primary bg-primary/10"
@@ -263,53 +224,46 @@ export function VenueDetailPage() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium">Date *</label>
-                  <Input type="date" value={date} onChange={(e) => { setDate(e.target.value); setStartSlot(""); setEndSlot(""); setCouponDiscount(0); setCouponMessage(""); }} min={new Date().toISOString().split("T")[0]} required />
+                  <Input type="date" value={date} onChange={(e) => { setDate(e.target.value); setStartSlot(""); setEndSlot(""); setAppliedCoupon(""); }} min={businessDateKey()} required />
                   </div>
 
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium">Start Time *</label>
-                    <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8">
-                      {startTimeSlots.map((slot) => {
-                        const booked = isSlotBooked(slot);
+                    {availability.isLoading ? <p role="status" className="rounded-lg border p-4 text-sm text-muted-foreground">Checking live availability…</p> : availability.isError ? <div role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">Availability could not be verified. <Button type="button" size="sm" variant="outline" className="ml-2" onClick={() => availability.refetch()}>Retry</Button></div> : <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8">
+                      {(availability.data || []).map((slot) => {
                         return (
                           <button
-                            key={slot}
+                            key={slot.startAt}
                             type="button"
-                            disabled={booked}
-                            onClick={() => { setStartSlot(slot); setEndSlot(""); setCouponDiscount(0); setCouponMessage(""); }}
+                            onClick={() => { setStartSlot(slot.startTime); setEndSlot(""); setAppliedCoupon(""); }}
                             className={`rounded-lg border py-3 text-sm font-medium transition-all ${
-                              startSlot === slot
+                              startSlot === slot.startTime
                                 ? "border-primary bg-primary text-primary-foreground"
-                                : booked
-                                  ? "cursor-not-allowed border-destructive/30 bg-destructive/10 text-destructive/50 line-through"
-                                  : "hover:border-primary/50"
+                                : "hover:border-primary/50"
                             }`}
                           >
-                            {formatAmPm(slot)}
+                            {formatAmPm(slot.startTime)}
                           </button>
                         );
                       })}
-                    </div>
+                      {availability.data?.length === 0 && <p className="col-span-full py-4 text-sm text-muted-foreground">No bookable times remain for this date.</p>}
+                    </div>}
                   </div>
 
                   {startSlot && (
                     <div className="space-y-1.5">
                       <label className="text-sm font-medium">End Time *</label>
                       <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8">
-                        {endTimeSlots.map((slot) => {
-                            const invalid = isEndSlotInvalid(slot);
+                        {validEndSlots.map((slot) => {
                             return (
                               <button
                                 key={slot}
                                 type="button"
-                                disabled={invalid}
                                 onClick={() => setEndSlot(slot)}
                                 className={`rounded-lg border py-3 text-sm font-medium transition-all ${
                                   endSlot === slot
                                     ? "border-primary bg-primary text-primary-foreground"
-                                    : invalid
-                                      ? "cursor-not-allowed border-destructive/30 bg-destructive/10 text-destructive/50 line-through"
-                                      : "hover:border-primary/50"
+                                    : "hover:border-primary/50"
                                 }`}
                               >
                                 {formatAmPm(slot)}
@@ -323,6 +277,8 @@ export function VenueDetailPage() {
                   {startSlot && endSlot && (
                     <div className="rounded-lg bg-primary/5 p-3 text-sm">
                       <p className="font-medium">Booking Summary</p>
+                      {/* Legacy client-side pricing is intentionally retained only in history;
+                          the rendered quote below is entirely server-authoritative.
                       <p className="text-muted-foreground">{formatAmPm(startSlot)} - {formatAmPm(endSlot)} on {new Date(date).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}</p>
                       <div className="mt-1 space-y-0.5">
                         <p className="text-xs text-muted-foreground">{formatCurrency(computedPrice)} × {((parseInt(endSlot.slice(0, 2), 10) * 60 + parseInt(endSlot.slice(3), 10) - (parseInt(startSlot.slice(0, 2), 10) * 60 + parseInt(startSlot.slice(3), 10))) / 60).toFixed(1)} hr = <span className="font-semibold text-foreground">{formatCurrency(computedTotal)}</span></p>
@@ -341,14 +297,25 @@ export function VenueDetailPage() {
                       {computedPrice !== turf?.basePrice && (
                         <p className="mt-0.5 text-[11px] text-amber-600">Weekend or peak hour pricing applied</p>
                       )}
+                      */}
+                      <p className="text-muted-foreground">{formatAmPm(startSlot)} - {formatAmPm(endSlot)} on {formatDate(date)}</p>
+                      {turf?.services?.length ? <fieldset className="mt-3 space-y-2"><legend className="text-xs font-semibold">Optional services</legend>{turf.services.map((service) => <label key={service.id} className="flex cursor-pointer items-center justify-between rounded-md border bg-background p-2"><span><input type="checkbox" className="mr-2" checked={selectedServices.includes(service.id)} onChange={(event) => setSelectedServices((current) => event.target.checked ? [...current, service.id] : current.filter((id) => id !== service.id))} />{service.name}</span><span>{formatCurrency(service.price)}</span></label>)}</fieldset> : null}
+                      {quote.isLoading && <p role="status" className="mt-2 text-xs text-muted-foreground">Calculating the final server price…</p>}
+                      {quote.isError && <p role="alert" className="mt-2 text-xs text-destructive">{(quote.error as Error).message}</p>}
+                      {quote.data && <div className="mt-2 space-y-1 border-t pt-2 text-xs"><p className="flex justify-between"><span>Slot</span><span>{formatCurrency(quote.data.baseAmount)}</span></p>{quote.data.servicesTotal > 0 && <p className="flex justify-between"><span>Services</span><span>{formatCurrency(quote.data.servicesTotal)}</span></p>}{quote.data.discountAmount > 0 && <p className="flex justify-between text-green-600"><span>Discount</span><span>-{formatCurrency(quote.data.discountAmount)}</span></p>}<p className="flex justify-between text-sm font-bold"><span>Total</span><span>{formatCurrency(quote.data.totalAmount)}</span></p>{quote.data.priceOverride && <p className="text-amber-600">Special pricing: {quote.data.priceOverride.reason || "venue override"}</p>}</div>}
+                      <div className="mt-3 flex gap-2">
+                        <Input value={couponCode} onChange={(event) => { setCouponCode(event.target.value.toUpperCase()); setAppliedCoupon(""); }} placeholder="Coupon code" className="h-9" />
+                        <Button type="button" variant="outline" className="h-9" onClick={() => setAppliedCoupon(couponCode.trim())} disabled={!couponCode.trim() || quote.isLoading}>Apply</Button>
+                      </div>
+                      {appliedCoupon && quote.data?.discountAmount ? <p className="text-xs text-green-600">Coupon {appliedCoupon} applied.</p> : null}
                       <p className="mt-1 text-xs text-muted-foreground">You will receive a confirmation call or text once your booking is verified.</p>
                     </div>
                   )}
 
                   {error && <p className="text-sm text-destructive">{error}</p>}
 
-                  <Button type="submit" className="w-full" size="lg" disabled={submitting || !startSlot || !endSlot}>
-                    {submitting ? "Booking..." : `Confirm Booking${turf && computedTotal ? ` - ${formatCurrency(computedTotal)}` : ""}`}
+                  <Button type="submit" className="w-full" size="lg" disabled={submitting || !startSlot || !endSlot || !quote.data || quote.isFetching}>
+                    {submitting ? "Booking..." : `Submit Booking Request${quote.data ? ` - ${formatCurrency(quote.data.totalAmount)}` : ""}`}
                   </Button>
                 </form>
               </CardContent>
@@ -358,10 +325,4 @@ export function VenueDetailPage() {
       </motion.div>
     </div>
   );
-}
-
-function addMinutes(time: string, mins: number): string {
-  const [h, m] = time.split(":").map(Number);
-  const total = h * 60 + m + mins;
-  return String(Math.floor(total / 60) % 24).padStart(2, "0") + ":" + String(total % 60).padStart(2, "0");
 }

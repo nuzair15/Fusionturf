@@ -8,6 +8,7 @@ import { Select } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/admin/ErrorState";
 import { formatDate, formatTime, formatCurrency } from "@/lib/utils";
+import { businessDateKey } from "@/lib/fixtures";
 import type { Booking, Venue } from "@/types";
 import {
   ChevronLeft, ChevronRight, CalendarDays, Clock,
@@ -45,6 +46,7 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
 
   const [dragBooking, setDragBooking] = useState<Booking | null>(null);
   const [dropTarget, setDropTarget] = useState<{ date: string; hour: number } | null>(null);
+  const [calendarError, setCalendarError] = useState("");
 
   useEffect(() => { setSelectedVenue((prev) => prev || venues[0]?.id || ""); }, [venues]);
 
@@ -68,7 +70,8 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
   const daysInMonth = new Date(year, month, 0).getDate();
   const firstDay = new Date(year, month - 1, 1).getDay();
   const dateKey = (d: number) => `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  const todayStr = now.toISOString().split("T")[0];
+  const todayStr = businessDateKey();
+  const localDateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 
   const calendarDays = useMemo(() => {
     const cells: (number | null)[] = [];
@@ -115,6 +118,7 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
     return allBookings.some((b) => {
       if (b.id === booking.id) return false;
       if (b.date !== booking.date) return false;
+      if (b.turfId !== booking.turfId) return false;
       return b.startTime < booking.endTime && b.endTime > booking.startTime;
     });
   };
@@ -139,9 +143,9 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
   };
 
   const goToday = () => {
-    const d = new Date();
-    setYear(d.getFullYear());
-    setMonth(d.getMonth() + 1);
+    const [todayYear, todayMonth] = businessDateKey().split("-").map(Number);
+    setYear(todayYear);
+    setMonth(todayMonth);
     setSelectedDate(null);
     setWeekOffset(0);
   };
@@ -172,14 +176,23 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
     }
     const duration = dragBooking.duration || 60;
     const endTotalMinutes = hour * 60 + duration;
+    if (endTotalMinutes > 24 * 60) {
+      setCalendarError("This booking would end after midnight. Choose an earlier slot.");
+      setDragBooking(null);
+      setDropTarget(null);
+      return;
+    }
     const endH = Math.floor(endTotalMinutes / 60);
     const endM = endTotalMinutes % 60;
     const newStart = `${String(hour).padStart(2, "0")}:00`;
     const newEnd = `${String(endH).padStart(2, "0")}:${String(Math.round(endM)).padStart(2, "0")}`;
     try {
+      setCalendarError("");
       await api.patch(`/admin/bookings/${dragBooking.id}`, { date, startTime: newStart, endTime: newEnd });
       queryClient.invalidateQueries({ queryKey: ["admin-calendar"] });
-    } catch {}
+    } catch (error: any) {
+      setCalendarError(error.message || "The booking could not be rescheduled.");
+    }
     setDragBooking(null);
     setDropTarget(null);
   };
@@ -192,9 +205,12 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
   const startOfWeek = weekDays[0];
 
   const weekDayDateKeys = useMemo(() =>
-    weekDays.map((d) => d.toISOString().split("T")[0]),
+    weekDays.map(localDateKey),
     [weekDays]
   );
+
+  const navigatePrevious = () => viewMode === "week" ? setWeekOffset((value) => value - 1) : prev();
+  const navigateNext = () => viewMode === "week" ? setWeekOffset((value) => value + 1) : next();
 
   return (
     <div className="space-y-4">
@@ -229,7 +245,7 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
           ))}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={prev}><ChevronLeft className="h-4 w-4" /></Button>
+          <Button variant="ghost" size="sm" onClick={navigatePrevious} aria-label={`Previous ${viewMode}`}><ChevronLeft className="h-4 w-4" /></Button>
           {viewMode === "week" ? (
             <span className="min-w-[180px] text-center text-sm font-semibold">
               {formatDate(startOfWeek)} – {formatDate(weekDays[6])}
@@ -239,9 +255,10 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
               {MONTHS[month - 1]} {year}
             </span>
           )}
-          <Button variant="ghost" size="sm" onClick={next}><ChevronRight className="h-4 w-4" /></Button>
+          <Button variant="ghost" size="sm" onClick={navigateNext} aria-label={`Next ${viewMode}`}><ChevronRight className="h-4 w-4" /></Button>
         </div>
       </div>
+      {calendarError && <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{calendarError}</p>}
 
       {/* Month View (read-only, click to jump to day) */}
       {viewMode === "month" && (
@@ -303,7 +320,7 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
                 const isToday = key === todayStr;
                 return (
                   <div key={key} className={`flex-1 p-2 text-center ${isToday ? "font-bold text-primary" : ""}`}>
-                    {WEEKDAY_LABELS[i]} {day.getDate()}
+                    {DAYS[day.getDay()]} {day.getDate()}
                   </div>
                 );
               })}
@@ -351,6 +368,10 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
                       onMouseEnter={(e) => handleMouseEnter(b, e)}
                       onMouseLeave={handleMouseLeave}
                       onClick={() => handleBookingClick(b)}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Open booking at ${formatTime(b.startTime)} on ${dayKey}`}
+                      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handleBookingClick(b); } }}
                     >
                       <span className="font-medium">{b.user?.firstName || "?"}</span>
                       <span className="ml-1">{formatTime(b.startTime)}</span>
@@ -428,6 +449,10 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
                     onMouseEnter={(e) => handleMouseEnter(b, e)}
                     onMouseLeave={handleMouseLeave}
                     onClick={() => handleBookingClick(b)}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Open booking at ${formatTime(b.startTime)} on ${selectedDate}`}
+                    onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handleBookingClick(b); } }}
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-sm">

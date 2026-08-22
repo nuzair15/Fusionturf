@@ -9,6 +9,7 @@ import { formatDate, formatTime, getMatchStatusColor } from "@/lib/utils";
 import type { Fixture, Standing, Team, Season, Venue, News, PaginatedResponse } from "@/types";
 import { Trophy, Calendar, BarChart3, Medal, Newspaper, ChevronRight, Users, MapPin, Target, Shield, Flame } from "lucide-react";
 import { LeagueHero, LeagueCard, LeagueEmptyState, LeaguePills, SectionLink, StatTile, TrendBadge } from "@/components/league/LeagueUI";
+import { ACTIVE_MATCH_STATUSES, fixtureDateKey, fixtureScoreLabel } from "@/lib/fixtures";
 import { useMemo, useState } from "react";
 
 export function LeaguePage() {
@@ -16,21 +17,23 @@ export function LeaguePage() {
   const [mode, setMode] = useState("overview");
 
   const { data: currentSeason } = useQuery({ queryKey: ["current-season"], queryFn: () => api.get<Season>("/league/seasons/current"), retry: false, refetchOnWindowFocus: true, refetchInterval: 60000 });
-  const { data: fixtures } = useQuery({ queryKey: ["fixtures"], queryFn: () => api.get<{ data: Fixture[] }>("/league/fixtures", { limit: "20" }), staleTime: 0, refetchOnWindowFocus: true, refetchInterval: 15000 });
+  const { data: fixtures } = useQuery({ queryKey: ["fixtures", "league", "upcoming", 20], queryFn: () => api.get<{ data: Fixture[] }>("/v2/fixtures", { limit: "20", scope: "upcoming" }), staleTime: 0, refetchOnWindowFocus: true, refetchInterval: 15000 });
+  const { data: recentFixturesData } = useQuery({ queryKey: ["fixtures", "league", "recent", 20], queryFn: () => api.get<{ data: Fixture[] }>("/v2/fixtures", { limit: "20", scope: "recent" }), staleTime: 0, refetchOnWindowFocus: true, refetchInterval: 15000 });
   const { data: standings } = useQuery({ queryKey: ["standings"], queryFn: () => api.get<Standing[]>("/league/standings"), staleTime: 60_000, refetchOnWindowFocus: false });
   const { data: teams } = useQuery({ queryKey: ["teams"], queryFn: () => api.get<Team[]>("/league/teams"), staleTime: 60_000, refetchOnWindowFocus: false });
-  const { data: venues } = useQuery({ queryKey: ["venues"], queryFn: () => api.get<{ data: Venue[] }>("/bookings/venues"), refetchOnWindowFocus: true, refetchInterval: 60000 });
+  const { data: venues } = useQuery({ queryKey: ["venues", { limit: 20 }], queryFn: () => api.get<{ data: Venue[] }>("/bookings/venues", { limit: 20 }), refetchOnWindowFocus: true, refetchInterval: 60000 });
   const { data: newsData } = useQuery({ queryKey: ["league-news"], queryFn: () => api.get<PaginatedResponse<News>>("/league/news"), refetchOnWindowFocus: true, refetchInterval: 60000 });
 
   const fixtureList = fixtures?.data || [];
+  const recentFixtureList = recentFixturesData?.data || [];
   const standingsList = standings || [];
   const teamList = teams || [];
   const venueList = venues?.data || [];
   const newsList = newsData?.data || [];
 
-  const liveFixtures = useMemo(() => fixtureList.filter((f) => f.status === "LIVE"), [fixtureList]);
+  const liveFixtures = useMemo(() => fixtureList.filter((f) => ACTIVE_MATCH_STATUSES.includes(f.status)), [fixtureList]);
   const upcomingFixtures = useMemo(() => fixtureList.filter((f) => f.status === "SCHEDULED").slice(0, 4), [fixtureList]);
-  const recentFixtures = useMemo(() => fixtureList.filter((f) => f.status === "COMPLETED").slice(0, 4), [fixtureList]);
+  const recentFixtures = useMemo(() => recentFixtureList.slice(0, 4), [recentFixtureList]);
   const leaders = standingsList.slice(0, 3);
 
   return (
@@ -90,9 +93,9 @@ export function LeaguePage() {
                   <div className="text-center">
                     <TrendBadge>{fixture.status}</TrendBadge>
                     <p className="mt-2 text-2xl font-bold tabular-nums">
-                      {fixture.status === "COMPLETED" ? `${fixture.homeScore ?? 0}-${fixture.awayScore ?? 0}` : "VS"}
+                      {fixtureScoreLabel(fixture)}
                     </p>
-                    <p className="text-[11px] text-muted-foreground">{formatDate(fixture.matchDate)} {fixture.kickoffTime ? `• ${formatTime(fixture.kickoffTime)}` : ""}</p>
+                    <p className="text-[11px] text-muted-foreground">{formatDate(fixtureDateKey(fixture))} {fixture.kickoffTime ? `· ${formatTime(fixture.kickoffTime)}` : ""}</p>
                   </div>
                   <div className="flex items-center justify-end gap-3">
                     <div className="text-right">
@@ -210,7 +213,7 @@ export function LeaguePage() {
                     </div>
                     <ChevronRight className="h-4 w-4 text-muted-foreground" />
                   </div>
-                  <p className="mt-3 text-xs text-muted-foreground">{formatDate(fixture.matchDate)} • {fixture.kickoffTime || "TBD"}</p>
+                  <p className="mt-3 text-xs text-muted-foreground">{formatDate(fixtureDateKey(fixture))} · {fixture.kickoffTime || "TBD"}</p>
                 </button>
               )) : (
                 <div className="md:col-span-2 xl:col-span-4">

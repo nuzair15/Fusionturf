@@ -5,30 +5,30 @@ const transporter = nodemailer.createTransport({
   host: config.smtp.host,
   port: config.smtp.port,
   secure: config.smtp.port === 465,
-  auth: {
-    user: config.smtp.user,
-    pass: config.smtp.pass,
-  },
+  auth: { user: config.smtp.user, pass: config.smtp.pass },
 });
 
+const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[character]!));
+const safeSubject = (value: unknown) => String(value ?? "").replace(/[\r\n]/g, "");
+
 export const sendEmail = async (to: string, subject: string, html: string) => {
-  await transporter.sendMail({ from: config.smtp.from, to, subject, html });
+  await transporter.sendMail({ from: config.smtp.from, to, subject: safeSubject(subject), html });
 };
 
 export const sendBookingConfirmation = async (email: string, booking: any) => {
+  const status = String(booking.status || "PENDING").toUpperCase();
+  const statusLabel = status === "CONFIRMED" ? "Confirmed" : status === "PENDING" ? "Received" : status.replaceAll("_", " ");
   const html = `
-    <h1>Booking Confirmed!</h1>
-    <p>Your booking #${booking.bookingNumber} has been confirmed.</p>
-    <p><strong>Venue:</strong> ${booking.turf.venue.name}</p>
-    <p><strong>Date:</strong> ${new Date(booking.date).toLocaleDateString()}</p>
-    <p><strong>Time:</strong> ${booking.startTime} - ${booking.endTime}</p>
+    <h1>Booking ${escapeHtml(statusLabel)}</h1>
+    <p>Your booking #${escapeHtml(booking.bookingNumber)} is currently <strong>${escapeHtml(status)}</strong>.</p>
+    ${status === "PENDING" ? "<p>We have received your request. It is not confirmed until its status changes to CONFIRMED.</p>" : ""}
+    <p><strong>Venue:</strong> ${escapeHtml(booking.turf?.venue?.name)}</p>
+    <p><strong>Date:</strong> ${escapeHtml(new Date(booking.date).toLocaleDateString())}</p>
+    <p><strong>Time:</strong> ${escapeHtml(booking.startTime)} - ${escapeHtml(booking.endTime)}</p>
     <p><strong>Amount:</strong> ₹${(booking.totalAmount / 100).toFixed(2)}</p>
-    ${booking.qrCodeData ? `<img src="${booking.qrCodeData}" alt="QR Code" />` : ""}
   `;
-  await sendEmail(email, `Booking Confirmed - ${booking.bookingNumber}`, html);
+  await sendEmail(email, `Booking ${statusLabel} - ${safeSubject(booking.bookingNumber)}`, html);
 };
-
-const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[character]!));
 
 export const sendAdminBookingNotification = async (booking: any) => {
   const recipient = config.smtp.adminBookingEmail;
@@ -41,8 +41,8 @@ export const sendAdminBookingNotification = async (booking: any) => {
   const paymentRecorded = booking.payments?.some((payment: any) => payment.status === "COMPLETED" || payment.status === "PAID");
   const rows: Array<[string, unknown]> = [
     ["Booking number", booking.bookingNumber],
-    ["Customer", `${customer.firstName || ""} ${customer.lastName || ""}`.trim()],
-    ["Phone", customer.phone],
+    ["Customer", booking.customerName || `${customer.firstName || ""} ${customer.lastName || ""}`.trim()],
+    ["Phone", booking.customerPhone || customer.phone],
     ["Email", booking.customerEmail || customer.email],
     ["Venue", booking.turf?.venue?.name],
     ["Turf", booking.turf?.name],
@@ -57,5 +57,5 @@ export const sendAdminBookingNotification = async (booking: any) => {
     ["Notes", booking.notes || "None"],
   ];
   const html = `<div style="font-family:Arial,sans-serif;color:#1f2937;max-width:640px;margin:auto"><h2>New FusionTurf Booking</h2><table style="border-collapse:collapse;width:100%">${rows.map(([label, value]) => `<tr><th style="text-align:left;padding:8px;border-bottom:1px solid #e5e7eb;width:38%">${escapeHtml(label)}</th><td style="padding:8px;border-bottom:1px solid #e5e7eb">${escapeHtml(value)}</td></tr>`).join("")}</table></div>`;
-  await sendEmail(recipient, `New FusionTurf Booking — ${booking.bookingNumber}`, html);
+  await sendEmail(recipient, `New FusionTurf Booking — ${safeSubject(booking.bookingNumber)}`, html);
 };

@@ -1,8 +1,47 @@
+import "dotenv/config";
 import { PrismaClient, UserRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
-if (!process.env.DATABASE_URL) {
-  process.env.DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/fusion_league";
+const destructiveConfirmation = "RESET_FUSION_LEAGUE";
+if (process.env.NODE_ENV === "production") {
+  throw new Error("The destructive demo reset is disabled in production.");
+}
+if (process.env.DESTRUCTIVE_SEED_CONFIRM !== destructiveConfirmation) {
+  throw new Error(
+    `Refusing to erase data. Set DESTRUCTIVE_SEED_CONFIRM=${destructiveConfirmation} only for an intentional demo reset.`,
+  );
+}
+
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) throw new Error("DATABASE_URL is required for the destructive demo reset.");
+
+const databaseHost = new URL(databaseUrl).hostname;
+const isLocalDatabase = ["localhost", "127.0.0.1", "::1"].includes(databaseHost);
+if (!isLocalDatabase && process.env.ALLOW_REMOTE_DESTRUCTIVE_SEED !== "true") {
+  throw new Error(
+    `Refusing to reset the remote database host ${databaseHost}. Set ALLOW_REMOTE_DESTRUCTIVE_SEED=true to confirm.`,
+  );
+}
+
+const requiredDemoCredentials = [
+  "DEMO_ADMIN_EMAIL",
+  "DEMO_ADMIN_PASSWORD",
+  "DEMO_USER_EMAIL",
+  "DEMO_USER_PASSWORD",
+  "DEMO_MANAGER_EMAIL",
+  "DEMO_MANAGER_PASSWORD",
+] as const;
+const missingDemoCredentials = requiredDemoCredentials.filter((key) => !process.env[key]?.trim());
+if (missingDemoCredentials.length > 0) {
+  throw new Error(`Missing required demo credentials: ${missingDemoCredentials.join(", ")}`);
+}
+
+const demoCredentials = Object.fromEntries(
+  requiredDemoCredentials.map((key) => [key, process.env[key]!.trim()]),
+) as Record<(typeof requiredDemoCredentials)[number], string>;
+
+for (const key of ["DEMO_ADMIN_PASSWORD", "DEMO_USER_PASSWORD", "DEMO_MANAGER_PASSWORD"] as const) {
+  if (demoCredentials[key].length < 12) throw new Error(`${key} must be at least 12 characters long.`);
 }
 
 const prisma = new PrismaClient();
@@ -23,12 +62,13 @@ async function main() {
   }
 
   // ─── Users ───
-  const passwordHash = await bcrypt.hash("password123", 12);
-  const adminPasswordHash = await bcrypt.hash("Abdurahman.15", 12);
+  const adminPasswordHash = await bcrypt.hash(demoCredentials.DEMO_ADMIN_PASSWORD, 12);
+  const userPasswordHash = await bcrypt.hash(demoCredentials.DEMO_USER_PASSWORD, 12);
+  const managerPasswordHash = await bcrypt.hash(demoCredentials.DEMO_MANAGER_PASSWORD, 12);
 
   const admin = await prisma.user.create({
     data: {
-      email: "admin@fusionturf.com",
+      email: demoCredentials.DEMO_ADMIN_EMAIL,
       passwordHash: adminPasswordHash,
       firstName: "Nuzair",
       lastName: "Admin",
@@ -39,8 +79,8 @@ async function main() {
 
   const customer = await prisma.user.create({
     data: {
-      email: "user@example.com",
-      passwordHash,
+      email: demoCredentials.DEMO_USER_EMAIL,
+      passwordHash: userPasswordHash,
       firstName: "John",
       lastName: "Doe",
       role: "CUSTOMER",
@@ -51,8 +91,8 @@ async function main() {
 
   const bookingManager = await prisma.user.create({
     data: {
-      email: "manager@fusionturf.com",
-      passwordHash,
+      email: demoCredentials.DEMO_MANAGER_EMAIL,
+      passwordHash: managerPasswordHash,
       firstName: "Booking",
       lastName: "Manager",
       role: "BOOKING_MANAGER",
@@ -67,7 +107,7 @@ async function main() {
     { key: "site_name", value: "Fusion Turf", group: "general" },
     { key: "site_description", value: "Premium Turf Booking & League Management", group: "general" },
     { key: "site_logo_url", value: "", group: "general" },
-    { key: "site_hero_url", value: "/hero.jpeg", group: "general" },
+    { key: "site_hero_url", value: "/hero-1440.webp", group: "general" },
     { key: "contact_email", value: "info@fusionturf.com", group: "contact" },
     { key: "contact_phone", value: "+91-9876543210", group: "contact" },
     { key: "social_facebook", value: "https://facebook.com/fusionleague", group: "social" },
@@ -537,8 +577,7 @@ async function main() {
   console.log("  ✅ Gallery created");
 
   console.log("\n🎉 Database seeded successfully!");
-  console.log("  Admin: admin@fusionturf.com / password123");
-  console.log("  User:  user@example.com / password123");
+  console.log("  Demo accounts created from environment-provided credentials.");
 }
 
 main()

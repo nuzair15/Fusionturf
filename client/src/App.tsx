@@ -11,6 +11,7 @@ import { BottomNav } from "@/components/BottomNav";
 const HomePage = lazy(() => import("@/pages/home/HomePage").then((m) => ({ default: m.HomePage })));
 const BookingPage = lazy(() => import("@/pages/booking/BookingPage").then((m) => ({ default: m.BookingPage })));
 const VenueDetailPage = lazy(() => import("@/pages/booking/VenueDetailPage").then((m) => ({ default: m.VenueDetailPage })));
+const GuestBookingPage = lazy(() => import("@/pages/booking/GuestBookingPage").then((m) => ({ default: m.GuestBookingPage })));
 const LeaguePage = lazy(() => import("@/pages/league/LeaguePage").then((m) => ({ default: m.LeaguePage })));
 const FixturesPage = lazy(() => import("@/pages/league/FixturesPage").then((m) => ({ default: m.FixturesPage })));
 const TeamDetailPage = lazy(() => import("@/pages/league/TeamDetailPage").then((m) => ({ default: m.TeamDetailPage })));
@@ -23,6 +24,7 @@ const DashboardPage = lazy(() => import("@/pages/dashboard/DashboardPage").then(
 const AdminPage = lazy(() => import("@/pages/admin/AdminPage").then((m) => ({ default: m.AdminPage })));
 const NewsPage = lazy(() => import("@/pages/league/NewsPage").then((m) => ({ default: m.NewsPage })));
 const SearchPage = lazy(() => import("@/pages/search/SearchPage").then((m) => ({ default: m.SearchPage })));
+const AuthPage = lazy(() => import("@/pages/auth/AuthPage").then((m) => ({ default: m.AuthPage })));
 import { ApiErrorNotice } from "@/components/ApiErrorNotice";
 import { PageSkeleton } from "@/components/PageState";
 import { NotFoundPage } from "@/pages/NotFoundPage";
@@ -51,6 +53,7 @@ export default function App() {
                 <Routes>
                     <Route path="/" element={<HomePage />} />
                     <Route path="/booking" element={<BookingPage />} />
+                    <Route path="/booking/manage" element={<GuestBookingPage />} />
                     <Route path="/booking/:slug" element={<VenueDetailPage />} />
                     <Route path="/league" element={<LeaguePage />} />
                     <Route path="/league/fixtures" element={<FixturesPage />} />
@@ -62,6 +65,7 @@ export default function App() {
                     <Route path="/league/players/:slug" element={<PlayerDetailPage />} />
                     <Route path="/league/fixtures/:id" element={<FixtureDetailPage />} />
                     <Route path="/search" element={<SearchPage />} />
+                    <Route path="/auth" element={<AuthPage />} />
                     <Route path="/dashboard" element={<DashboardPage />} />
                     <Route path="/admin" element={<AdminPage />} />
                     <Route path="/admin/*" element={<AdminPage />} />

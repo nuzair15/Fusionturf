@@ -1,5 +1,4 @@
 import { useNavigate } from "react-router-dom";
-import { useEffect } from "react";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +9,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { formatDate, formatCurrency, getMatchStatusColor } from "@/lib/utils";
 import type { Booking, DashboardStats } from "@/types";
 import { Calendar, Clock, MapPin, CreditCard, User, Settings, ArrowRight, Bell, Heart, Trophy, BarChart3 } from "lucide-react";
+import { fixtureDateKey, sortedFixtures } from "@/lib/fixtures";
 
 export function DashboardPage() {
   const { user, logout } = useAuth();
@@ -29,16 +29,12 @@ export function DashboardPage() {
     enabled: !!user,
   });
 
-  useEffect(() => {
-    if (user && "Notification" in window && Notification.permission === "default") Notification.requestPermission();
-  }, [user]);
-
   if (!user) {
     return (
       <div className="mx-auto max-w-md px-4 py-20 text-center">
         <h1 className="text-2xl font-bold">Sign in required</h1>
         <p className="mt-2 text-muted-foreground">Please sign in to view your dashboard.</p>
-        <Button className="mt-4" onClick={() => navigate("/")}>Go Home</Button>
+        <Button className="mt-4" onClick={() => navigate("/auth")}>Sign in</Button>
       </div>
     );
   }
@@ -66,7 +62,7 @@ export function DashboardPage() {
                 <>
                   <div className="flex flex-wrap gap-2">{fanData.follows.map((f: any) => <Badge key={f.id} variant="secondary">{f.team?.name || `${f.player?.firstName} ${f.player?.lastName}`}</Badge>)}</div>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    {(fanData.upcoming || []).slice(0, 4).map((fixture: any) => <button key={fixture.id} onClick={() => navigate(`/league/fixtures/${fixture.id}`)} className="rounded-xl border p-3 text-left hover:bg-secondary/50"><p className="text-xs text-muted-foreground">{formatDate(fixture.matchDate)} · {fixture.kickoffTime || "TBD"}</p><p className="mt-1 font-medium">{fixture.homeTeam.shortName || fixture.homeTeam.name} <span className="text-muted-foreground">vs</span> {fixture.awayTeam.shortName || fixture.awayTeam.name}</p></button>)}
+                    {sortedFixtures(fanData.upcoming || []).slice(0, 4).map((fixture: any) => <button key={fixture.id} onClick={() => navigate(`/league/fixtures/${fixture.id}`)} className="rounded-xl border p-3 text-left hover:bg-secondary/50"><p className="text-xs text-muted-foreground">{formatDate(fixtureDateKey(fixture))} · {fixture.kickoffTime || "TBD"}</p><p className="mt-1 font-medium">{fixture.homeTeam.shortName || fixture.homeTeam.name} <span className="text-muted-foreground">vs</span> {fixture.awayTeam.shortName || fixture.awayTeam.name}</p></button>)}
                   </div>
                 </>
               )}

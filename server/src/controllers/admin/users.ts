@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from "express";
-import { v4 as uuidv4 } from "uuid";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import prisma from "../../config/database.js";
@@ -8,6 +7,7 @@ import { AppError } from "../../middleware/errorHandler.js";
 import { paginate, paginatedResponse, searchPlayerIds } from "../../utils/helpers.js";
 import { pick } from "../../utils/pick.js";
 import * as leagueSystem from "../../services/league-system.js";
+import { localNow } from "../../utils/time.js";
 
 // Users, platform settings, dashboard stats, activity logs, and global search
 
@@ -87,6 +87,26 @@ export const getSettings = async (_req: Request, res: Response, next: NextFuncti
   }
 };
 
+// Public pages need branding and locale only. SMTP, payment, invoice and
+// operational settings must never be serialized by the unauthenticated API.
+const PUBLIC_SETTING_KEYS = [
+  "site_name", "site_logo_url", "site_hero_url", "site_favicon_url",
+  "currency", "timezone", "contact_email", "contact_phone",
+  "facebook_url", "instagram_url", "youtube_url",
+] as const;
+
+export const getPublicSettings = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const settings = await prisma.setting.findMany({
+      where: { key: { in: [...PUBLIC_SETTING_KEYS] } },
+      select: { key: true, value: true },
+    });
+    res.json(Object.fromEntries(settings.map(({ key, value }) => [key, value])));
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const updateSettings = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const updates = Object.entries(req.body).map(([key, value]) =>
@@ -110,38 +130,34 @@ export const getDashboardStats = async (req: Request, res: Response, next: NextF
     const period = (req.query.period as string) || "today";
     const { start: periodStart, end: periodEnd } = getPeriodRange(period);
 
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date();
-    todayEnd.setHours(23, 59, 59, 999);
+    const today = localNow("Asia/Kolkata").date;
 
     const [
       totalUsers, totalBookings, totalTeams, totalPlayers,
-      totalFixtures, totalRevenue, activeBookings, recentFixtures,
+      totalFixtures, revenueLedger, activeBookings, recentFixtures,
       todayFixtures, recentBookings, activity, venues,
-      periodBookings, periodRevenue, periodCancellations,
+      periodBookings, periodLedger, periodCancellations,
     ] = await Promise.all([
       prisma.user.count(),
-      prisma.booking.count(),
-      prisma.team.count(),
-      prisma.player.count(),
-      prisma.fixture.count(),
-      prisma.payment.aggregate({
-        _sum: { amount: true },
-        where: { booking: { status: { not: "CANCELLED" } } },
-      }),
-      prisma.booking.count({ where: { status: "CONFIRMED" } }),
+      prisma.booking.count({ where: { deletedAt: null } }),
+      prisma.team.count({ where: { deletedAt: null } }),
+      prisma.player.count({ where: { deletedAt: null } }),
+      prisma.fixture.count({ where: { deletedAt: null } }),
+      prisma.paymentLedgerEntry.groupBy({ by: ["type"], _sum: { amount: true }, where: { type: { in: ["PAYMENT_CAPTURED", "PAYMENT_REFUNDED"] } } }),
+      prisma.booking.count({ where: { status: "CONFIRMED", deletedAt: null } }),
       prisma.fixture.findMany({
+        where: { deletedAt: null, status: "SCHEDULED", scheduledDate: { gte: today } },
         take: 5,
-        orderBy: { matchDate: "desc" },
+        orderBy: [{ scheduledDate: "asc" }, { kickoffAt: { sort: "asc", nulls: "last" } }, { id: "asc" }],
         include: { homeTeam: true, awayTeam: true },
       }),
       prisma.fixture.findMany({
-        where: { matchDate: { gte: todayStart, lte: todayEnd } },
-        orderBy: { matchDate: "asc" },
+        where: { scheduledDate: today, deletedAt: null },
+        orderBy: [{ kickoffAt: { sort: "asc", nulls: "last" } }, { id: "asc" }],
         include: { homeTeam: true, awayTeam: true },
       }),
       prisma.booking.findMany({
+        where: { deletedAt: null },
         take: 10,
         orderBy: { createdAt: "desc" },
         include: {
@@ -156,33 +172,39 @@ export const getDashboardStats = async (req: Request, res: Response, next: NextF
         orderBy: { createdAt: "desc" },
       }),
       prisma.venue.findMany({
-        include: { turfs: { where: { isActive: true } }, _count: { select: { turfs: true } } },
+        where: { deletedAt: null },
+        include: { turfs: { where: { isActive: true, deletedAt: null } }, _count: { select: { turfs: true } } },
         orderBy: { name: "asc" },
       }),
       prisma.booking.count({
-        where: { date: { gte: periodStart, lte: periodEnd } },
+        where: { date: { gte: periodStart, lte: periodEnd }, deletedAt: null },
       }),
-      prisma.payment.aggregate({
+      prisma.paymentLedgerEntry.groupBy({
+        by: ["type"],
         _sum: { amount: true },
-        where: {
-          booking: { date: { gte: periodStart, lte: periodEnd }, status: { not: "CANCELLED" } },
-        },
+        where: { createdAt: { gte: periodStart, lte: periodEnd }, type: { in: ["PAYMENT_CAPTURED", "PAYMENT_REFUNDED"] } },
       }),
       prisma.booking.count({
-        where: { date: { gte: periodStart, lte: periodEnd }, status: "CANCELLED" },
+        where: { date: { gte: periodStart, lte: periodEnd }, status: "CANCELLED", deletedAt: null },
       }),
     ]);
+
+    const netRevenue = (rows: typeof revenueLedger) => {
+      const captured = rows.find((row) => row.type === "PAYMENT_CAPTURED")?._sum.amount || 0;
+      const refunded = rows.find((row) => row.type === "PAYMENT_REFUNDED")?._sum.amount || 0;
+      return captured - refunded;
+    };
 
     res.json({
       stats: {
         totalUsers, totalBookings, totalTeams, totalPlayers,
-        totalFixtures, totalRevenue: totalRevenue._sum.amount || 0,
+        totalFixtures, totalRevenue: netRevenue(revenueLedger),
         activeBookings,
       },
       periodStats: {
         period,
         bookings: periodBookings,
-        revenue: periodRevenue._sum.amount || 0,
+        revenue: netRevenue(periodLedger),
         cancellations: periodCancellations,
       },
       recentFixtures,
@@ -220,34 +242,39 @@ export const adminSearch = async (req: Request, res: Response, next: NextFunctio
   try {
     const q = String(req.query.q || "").trim();
     if (!q) return res.json({ data: [] });
+    const role = req.user?.role;
+    const canReadBookings = role === "SUPER_ADMIN" || role === "BOOKING_MANAGER";
+    const canReadUsers = role === "SUPER_ADMIN";
+    const canReadFootball = ["SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN", "REFEREE", "VIEWER"].includes(role || "");
+    const canReadContent = ["SUPER_ADMIN", "LEAGUE_ADMIN", "CONTENT_EDITOR", "VIEWER"].includes(role || "");
 
     const [teams, players, venues, bookings, fixtures, news, sponsors, users] = await Promise.all([
-      prisma.team.findMany({ where: { name: { contains: q, mode: "insensitive" } }, take: 5 }),
-      (async () => {
+      canReadFootball ? prisma.team.findMany({ where: { name: { contains: q, mode: "insensitive" }, deletedAt: null }, take: 5 }) : Promise.resolve([]),
+      canReadFootball ? (async () => {
         const { ids } = await searchPlayerIds(q, { limit: 5 });
         if (ids.length === 0) return [];
         return prisma.player.findMany({
-          where: { id: { in: ids } },
+          where: { id: { in: ids }, deletedAt: null },
           include: { team: { select: { name: true } } },
         });
-      })(),
-      prisma.venue.findMany({ where: { name: { contains: q, mode: "insensitive" } }, take: 5 }),
-      prisma.booking.findMany({
-        where: { bookingNumber: { contains: q, mode: "insensitive" } },
+      })() : Promise.resolve([]),
+      canReadBookings ? prisma.venue.findMany({ where: { name: { contains: q, mode: "insensitive" }, deletedAt: null }, take: 5 }) : Promise.resolve([]),
+      canReadBookings ? prisma.booking.findMany({
+        where: { bookingNumber: { contains: q, mode: "insensitive" }, deletedAt: null },
         include: { user: { select: { firstName: true, lastName: true } }, turf: { include: { venue: { select: { name: true } } } } },
         take: 5,
-      }),
-      prisma.fixture.findMany({
-        where: { OR: [{ homeTeam: { name: { contains: q, mode: "insensitive" } } }, { awayTeam: { name: { contains: q, mode: "insensitive" } } }] },
+      }) : Promise.resolve([]),
+      canReadFootball ? prisma.fixture.findMany({
+        where: { deletedAt: null, OR: [{ homeTeam: { name: { contains: q, mode: "insensitive" } } }, { awayTeam: { name: { contains: q, mode: "insensitive" } } }] },
         include: { homeTeam: { select: { shortName: true } }, awayTeam: { select: { shortName: true } } },
         take: 5,
-      }),
-      prisma.news.findMany({ where: { title: { contains: q, mode: "insensitive" } }, take: 5 }),
-      prisma.sponsor.findMany({ where: { name: { contains: q, mode: "insensitive" } }, take: 5 }),
-      prisma.user.findMany({
+      }) : Promise.resolve([]),
+      canReadContent ? prisma.news.findMany({ where: { title: { contains: q, mode: "insensitive" }, deletedAt: null }, take: 5 }) : Promise.resolve([]),
+      canReadContent ? prisma.sponsor.findMany({ where: { name: { contains: q, mode: "insensitive" }, deletedAt: null }, take: 5 }) : Promise.resolve([]),
+      canReadUsers ? prisma.user.findMany({
         where: { OR: [{ firstName: { contains: q, mode: "insensitive" } }, { lastName: { contains: q, mode: "insensitive" } }, { email: { contains: q, mode: "insensitive" } }] },
         take: 5,
-      }),
+      }) : Promise.resolve([]),
     ]);
 
     const results: any[] = [];

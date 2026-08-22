@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from "express";
-import { v4 as uuidv4 } from "uuid";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import prisma from "../../config/database.js";
@@ -8,6 +7,7 @@ import { AppError } from "../../middleware/errorHandler.js";
 import { paginate, paginatedResponse, searchPlayerIds } from "../../utils/helpers.js";
 import { pick } from "../../utils/pick.js";
 import * as leagueSystem from "../../services/league-system.js";
+import { archiveResource } from "../../services/archive.js";
 
 // Player suspensions (cards, bans)
 
@@ -16,7 +16,7 @@ export const adminGetSuspensions = async (req: Request, res: Response, next: Nex
   try {
     const { seasonId, teamId } = req.query;
     const { page, limit, skip } = paginate(req.query);
-    const where: any = {};
+    const where: any = { deletedAt: null };
     if (seasonId) where.seasonId = seasonId;
     if (teamId) where.player = { teamId: teamId as string };
     const [data, total] = await Promise.all([
@@ -72,7 +72,7 @@ export const adminUpdateSuspension = async (req: Request, res: Response, next: N
 
 export const adminDeleteSuspension = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await prisma.suspension.delete({ where: { id: req.params.id } });
+    await archiveResource({ type: "suspension", id: req.params.id, actorId: req.user?.userId, reason: req.body?.reason });
     res.status(204).end();
   } catch (error) {
     next(error);

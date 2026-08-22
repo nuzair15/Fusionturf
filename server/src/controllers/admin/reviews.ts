@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from "express";
-import { v4 as uuidv4 } from "uuid";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import prisma from "../../config/database.js";
@@ -8,6 +7,7 @@ import { AppError } from "../../middleware/errorHandler.js";
 import { paginate, paginatedResponse, searchPlayerIds } from "../../utils/helpers.js";
 import { pick } from "../../utils/pick.js";
 import * as leagueSystem from "../../services/league-system.js";
+import { archiveResource } from "../../services/archive.js";
 
 // Venue review moderation
 
@@ -15,6 +15,7 @@ import * as leagueSystem from "../../services/league-system.js";
 export const getReviews = async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const items = await prisma.review.findMany({
+      where: { deletedAt: null },
       orderBy: { createdAt: "desc" },
       include: { user: { select: { firstName: true, lastName: true, avatarUrl: true } }, venue: { select: { name: true } } },
     });
@@ -35,7 +36,7 @@ export const approveReview = async (req: Request, res: Response, next: NextFunct
 
 export const deleteReview = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await prisma.review.delete({ where: { id: req.params.id } });
+    await archiveResource({ type: "review", id: req.params.id, actorId: req.user?.userId, reason: req.body?.reason });
     res.status(204).end();
   } catch (error) {
     next(error);

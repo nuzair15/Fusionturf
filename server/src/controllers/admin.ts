@@ -3,7 +3,6 @@
 // controllers/admin/<domain>.ts — one file per admin sub-area instead of a
 // single 2,300+ line file.
 
-export * from "./admin/auth.js";
 export * from "./admin/seasons.js";
 export * from "./admin/teams.js";
 export * from "./admin/players.js";
@@ -17,3 +16,4 @@ export * from "./admin/users.js";
 export * from "./admin/suspensions.js";
 export * from "./admin/live-match.js";
 export * from "./admin/reviews.js";
+export * from "./admin/recycle-bin.js";

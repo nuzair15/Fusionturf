@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"
+    ,"assets:optimize": "node scripts/optimize-hero.mjs"
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.15",
@@ -47,10 +48,11 @@
     "date-fns": "^4.1.0",
     "framer-motion": "^11.12.0",
     "lucide-react": "^0.460.0",
+    "nanoid": "^6.0.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-hook-form": "^7.54.0",
-    "react-router-dom": "^6.28.0",
+    "react-router-dom": "^7.18.2",
     "recharts": "^2.15.0",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
@@ -60,12 +62,13 @@
     "@types/canvas-confetti": "^1.9.0",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@vitejs/plugin-react": "^5.1.1",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",
+    "sharp": "^0.35.3",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
-    "vite": "^6.0.5",
-    "vitest": "^2.1.8"
+    "vite": "^7.3.1",
+    "vitest": "^4.1.11"
   }
 }

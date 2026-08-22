@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -24,9 +24,10 @@ import { BookingDrawer } from "@/components/admin/BookingDrawer";
 import { BottomSheet } from "@/components/admin/BottomSheet";
 import { DataTable, ColumnDef, BulkAction } from "@/components/admin/DataTable";
 import type { DashboardStats, User, Season, Team, Player, Fixture, Award, News, Booking, PaginatedResponse, Venue, Turf, Sponsor, Suspension, ActivityLog, Gallery, Coupon, Advertisement, Faq, ReviewAdmin, Competition } from "@/types";
-import { LayoutDashboard, Users, Calendar, CalendarDays, Trophy, Settings, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, Lock, MapPin, Handshake, Upload, CheckCircle2, XCircle, ListChecks, AlertTriangle, MessageSquare, HelpCircle, Tag, Monitor, Search, Menu, TrendingUp, MoreHorizontal, MessageCircle, QrCode, Copy, Eye } from "lucide-react";
+import { LayoutDashboard, Users, Calendar, CalendarDays, Trophy, Settings, Activity, LogOut, ChevronLeft, Plus, Edit2, Trash2, Medal, Newspaper, DollarSign, Image, MapPin, Handshake, Upload, CheckCircle2, XCircle, ListChecks, AlertTriangle, MessageSquare, HelpCircle, Tag, Monitor, Search, Menu, TrendingUp, MoreHorizontal, MessageCircle, QrCode, Copy, Eye } from "lucide-react";
 import { VenueCalendar } from "@/components/admin/VenueCalendar";
 import { ImageUpload } from "@/components/admin/ImageUpload";
+import { useAuth } from "@/providers/AuthProvider";
 
 const adminTabs = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
@@ -50,9 +51,20 @@ const adminTabs = [
   { id: "reviews", label: "Reviews", icon: MessageSquare },
   { id: "suspensions", label: "Suspensions", icon: AlertTriangle },
   { id: "activity", label: "Activity Logs", icon: ListChecks },
+  { id: "recycle-bin", label: "Recycle Bin", icon: Trash2 },
   { id: "settings", label: "Settings", icon: Settings },
   { id: "users", label: "Users", icon: Users },
 ];
+
+const roleTabs: Record<string, string[]> = {
+  SUPER_ADMIN: adminTabs.map((tab) => tab.id),
+  LEAGUE_ADMIN: ["seasons", "competitions", "fixtures", "teams", "players", "player-stats", "awards", "suspensions", "recycle-bin", "gallery", "sponsors", "news"],
+  BOOKING_MANAGER: ["overview", "bookings", "calendar", "analytics", "venues", "coupons", "reviews"],
+  CONTENT_EDITOR: ["news", "gallery", "sponsors", "ads", "faqs"],
+  STATISTICIAN: ["seasons", "fixtures", "teams", "players", "player-stats", "awards", "suspensions"],
+  REFEREE: ["seasons", "fixtures", "teams", "players", "suspensions"],
+  VIEWER: ["seasons", "fixtures", "teams", "players", "player-stats", "awards", "gallery", "sponsors", "news", "suspensions"],
+};
 
 // Response of the server's shared schedule planner (see
 // planFixtureSchedule in server roundRobin.ts) — the single source of truth
@@ -73,14 +85,40 @@ interface FixturePreview {
 
 export function AdminPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { user, isLoading: authLoading, logout } = useAuth();
+  const allowedTabs = new Set(user ? (roleTabs[user.role] || []) : []);
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState("overview");
+  const requestedTab = searchParams.get("tab") || "overview";
+  const [activeTab, setActiveTabState] = useState(() => adminTabs.some((tab) => tab.id === requestedTab) ? requestedTab : "overview");
   const [editingItem, setEditingItem] = useState<any>(null);
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState<string | null>(null);
-  const [passwordInput, setPasswordInput] = useState("");
-  const [passwordError, setPasswordError] = useState(false);
-  const [unlocked, setUnlocked] = useState(() => !!sessionStorage.getItem("admin_token"));
+  const unlocked = !!user && user.role !== "CUSTOMER";
+
+  const setActiveTab = useCallback((tab: string) => {
+    setActiveTabState(tab);
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set("tab", tab);
+      return next;
+    }, { replace: false });
+  }, [setSearchParams]);
+
+  useEffect(() => {
+    const tab = searchParams.get("tab") || "overview";
+    if (user && allowedTabs.has(tab)) {
+      setActiveTabState(tab);
+      return;
+    }
+    if (user) {
+      const fallback = roleTabs[user.role]?.[0];
+      if (fallback) {
+        setActiveTabState(fallback);
+        setSearchParams({ tab: fallback }, { replace: true });
+      }
+    }
+  }, [searchParams, user?.id, user?.role]);
 
   // Form state for modals
   const [formData, setFormData] = useState<Record<string, any>>({});
@@ -108,10 +146,16 @@ export function AdminPage() {
   const [playerSearch, setPlayerSearch] = useState("");
   const [fixtureSearch, setFixtureSearch] = useState("");
   const [fixtureTypeFilter, setFixtureTypeFilter] = useState<"all" | "league" | "friendly">("all");
+  const [fixturePage, setFixturePage] = useState(1);
   const [bookingSearch, setBookingSearch] = useState("");
   const [newsSearch, setNewsSearch] = useState("");
   const [sponsorSearch, setSponsorSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
+  const [recycleSearch, setRecycleSearch] = useState("");
+  const [recycleType, setRecycleType] = useState("all");
+  const [recyclePage, setRecyclePage] = useState(1);
+  const [restorePreview, setRestorePreview] = useState<{ item: any; dependencies: Record<string, number> } | null>(null);
+  const [restoreLoading, setRestoreLoading] = useState(false);
   const [friendlyStatsMode, setFriendlyStatsMode] = useState(false);
   const [bracketCompetitionId, setBracketCompetitionId] = useState<string | null>(null);
   const [selectedBracketTeams, setSelectedBracketTeams] = useState<string[]>([]);
@@ -175,16 +219,6 @@ export function AdminPage() {
     }
   };
 
-  const handleUnlock = async () => {
-    try {
-      await api.adminLogin(passwordInput);
-      setUnlocked(true);
-      setPasswordError(false);
-    } catch {
-      setPasswordError(true);
-    }
-  };
-
   const tabEnabled = (...tabs: string[]) => unlocked && tabs.includes(activeTab);
 
   const { data: dashboard, isLoading: dashboardLoading } = useQuery({ queryKey: ["admin-dashboard"], queryFn: () => api.get<DashboardStats>("/admin/dashboard"), enabled: tabEnabled("overview"), retry: 1, staleTime: 30000 });
@@ -240,7 +274,7 @@ export function AdminPage() {
     enabled: tabEnabled("player-stats") && !!selectedSeasonId,
   });
 
-  const { data: fixtures } = useQuery({ queryKey: ["admin-fixtures", fixtureSearch, fixtureTypeFilter], queryFn: () => api.get<PaginatedResponse<Fixture>>("/admin/fixtures", { limit: "100", ...(fixtureSearch ? { search: fixtureSearch } : {}), ...(fixtureTypeFilter === "all" ? {} : { friendly: fixtureTypeFilter === "friendly" ? "true" : "false" }) }), enabled: tabEnabled("fixtures") });
+  const { data: fixtures } = useQuery({ queryKey: ["admin-fixtures", fixtureSearch, fixtureTypeFilter, fixturePage], queryFn: () => api.get<PaginatedResponse<Fixture>>("/admin/fixtures", { page: String(fixturePage), limit: "25", ...(fixtureSearch ? { search: fixtureSearch } : {}), ...(fixtureTypeFilter === "all" ? {} : { friendly: fixtureTypeFilter === "friendly" ? "true" : "false" }) }), enabled: tabEnabled("fixtures") });
 
   const { data: competitions } = useQuery({ queryKey: ["admin-competitions", selectedSeasonId], queryFn: () => api.get<Competition[]>("/admin/competitions", { ...(selectedSeasonId ? { seasonId: selectedSeasonId } : {}) }), enabled: tabEnabled("competitions") });
   const { data: bracket } = useQuery({ queryKey: ["admin-bracket", bracketCompetitionId], queryFn: () => api.get<any>(`/admin/competitions/${bracketCompetitionId}/bracket`), enabled: tabEnabled("competitions") && !!bracketCompetitionId });
@@ -258,6 +292,16 @@ export function AdminPage() {
   const { data: sponsors } = useQuery({ queryKey: ["admin-sponsors", sponsorSearch], queryFn: () => api.get<{ data: Sponsor[] }>("/admin/sponsors", { ...(sponsorSearch ? { search: sponsorSearch } : {}) }), enabled: tabEnabled("sponsors") });
 
   const { data: activityLogs } = useQuery({ queryKey: ["admin-activity"], queryFn: () => api.get<PaginatedResponse<ActivityLog>>("/admin/activity-logs", { limit: "50" }), enabled: tabEnabled("activity") });
+  const { data: recycleBin, isLoading: recycleLoading } = useQuery({
+    queryKey: ["admin-recycle-bin", recyclePage, recycleType, recycleSearch],
+    queryFn: () => api.get<PaginatedResponse<{ id: string; resourceType: string; displayName: string; deleteReason?: string | null; deletedAt: string }>>("/admin/recycle-bin", {
+      page: recyclePage,
+      limit: "25",
+      ...(recycleType !== "all" ? { type: recycleType } : {}),
+      ...(recycleSearch ? { search: recycleSearch } : {}),
+    }),
+    enabled: tabEnabled("recycle-bin"),
+  });
 
   const { data: suspensions } = useQuery({ queryKey: ["admin-suspensions"], queryFn: () => api.get<PaginatedResponse<Suspension>>("/admin/suspensions", { limit: "50" }), enabled: tabEnabled("suspensions") });
 
@@ -277,6 +321,7 @@ export function AdminPage() {
   // server's shared planner what it would actually generate, so the dialog
   // can never disagree with the generator about feasibility or layout.
   const [fixturePreview, setFixturePreview] = useState<FixturePreview | null>(null);
+  const [fixturePreviewBatchId, setFixturePreviewBatchId] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
   useEffect(() => {
@@ -287,10 +332,14 @@ export function AdminPage() {
     const timer = setTimeout(async () => {
       setPreviewLoading(true);
       try {
-        const res = await api.post<FixturePreview>(`/admin/seasons/${s.id}/generate-fixtures`, { ...fixtureOptions, preview: true });
-        if (!cancelled) setFixturePreview(res);
+        const res = await api.post<{ id: string; diff: { preview: FixturePreview } }>(`/admin/seasons/${s.id}/generate-fixtures`, { ...fixtureOptions, preview: true });
+        if (!cancelled) {
+          setFixturePreview(res.diff.preview);
+          setFixturePreviewBatchId(res.id);
+        }
       } catch (e: any) {
         if (!cancelled) {
+          setFixturePreviewBatchId(null);
           setFixturePreview({
             preview: true,
             feasible: false,
@@ -312,11 +361,48 @@ export function AdminPage() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [fixtureOptions, showForm, seasons]);
 
-  const handleLogout = () => {
-    api.setAdminToken(null);
-    api.logout();
-    navigate("/");
+  const handleLogout = async () => {
+    await logout();
+    navigate("/auth", { replace: true });
   };
+
+  const previewRestore = async (item: any) => {
+    try {
+      setActionError("");
+      setRestoreLoading(true);
+      const result = await api.get<{ dependencies: Record<string, number> }>(`/admin/recycle-bin/${item.id}/dependencies`);
+      setRestorePreview({ item, dependencies: result.dependencies });
+    } catch (error: any) {
+      setActionError(error.message || "Could not inspect restore dependencies");
+    } finally {
+      setRestoreLoading(false);
+    }
+  };
+
+  const confirmRestore = async () => {
+    if (!restorePreview) return;
+    try {
+      setRestoreLoading(true);
+      const type = restorePreview.item.resourceType;
+      await api.post(`/admin/recycle-bin/${restorePreview.item.id}/restore`);
+      setRestorePreview(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-recycle-bin"] }),
+        queryClient.invalidateQueries({ queryKey: [`admin-${type}s`] }),
+        queryClient.invalidateQueries({ queryKey: ["fixtures"] }),
+        queryClient.invalidateQueries({ queryKey: ["venues"] }),
+        queryClient.invalidateQueries({ queryKey: ["standings"] }),
+      ]);
+    } catch (error: any) {
+      setActionError(error.message || "Could not restore the record");
+    } finally {
+      setRestoreLoading(false);
+    }
+  };
+
+  if (authLoading) {
+    return <div className="flex min-h-[70vh] items-center justify-center text-muted-foreground" role="status">Checking your session…</div>;
+  }
 
   if (!unlocked) {
     return (
@@ -324,27 +410,11 @@ export function AdminPage() {
         <div className="mx-auto flex min-h-[70vh] max-w-md items-center px-4 py-20">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full rounded-2xl border bg-card/95 p-6 text-center shadow-xl backdrop-blur">
             <img src="/logo.png" alt="Fusion" className="mx-auto mb-6 h-16 w-auto" />
-            <h1 className="text-2xl font-bold">Admin Access</h1>
-            <p className="mt-2 text-muted-foreground">Enter the admin password to unlock dashboard actions.</p>
-            <form
-              onSubmit={(e) => { e.preventDefault(); handleUnlock(); }}
-              className="mt-6 space-y-4"
-            >
-              <Input
-                type="password"
-                placeholder="Enter password"
-                value={passwordInput}
-                onChange={(e) => { setPasswordInput(e.target.value); setPasswordError(false); }}
-                className={passwordError ? "border-destructive" : ""}
-                autoFocus
-              />
-              {passwordError && (
-                <p className="text-sm text-destructive">Wrong admin password.</p>
-              )}
-              <Button type="submit" className="w-full bg-gradient-to-r from-[#0f5f44] to-[#00d66f] text-white">
-                <Lock className="mr-2 h-4 w-4" /> Unlock
-              </Button>
-            </form>
+            <h1 className="text-2xl font-bold">{user ? "Access denied" : "Admin sign in required"}</h1>
+            <p className="mt-2 text-muted-foreground">
+              {user ? "This account does not have an administrative role." : "Sign in with your individual staff account to continue."}
+            </p>
+            {!user && <Button className="mt-6 w-full bg-gradient-to-r from-[#0f5f44] to-[#00d66f] text-white" onClick={() => navigate("/auth", { state: { from: `/admin?tab=${activeTab}` } })}>Sign in</Button>}
             <Button variant="ghost" className="mt-4" onClick={() => navigate("/")}>Back to Home</Button>
           </motion.div>
         </div>
@@ -358,12 +428,12 @@ export function AdminPage() {
     <div className="flex min-h-screen bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.12),transparent_34%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--secondary)/0.45))]">
       {/* Desktop Sidebar */}
       <div className="hidden w-64 shrink-0 border-r bg-card/80 backdrop-blur lg:block">
-        <AdminSidebar activeTab={activeTab} onTabChange={setActiveTab} onLogout={handleLogout} />
+        <AdminSidebar activeTab={activeTab} onTabChange={setActiveTab} onLogout={handleLogout} allowedTabs={allowedTabs} />
       </div>
 
       {/* Mobile Drawer */}
       <SidebarDrawer open={sidebarOpen} onClose={() => setSidebarOpen(false)}>
-        <AdminSidebar activeTab={activeTab} onTabChange={setActiveTab} onLogout={handleLogout} onClose={() => setSidebarOpen(false)} />
+        <AdminSidebar activeTab={activeTab} onTabChange={setActiveTab} onLogout={handleLogout} onClose={() => setSidebarOpen(false)} allowedTabs={allowedTabs} />
       </SidebarDrawer>
 
       {/* Search Modal */}
@@ -581,14 +651,14 @@ export function AdminPage() {
                   </div>
                 )}
                 {actionError && <p className="text-sm text-destructive">{actionError}</p>}
-                <Button className="w-full" disabled={generating || (!!fixturePreview && !fixturePreview.feasible)} onClick={async () => {
+                <Button className="w-full" disabled={generating || !fixturePreviewBatchId || (!!fixturePreview && !fixturePreview.feasible)} onClick={async () => {
                   const s = (seasons || []).find((x: Season) => x.isCurrent);
                   if (!s) return setActionError("No current season selected");
-                  if (!window.confirm("This replaces the season's unscheduled league fixtures with the new schedule. Completed matches, friendlies, cup and knockout fixtures are kept. Continue?")) return;
+                  if (!window.confirm("Publish this preview? Only missing, non-conflicting fixtures will be added. Existing fixtures will not be changed or removed.")) return;
                   setGenerating(true);
-                  try { setActionError(""); await api.post(`/admin/seasons/${s.id}/generate-fixtures`, fixtureOptions); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); setShowForm(null); } catch (e: any) { setActionError(e.message); }
+                  try { setActionError(""); await api.post(`/admin/schedule-previews/${fixturePreviewBatchId}/publish`); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); queryClient.invalidateQueries({ queryKey: ["admin-fixtures"] }); setShowForm(null); } catch (e: any) { setActionError(e.message); }
                   finally { setGenerating(false); }
-                }}>{generating ? "Generating..." : "Generate Fixtures"}</Button>
+                }}>{generating ? "Publishing..." : "Publish Missing Fixtures"}</Button>
               </div>
             </Dialog>
               </>
@@ -830,16 +900,48 @@ export function AdminPage() {
           </>
         )}
 
+        {activeTab === "recycle-bin" && (
+          <>
+            <DataTable
+              title="Recycle Bin"
+              emptyMessage="Deleted records will appear here and can be restored."
+              filters={<Select aria-label="Filter archived records by type" value={recycleType} onChange={(event) => { setRecycleType(event.target.value); setRecyclePage(1); }} className="w-56"><option value="all">All record types</option>{["season", "competition", "competitionEntry", "club", "seasonClub", "team", "playerProfile", "playerRegistration", "player", "staffProfile", "staffRegistration", "staff", "fixture", "suspension", "standingAdjustment", "award", "poll", "venue", "turf", "additionalService", "booking", "coupon", "review", "news", "gallery", "sponsor", "advertisement", "faq"].map((type) => <option key={type} value={type}>{type.replace(/([A-Z])/g, " $1")}</option>)}</Select>}
+              columns={[
+                { key: "type", label: "Type", render: (item: any) => <Badge variant="secondary" className="capitalize">{item.resourceType.replace(/([A-Z])/g, " $1")}</Badge> },
+                { key: "label", label: "Record", render: (item: any) => <span className="font-medium">{item.displayName}</span> },
+                { key: "reason", label: "Reason", render: (item: any) => <span className="text-muted-foreground">{item.deleteReason || "No reason supplied"}</span> },
+                { key: "deletedAt", label: "Deleted", render: (item: any) => <span className="text-muted-foreground">{formatDate(item.deletedAt)}</span> },
+                { key: "restore", label: "", render: (item: any) => <Button size="sm" variant="outline" disabled={restoreLoading} onClick={() => previewRestore(item)}>Review & restore</Button> },
+              ]}
+              data={recycleBin?.data || []}
+              total={recycleBin?.meta.total || 0}
+              page={recyclePage}
+              pageSize={25}
+              onPageChange={setRecyclePage}
+              onSearch={(value) => { setRecycleSearch(value); setRecyclePage(1); }}
+              loading={recycleLoading}
+              keyExtractor={(item: any) => item.id}
+            />
+            <Dialog open={!!restorePreview} onClose={() => !restoreLoading && setRestorePreview(null)} title="Restore archived record">
+              {restorePreview && <div className="space-y-4">
+                <p>Restore <strong>{restorePreview.item.displayName}</strong> with its exact pre-delete lifecycle state?</p>
+                <div className="rounded-lg border p-3"><p className="mb-2 text-sm font-semibold">Dependencies retained with this record</p>{Object.entries(restorePreview.dependencies).length ? <ul className="space-y-1 text-sm text-muted-foreground">{Object.entries(restorePreview.dependencies).map(([name, count]) => <li key={name} className="flex justify-between"><span className="capitalize">{name.replace(/([A-Z])/g, " $1")}</span><span>{count}</span></li>)}</ul> : <p className="text-sm text-muted-foreground">No dependent records found.</p>}</div>
+                <div className="flex justify-end gap-2"><Button variant="outline" disabled={restoreLoading} onClick={() => setRestorePreview(null)}>Cancel</Button><Button disabled={restoreLoading} onClick={confirmRestore}>{restoreLoading ? "Restoring…" : "Restore"}</Button></div>
+              </div>}
+            </Dialog>
+          </>
+        )}
+
         {activeTab === "fixtures" && (
           <>
             <DataTable<Fixture>
               title="Fixtures"
-              filters={<Select value={fixtureTypeFilter} onChange={(e) => setFixtureTypeFilter(e.target.value as typeof fixtureTypeFilter)} className="w-40"><option value="all">All matches</option><option value="league">League only</option><option value="friendly">Friendly only</option></Select>}
+              filters={<Select value={fixtureTypeFilter} onChange={(e) => { setFixtureTypeFilter(e.target.value as typeof fixtureTypeFilter); setFixturePage(1); }} className="w-40"><option value="all">All matches</option><option value="league">League only</option><option value="friendly">Friendly only</option></Select>}
               columns={[
                 { key: "home", label: "Home", sortable: true, sortValue: (f) => f.homeTeam?.name || "", render: (f) => <span className="font-medium">{f.homeTeam?.name || "?"}</span> },
                 { key: "score", label: "Score", render: (f) => <span className="font-bold">{f.status === "COMPLETED" ? `${f.homeScore ?? 0} - ${f.awayScore ?? 0}` : "vs"}</span> },
                 { key: "away", label: "Away", sortable: true, sortValue: (f) => f.awayTeam?.name || "", render: (f) => <span className="font-medium">{f.awayTeam?.name || "?"}</span> },
-                { key: "date", label: "Date", sortable: true, sortValue: (f) => f.matchDate, render: (f) => <span className="text-muted-foreground">{formatDate(f.matchDate)}</span> },
+                { key: "date", label: "Date", sortable: true, sortValue: (f) => f.scheduledDate || f.matchDate, render: (f) => <span className="text-muted-foreground">{formatDate(f.scheduledDate || f.matchDate)}</span> },
                 { key: "status", label: "Status", render: (f) => <Badge variant="secondary">{f.status}</Badge> },
                 { key: "type", label: "Type", render: (f) => <Badge variant={f.isFriendly ? "outline" : "secondary"}>{f.isFriendly ? "Friendly" : "League"}</Badge> },
                 { key: "manage", label: "Manage", render: (f) => (
@@ -856,9 +958,12 @@ export function AdminPage() {
               data={fixtures?.data || []}
               keyExtractor={(f) => f.id}
               total={fixtures?.meta?.total}
-              onSearch={setFixtureSearch}
+              page={fixturePage}
+              pageSize={25}
+              onPageChange={setFixturePage}
+              onSearch={(value) => { setFixtureSearch(value); setFixturePage(1); }}
               onAdd={() => { setEditingItem(null); openForm("fixture", { homeTeamId: "", awayTeamId: "", matchDate: "", kickoffTime: "", seasonId: seasons?.[0]?.id || "", isFriendly: false }); }}
-              onEdit={(f) => { setEditingItem(f); openForm("fixture", { homeTeamId: f.homeTeamId, awayTeamId: f.awayTeamId, matchDate: f.matchDate, kickoffTime: f.kickoffTime || "", seasonId: f.seasonId, isFriendly: !!(f as any).isFriendly, stadium: f.stadium || "", referee: (f as any).referee || "", referee2: (f as any).referee2 || "", matchReport: (f as any).matchReport || "" }); }}
+              onEdit={(f) => { setEditingItem(f); openForm("fixture", { homeTeamId: f.homeTeamId, awayTeamId: f.awayTeamId, matchDate: f.scheduledDate || f.matchDate.slice(0, 10), kickoffTime: f.kickoffTime || "", seasonId: f.seasonId, isFriendly: !!(f as any).isFriendly, stadium: f.stadium || "", referee: (f as any).referee || "", referee2: (f as any).referee2 || "", matchReport: (f as any).matchReport || "" }); }}
               onDelete={(f) => { if (confirm(`Delete fixture ${f.homeTeam?.name} vs ${f.awayTeam?.name}?`)) api.delete(`/admin/fixtures/${f.id}`).then(() => queryClient.invalidateQueries({ queryKey: ["admin-fixtures"] })).catch((e: any) => setActionError(e.message)); }}
               bulkActions={[
                 { label: "Delete", icon: <Trash2 className="h-4 w-4" />, variant: "destructive", confirmMessage: (count) => `Delete ${count} selected fixture(s)?`, onClick: async (items) => { for (const f of items) { try { await api.delete(`/admin/fixtures/${f.id}`); } catch {} } queryClient.invalidateQueries({ queryKey: ["admin-fixtures"] }); } },
@@ -889,7 +994,7 @@ export function AdminPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label>Date *</Label>
-                    <Input type="date" value={formData.matchDate?.split("T")[0] || ""} onChange={(e) => handleFormChange("matchDate", new Date(e.target.value).toISOString())} />
+                    <Input type="date" value={formData.matchDate?.split("T")[0] || ""} onChange={(e) => handleFormChange("matchDate", e.target.value)} />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Kickoff Time</Label>

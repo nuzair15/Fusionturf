@@ -14,10 +14,13 @@ import { FormationBadge } from "@/components/league/FormationBadge";
 import { useAuth } from "@/providers/AuthProvider";
 import type { Fixture, Team } from "@/types";
 import { ChevronLeft, ChevronRight, Swords } from "lucide-react";
+import { PageError } from "@/components/PageState";
+import { fixtureDateKey, isActiveMatch } from "@/lib/fixtures";
 
 function AnimatedScore({ value }: { value: number }) {
   const [count, setCount] = useState(0);
   useEffect(() => {
+    setCount(0);
     if (!value || value === 0) return;
     const duration = 800;
     const steps = 20;
@@ -40,9 +43,9 @@ function AnimatedScore({ value }: { value: number }) {
 function PlayerLink({ player, children }: { player: { id: string; slug?: string; firstName?: string; lastName?: string }; children: React.ReactNode }) {
   const navigate = useNavigate();
   return (
-    <span className="cursor-pointer transition-colors hover:text-primary" onClick={() => navigate(`/league/players/${player.slug || player.id}`)}>
+    <button type="button" className="cursor-pointer text-left transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => navigate(`/league/players/${player.slug || player.id}`)}>
       {children}
-    </span>
+    </button>
   );
 }
 
@@ -117,20 +120,33 @@ export function FixtureDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [streamFailed, setStreamFailed] = useState(false);
 
-  const { data: fixture, isLoading } = useQuery({
+  const { data: fixture, isLoading, isError, refetch } = useQuery({
     queryKey: ["fixture", id],
     queryFn: () => api.get<Fixture>(`/league/fixtures/${id}`),
     enabled: !!id,
     refetchOnWindowFocus: true,
-    refetchInterval: (query) => ["LIVE", "PAUSED", "HALF_TIME", "EXTRA_TIME", "PENALTIES"].includes(query.state.data?.status || "") ? 5000 : false,
+    refetchInterval: (query) => streamFailed && ["LIVE", "PAUSED", "HALF_TIME", "EXTRA_TIME", "PENALTIES"].includes(query.state.data?.status || "") ? 10_000 : false,
   });
+
+  useEffect(() => {
+    if (!id || !fixture || !isActiveMatch(fixture.status)) return;
+    setStreamFailed(false);
+    const source = new EventSource(api.fixtureEventStreamUrl(id), { withCredentials: true });
+    const refresh = () => void refetch();
+    source.addEventListener("match-event", refresh);
+    source.addEventListener("fixture", refresh);
+    source.addEventListener("archived", refresh);
+    source.onerror = () => { source.close(); setStreamFailed(true); };
+    return () => source.close();
+  }, [id, fixture?.status, refetch]);
 
   const { data: rsvp, refetch: refetchRsvp } = useQuery({ queryKey: ["rsvp", id], queryFn: () => api.get<any>(`/league/fixtures/${id}/rsvp`), enabled: !!id && !!user });
   const setRsvp = async (status: "GOING" | "MAYBE" | "NOT_GOING") => { await api.post(`/league/fixtures/${id}/rsvp`, { status }); await refetchRsvp(); };
 
   if (isLoading) return <div className="mx-auto max-w-7xl px-4 py-8"><div className="h-96 animate-pulse rounded-xl bg-muted" /></div>;
-  if (!fixture) return null;
+  if (isError || !fixture) return <PageError title="Match unavailable" description="This fixture may have been archived or could not be loaded." onRetry={() => void refetch()} action={<Button variant="outline" onClick={() => navigate("/league/fixtures")}>All fixtures</Button>} />;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
@@ -154,16 +170,16 @@ export function FixtureDetailPage() {
               <h2 className="text-base font-bold sm:text-xl">{fixture.homeTeam.shortName || fixture.homeTeam.name}</h2>
             </div>
             <div className="text-center">
-              {fixture.status === "COMPLETED" || fixture.status === "LIVE" || fixture.status === "HALF_TIME" || fixture.status === "PAUSED" ? (
+              {fixture.status === "COMPLETED" || isActiveMatch(fixture.status) ? (
                 <div className="text-3xl font-bold sm:text-5xl tabular-nums">
                   <AnimatedScore value={fixture.homeScore ?? 0} /> - <AnimatedScore value={fixture.awayScore ?? 0} />
                 </div>
               ) : (
                 <div className="text-2xl font-bold text-muted-foreground sm:text-3xl">VS</div>
               )}
-              {(fixture.status === "LIVE" || fixture.status === "PAUSED" || fixture.status === "HALF_TIME") && <p className="mt-1 text-xs font-semibold uppercase tracking-widest text-rose-300">LIVE · {Math.floor((fixture.matchClockSeconds || 0) / 60)}:{String((fixture.matchClockSeconds || 0) % 60).padStart(2, "0")}</p>}
+              {isActiveMatch(fixture.status) && <p className="mt-1 text-xs font-semibold uppercase tracking-widest text-rose-300">{fixture.status.replace("_", " ")} · {Math.floor((fixture.matchClockSeconds || 0) / 60)}:{String((fixture.matchClockSeconds || 0) % 60).padStart(2, "0")}</p>}
               <p className="mt-1 text-white/60 text-xs sm:mt-2 sm:text-sm">
-                {formatDate(fixture.matchDate)} • {fixture.kickoffTime || "TBD"}
+                {formatDate(fixtureDateKey(fixture))} · {fixture.kickoffTime || "TBD"}
               </p>
               {fixture.stadium && <p className="text-white/40 text-xs">{fixture.stadium}</p>}
             </div>
@@ -179,10 +195,10 @@ export function FixtureDetailPage() {
           {user && <div className="flex items-center gap-2"><Button variant={rsvp?.status === "GOING" ? "default" : "outline"} onClick={() => setRsvp("GOING")}>I’m going</Button><Button variant={rsvp?.status === "MAYBE" ? "default" : "outline"} onClick={() => setRsvp("MAYBE")}>Maybe</Button></div>}
         </div>
 
-        {(fixture.extraTimeHomeScore !== undefined || fixture.penaltiesHomeScore !== undefined || fixture.outcome === "WALKOVER" || fixture.outcome === "FORFEIT" || fixture.status === "POSTPONED") && (
+        {(fixture.extraTimeHomeScore != null || fixture.penaltiesHomeScore != null || fixture.outcome === "WALKOVER" || fixture.outcome === "FORFEIT" || fixture.status === "POSTPONED") && (
           <Card className="mb-8"><CardContent className="space-y-2 p-4 text-sm">
             {fixture.status === "POSTPONED" && <p className="font-medium text-amber-600">Postponed{fixture.postponementReason ? `: ${fixture.postponementReason}` : ""}</p>}
-            {(fixture.extraTimeHomeScore !== undefined || fixture.penaltiesHomeScore !== undefined) && <div className="flex flex-wrap gap-4"><span>After extra time: {fixture.extraTimeHomeScore ?? fixture.homeScore} - {fixture.extraTimeAwayScore ?? fixture.awayScore}</span>{fixture.penaltiesHomeScore !== undefined && <span>Penalties: {fixture.penaltiesHomeScore} - {fixture.penaltiesAwayScore}</span>}</div>}
+            {(fixture.extraTimeHomeScore != null || fixture.penaltiesHomeScore != null) && <div className="flex flex-wrap gap-4">{fixture.extraTimeHomeScore != null && fixture.extraTimeAwayScore != null && <span>After extra time: {fixture.extraTimeHomeScore} - {fixture.extraTimeAwayScore}</span>}{fixture.penaltiesHomeScore != null && fixture.penaltiesAwayScore != null && <span>Penalties: {fixture.penaltiesHomeScore} - {fixture.penaltiesAwayScore}</span>}</div>}
             {(fixture.outcome === "WALKOVER" || fixture.outcome === "FORFEIT") && <p className="font-medium">Result: {fixture.outcome.toLowerCase()}</p>}
           </CardContent></Card>
         )}

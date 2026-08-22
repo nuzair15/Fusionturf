@@ -75,7 +75,7 @@ export function generateRoundRobinPairings(teams: number): FixtureSlot[][] {
 // leagueWeeks validation in generateSeasonFixtures for what that caused.
 export function requiredLeagueWeeks(teamCount: number, matchesPerPair: number): number {
   const roundsPerLeg = teamCount % 2 === 0 ? teamCount - 1 : teamCount;
-  return matchesPerPair >= 2 ? roundsPerLeg * 2 : roundsPerLeg;
+  return roundsPerLeg * Math.max(1, Math.min(4, matchesPerPair));
 }
 
 export interface PlacedSlot {

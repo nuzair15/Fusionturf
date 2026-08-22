@@ -8,6 +8,7 @@ export interface User {
   role: UserRole;
   isActive: boolean;
   emailVerified: boolean;
+  mfaEnabled?: boolean;
   lastLoginAt?: string;
   createdAt: string;
 }
@@ -141,7 +142,10 @@ export interface Fixture {
   venueId?: string;
   venue?: Venue;
   matchDate: string;
+  scheduledDate?: string;
+  kickoffAt?: string | null;
   kickoffTime?: string;
+  version?: number;
   round?: number;
   status: MatchStatus;
   matchClockSeconds?: number;

@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from "express";
-import { v4 as uuidv4 } from "uuid";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import prisma from "../../config/database.js";
@@ -8,6 +7,8 @@ import { AppError } from "../../middleware/errorHandler.js";
 import { paginate, paginatedResponse, searchPlayerIds } from "../../utils/helpers.js";
 import { pick } from "../../utils/pick.js";
 import * as leagueSystem from "../../services/league-system.js";
+import { archiveResource } from "../../services/archive.js";
+import { assertSafeUrl, sanitizeRichText } from "../../utils/content-security.js";
 
 // CMS: news, gallery, sponsors, FAQs
 
@@ -17,11 +18,18 @@ const NEWS_WRITABLE_FIELDS = [
   "author", "isFeatured", "isPublished", "publishedAt",
 ] as const;
 
+function secureNewsData(body: unknown) {
+  const data: any = pick(body as any, NEWS_WRITABLE_FIELDS);
+  if (data.content !== undefined) data.content = sanitizeRichText(data.content);
+  if (data.imageUrl !== undefined) data.imageUrl = assertSafeUrl(data.imageUrl, "imageUrl");
+  return data;
+}
+
 export const getNews = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { page, limit, skip } = paginate(req.query);
     const { search } = req.query;
-    const where: any = {};
+    const where: any = { deletedAt: null };
     if (search) where.OR = [
       { title: { contains: search as string, mode: "insensitive" } },
       { author: { contains: search as string, mode: "insensitive" } },
@@ -44,7 +52,7 @@ export const getNews = async (req: Request, res: Response, next: NextFunction) =
 
 export const createNews = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const data: any = pick(req.body, NEWS_WRITABLE_FIELDS);
+    const data: any = secureNewsData(req.body);
     if (!data.title || !data.slug) throw new AppError("title and slug are required", 400);
     if (data.publishedAt) data.publishedAt = new Date(data.publishedAt);
     const news = await prisma.news.create({ data });
@@ -56,7 +64,7 @@ export const createNews = async (req: Request, res: Response, next: NextFunction
 
 export const updateNews = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const data: any = pick(req.body, NEWS_WRITABLE_FIELDS);
+    const data: any = secureNewsData(req.body);
     if (data.publishedAt) data.publishedAt = new Date(data.publishedAt);
     const news = await prisma.news.update({
       where: { id: req.params.id },
@@ -70,7 +78,7 @@ export const updateNews = async (req: Request, res: Response, next: NextFunction
 
 export const deleteNews = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await prisma.news.delete({ where: { id: req.params.id } });
+    await archiveResource({ type: "news", id: req.params.id, actorId: req.user?.userId, reason: req.body?.reason });
     res.status(204).send();
   } catch (error) {
     next(error);
@@ -84,6 +92,7 @@ const GALLERY_WRITABLE_FIELDS = [
 export const getGalleryItems = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const items = await prisma.gallery.findMany({
+      where: { deletedAt: null },
       orderBy: { createdAt: "desc" },
       take: 50,
     });
@@ -96,6 +105,8 @@ export const getGalleryItems = async (req: Request, res: Response, next: NextFun
 export const manageGallery = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data: any = pick(req.body, GALLERY_WRITABLE_FIELDS);
+    data.imageUrl = assertSafeUrl(data.imageUrl, "imageUrl");
+    if (data.videoUrl !== undefined) data.videoUrl = assertSafeUrl(data.videoUrl, "videoUrl");
     if (!data.title || !data.imageUrl) throw new AppError("title and imageUrl are required", 400);
     const item = await prisma.gallery.create({ data });
     res.status(201).json(item);
@@ -106,7 +117,7 @@ export const manageGallery = async (req: Request, res: Response, next: NextFunct
 
 export const deleteGalleryItem = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await prisma.gallery.delete({ where: { id: req.params.id } });
+    await archiveResource({ type: "gallery", id: req.params.id, actorId: req.user?.userId, reason: req.body?.reason });
     res.status(204).send();
   } catch (error) {
     next(error);
@@ -115,7 +126,10 @@ export const deleteGalleryItem = async (req: Request, res: Response, next: NextF
 
 export const updateGalleryItem = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const item = await prisma.gallery.update({ where: { id: req.params.id }, data: pick(req.body, GALLERY_WRITABLE_FIELDS) as any });
+    const data: any = pick(req.body, GALLERY_WRITABLE_FIELDS);
+    if (data.imageUrl !== undefined) data.imageUrl = assertSafeUrl(data.imageUrl, "imageUrl");
+    if (data.videoUrl !== undefined) data.videoUrl = assertSafeUrl(data.videoUrl, "videoUrl");
+    const item = await prisma.gallery.update({ where: { id: req.params.id }, data });
     res.json(item);
   } catch (error) {
     next(error);
@@ -127,6 +141,8 @@ const SPONSOR_WRITABLE_FIELDS = ["teamId", "name", "logoUrl", "website", "tier",
 export const manageSponsor = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data: any = pick(req.body, SPONSOR_WRITABLE_FIELDS);
+    data.logoUrl = assertSafeUrl(data.logoUrl, "logoUrl");
+    if (data.website !== undefined) data.website = assertSafeUrl(data.website, "website");
     if (!data.name || !data.logoUrl) throw new AppError("name and logoUrl are required", 400);
     const sponsor = await prisma.sponsor.create({ data });
     res.status(201).json(sponsor);
@@ -139,7 +155,12 @@ export const updateSponsor = async (req: Request, res: Response, next: NextFunct
   try {
     const sponsor = await prisma.sponsor.update({
       where: { id: req.params.id },
-      data: pick(req.body, SPONSOR_WRITABLE_FIELDS) as any,
+      data: (() => {
+        const data: any = pick(req.body, SPONSOR_WRITABLE_FIELDS);
+        if (data.logoUrl !== undefined) data.logoUrl = assertSafeUrl(data.logoUrl, "logoUrl");
+        if (data.website !== undefined) data.website = assertSafeUrl(data.website, "website");
+        return data;
+      })(),
     });
     res.json(sponsor);
   } catch (error) {
@@ -150,7 +171,7 @@ export const updateSponsor = async (req: Request, res: Response, next: NextFunct
 export const getSponsors = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { search } = req.query;
-    const where: any = {};
+    const where: any = { deletedAt: null };
     if (search) where.OR = [
       { name: { contains: search as string, mode: "insensitive" } },
     ];
@@ -163,7 +184,7 @@ export const getSponsors = async (req: Request, res: Response, next: NextFunctio
 
 export const deleteSponsor = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await prisma.sponsor.delete({ where: { id: req.params.id } });
+    await archiveResource({ type: "sponsor", id: req.params.id, actorId: req.user?.userId, reason: req.body?.reason });
     res.status(204).end();
   } catch (error) {
     next(error);
@@ -174,7 +195,7 @@ const FAQ_WRITABLE_FIELDS = ["question", "answer", "category", "order", "isActiv
 
 export const getFaqs = async (_req: Request, res: Response, next: NextFunction) => {
   try {
-    const items = await prisma.faq.findMany({ orderBy: { order: "asc" } });
+    const items = await prisma.faq.findMany({ where: { deletedAt: null }, orderBy: { order: "asc" } });
     res.json({ data: items });
   } catch (error) {
     next(error);
@@ -184,6 +205,7 @@ export const getFaqs = async (_req: Request, res: Response, next: NextFunction) 
 export const createFaq = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data: any = pick(req.body, FAQ_WRITABLE_FIELDS);
+    data.answer = sanitizeRichText(data.answer);
     if (!data.question || !data.answer) throw new AppError("question and answer are required", 400);
     const item = await prisma.faq.create({ data });
     res.status(201).json(item);
@@ -194,7 +216,9 @@ export const createFaq = async (req: Request, res: Response, next: NextFunction)
 
 export const updateFaq = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const item = await prisma.faq.update({ where: { id: req.params.id }, data: pick(req.body, FAQ_WRITABLE_FIELDS) as any });
+    const data: any = pick(req.body, FAQ_WRITABLE_FIELDS);
+    if (data.answer !== undefined) data.answer = sanitizeRichText(data.answer);
+    const item = await prisma.faq.update({ where: { id: req.params.id }, data });
     res.json(item);
   } catch (error) {
     next(error);
@@ -203,7 +227,7 @@ export const updateFaq = async (req: Request, res: Response, next: NextFunction)
 
 export const deleteFaq = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await prisma.faq.delete({ where: { id: req.params.id } });
+    await archiveResource({ type: "faq", id: req.params.id, actorId: req.user?.userId, reason: req.body?.reason });
     res.status(204).end();
   } catch (error) {
     next(error);

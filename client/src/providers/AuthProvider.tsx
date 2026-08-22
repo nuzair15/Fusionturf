@@ -5,9 +5,9 @@ import type { User } from "@/types";
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, otp?: string) => Promise<{ mfaRequired?: boolean; mfaSetupRequired?: boolean; setupToken?: string }>;
   register: (data: { email: string; password: string; firstName: string; lastName: string; phone?: string }) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   isAuthenticated: boolean;
 }
 
@@ -21,6 +21,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const autoLogin = async () => {
       try {
         if (api.isAuthenticated()) {
+          await api.bootstrapCsrf();
           const me = await api.getMe();
           setUser(me);
         }
@@ -42,9 +43,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("fusion-auth-expired", onAuthExpired);
   }, []);
 
-  const login = async (email: string, password: string) => {
-    const res = await api.login(email, password);
-    setUser(res.user);
+  const login = async (email: string, password: string, otp?: string) => {
+    const res = await api.login(email, password, otp);
+    if (res.user) setUser(res.user);
+    return res;
   };
 
   const register = async (data: { email: string; password: string; firstName: string; lastName: string; phone?: string }) => {
@@ -52,8 +54,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(res.user);
   };
 
-  const logout = () => {
-    api.logout();
+  const logout = async () => {
+    await api.logout();
     setUser(null);
   };
 

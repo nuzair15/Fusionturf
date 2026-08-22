@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from "express";
-import { v4 as uuidv4 } from "uuid";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import prisma from "../../config/database.js";
@@ -8,6 +7,7 @@ import { AppError } from "../../middleware/errorHandler.js";
 import { paginate, paginatedResponse, searchPlayerIds } from "../../utils/helpers.js";
 import { pick } from "../../utils/pick.js";
 import * as leagueSystem from "../../services/league-system.js";
+import { archiveResource } from "../../services/archive.js";
 
 // Season awards, nominations, and winner announcements
 
@@ -27,6 +27,7 @@ const AWARD_WRITABLE_FIELDS = [
 export const getAwards = async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const awards = await prisma.award.findMany({
+      where: { deletedAt: null },
       include: { winner: { select: { firstName: true, lastName: true, photoUrl: true } }, winnerTeam: { select: { name: true, logoUrl: true } }, _count: { select: { votes: true, nominations: true } } },
       orderBy: { name: "asc" },
     });
@@ -66,7 +67,7 @@ export const updateAward = async (req: Request, res: Response, next: NextFunctio
 
 export const deleteAward = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await prisma.award.delete({ where: { id: req.params.id } });
+    await archiveResource({ type: "award", id: req.params.id, actorId: req.user?.userId, reason: req.body?.reason });
     res.status(204).end();
   } catch (error) {
     next(error);

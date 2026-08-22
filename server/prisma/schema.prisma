@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   // Restrict downloaded query-engine binaries to what's actually used:
   // "native" covers local dev on whatever OS you're developing on, and
   // "linux-musl-openssl-3.0.x" covers the Alpine-based Docker image this
@@ -102,6 +102,55 @@ enum FixtureCompetition {
   OTHER
 }
 
+// New v2 domain enums are additive. Legacy v1 tables continue to operate
+// while data is backfilled into the permanent-identity/event-stream model.
+enum RegistrationStatus {
+  ACTIVE
+  SUSPENDED
+  RELEASED
+  EXPIRED
+}
+
+enum SchedulePreviewStatus {
+  DRAFT
+  PUBLISHED
+  EXPIRED
+  FAILED
+}
+
+enum MatchEventType {
+  GOAL
+  OWN_GOAL
+  PENALTY_GOAL
+  ASSIST
+  YELLOW_CARD
+  SECOND_YELLOW
+  RED_CARD
+  SUBSTITUTION
+  NOTE
+  CLOCK
+  STATE_CHANGE
+  CORRECTION
+  REVERSAL
+  SETTLEMENT
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  DELIVERED
+  FAILED
+  DEAD_LETTER
+}
+
+enum LedgerEntryType {
+  PAYMENT_CAPTURED
+  PAYMENT_REFUNDED
+  PAYMENT_ADJUSTED
+  COUPON_REDEEMED
+  COUPON_RELEASED
+}
+
 // ──────────────────────────────────────────────────────────────
 // USER & AUTH
 // ──────────────────────────────────────────────────────────────
@@ -117,40 +166,48 @@ model User {
   role          UserRole  @default(CUSTOMER)
   isActive      Boolean   @default(true)
   emailVerified Boolean   @default(false)
+  mfaEnabled    Boolean   @default(false)
+  mfaSecret     String?
+  mfaEnrolledAt DateTime?
   lastLoginAt   DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  bookings          Booking[]
-  payments          Payment[]
-  reviews           Review[]
-  votes             Vote[]
-  notifications     Notification[]
-  activityLogs      ActivityLog[]
-  comments          MatchComment[]
-  refreshTokens     RefreshToken[]
-  sentNotifications Notification[] @relation("SentNotifications")
-  follows           UserFollow[]
-  matchRsvps        MatchRsvp[]
-  pollVotes         PollVote[]
-  managedAwards     Award[]        @relation("ManagedAwards")
-  managedSeasons    Season[]       @relation("ManagedSeasons")
-  managedTeams      Team[]         @relation("ManagedTeams")
+  bookings             Booking[]
+  payments             Payment[]
+  reviews              Review[]
+  votes                Vote[]
+  notifications        Notification[]
+  activityLogs         ActivityLog[]
+  comments             MatchComment[]
+  refreshTokens        RefreshToken[]
+  sentNotifications    Notification[]        @relation("SentNotifications")
+  follows              UserFollow[]
+  matchRsvps           MatchRsvp[]
+  pollVotes            PollVote[]
+  managedAwards        Award[]               @relation("ManagedAwards")
+  managedSeasons       Season[]              @relation("ManagedSeasons")
+  managedTeams         Team[]                @relation("ManagedTeams")
   matchResultRevisions MatchResultRevision[]
-  playerTransfers   PlayerTransfer[]
+  playerTransfers      PlayerTransfer[]
 
   @@map("users")
 }
 
 model RefreshToken {
-  id        String   @id @default(uuid())
-  token     String   @unique
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+  id         String    @id @default(uuid())
+  token      String    @unique
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  userAgent  String?
+  ipAddress  String?
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
 
   @@index([userId])
+  @@index([expiresAt, revokedAt])
   @@map("refresh_tokens")
 }
 
@@ -186,14 +243,14 @@ model RolePermission {
 // ──────────────────────────────────────────────────────────────
 
 model Venue {
-  id                     String   @id @default(uuid())
+  id                     String    @id @default(uuid())
   name                   String
-  slug                   String   @unique
+  slug                   String    @unique
   description            String?
   address                String
   city                   String
   state                  String
-  country                String   @default("India")
+  country                String    @default("India")
   zipCode                String?
   latitude               Float?
   longitude              Float?
@@ -203,13 +260,17 @@ model Venue {
   logo                   String?
   rules                  String?
   faqs                   Json?
-  isActive               Boolean  @default(true)
-  openingTime            String   @default("06:00")
-  closingTime            String   @default("22:00")
+  isActive               Boolean   @default(true)
+  openingTime            String    @default("06:00")
+  closingTime            String    @default("22:00")
   lastBookingTime        String? // latest time a booking can start; defaults to closingTime when null
   bookingMessageTemplate String? // WhatsApp message template for bookings
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  timezone               String    @default("Asia/Kolkata")
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  deletedAt              DateTime?
+  deletedById            String?
+  deleteReason           String?
 
   turfs            Turf[]
   gallery          VenueGallery[]
@@ -219,6 +280,7 @@ model Venue {
   blockedDates     BlockedDate[]
   pricingOverrides PricingOverride[]
 
+  @@index([deletedAt])
   @@map("venues")
 }
 
@@ -236,42 +298,51 @@ model VenueWorkingHour {
 }
 
 model Turf {
-  id              String   @id @default(uuid())
+  id              String    @id @default(uuid())
   venueId         String
-  venue           Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  venue           Venue     @relation(fields: [venueId], references: [id], onDelete: Cascade)
   name            String
   description     String?
   size            String? // 5-a-side, 7-a-side, 11-a-side
   surface         String? // Natural, Artificial, etc.
-  isActive        Boolean  @default(true)
-  basePrice       Int      @default(500) // price in cents
-  peakPrice       Int      @default(1000)
-  weekendPrice    Int      @default(800)
-  halfHourBilling Boolean  @default(false) // bill in 30-min increments (each = half hourly rate)
+  isActive        Boolean   @default(true)
+  basePrice       Int       @default(500) // price in cents
+  peakPrice       Int       @default(1000)
+  weekendPrice    Int       @default(800)
+  halfHourBilling Boolean   @default(false) // bill in 30-min increments (each = half hourly rate)
   imageUrl        String?
-  capacity        Int      @default(22)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  capacity        Int       @default(22)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+  deletedById     String?
+  deleteReason    String?
 
   bookings           Booking[]
   slotAvailabilities SlotAvailability[]
   services           AdditionalService[]
 
+  @@index([deletedAt])
   @@map("turfs")
 }
 
 model AdditionalService {
-  id          String   @id @default(uuid())
-  turfId      String
-  turf        Turf     @relation(fields: [turfId], references: [id], onDelete: Cascade)
-  name        String
-  description String?
-  price       Int      @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
+  id           String    @id @default(uuid())
+  turfId       String
+  turf         Turf      @relation(fields: [turfId], references: [id], onDelete: Cascade)
+  name         String
+  description  String?
+  price        Int       @default(0)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+  deletedById  String?
+  deleteReason String?
 
   bookingServices BookingService[]
 
+  @@index([deletedAt])
   @@map("additional_services")
 }
 
@@ -318,39 +389,55 @@ model PricingOverride {
 }
 
 model Booking {
-  id                 String            @id @default(uuid())
-  bookingNumber      String            @unique
-  userId             String
-  user               User              @relation(fields: [userId], references: [id])
-  turfId             String
-  turf               Turf              @relation(fields: [turfId], references: [id])
-  slotId             String?           @unique
-  slot               SlotAvailability? @relation(fields: [slotId], references: [id])
-  date               DateTime
-  startTime          String
-  endTime            String
-  duration           Int               @default(60) // minutes
-  numPlayers         Int               @default(10)
-  totalAmount        Int               @default(0)
-  discountAmount     Int               @default(0)
-  couponCode         String?
-  customerEmail      String?
-  status             BookingStatus     @default(PENDING)
-  notes              String?
-  qrCodeData         String?
-  cancellationReason String?
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+  id                  String            @id @default(uuid())
+  bookingNumber       String            @unique
+  userId              String?
+  user                User?             @relation(fields: [userId], references: [id])
+  turfId              String
+  turf                Turf              @relation(fields: [turfId], references: [id])
+  slotId              String?           @unique
+  slot                SlotAvailability? @relation(fields: [slotId], references: [id])
+  date                DateTime
+  startTime           String
+  endTime             String
+  duration            Int               @default(60) // minutes
+  numPlayers          Int               @default(10)
+  totalAmount         Int               @default(0)
+  discountAmount      Int               @default(0)
+  couponCode          String?
+  customerName        String?
+  customerPhone       String?
+  customerEmail       String?
+  startAt             DateTime?
+  endAt               DateTime?
+  quoteSnapshot       Json?
+  idempotencyKey      String?           @unique
+  guestTokenHash      String?           @unique
+  guestTokenExpiresAt DateTime?
+  status              BookingStatus     @default(PENDING)
+  blocksAvailability  Boolean           @default(true)
+  notes               String?
+  qrCodeData          String?
+  cancellationReason  String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  deletedAt           DateTime?
+  deletedById         String?
+  deleteReason        String?
 
-  payments        Payment[]
-  bookingServices BookingService[]
-  reviews         Review[]
+  payments          Payment[]
+  bookingServices   BookingService[]
+  reviews           Review[]
+  ledgerEntries     PaymentLedgerEntry[]
+  couponRedemptions CouponRedemption[]
 
   @@index([userId])
   @@index([turfId])
   @@index([turfId, date, status])
   @@index([date])
   @@index([status])
+  @@index([deletedAt])
+  @@index([turfId, startAt, endAt])
   @@map("bookings")
 }
 
@@ -370,8 +457,8 @@ model Payment {
   id              String        @id @default(uuid())
   bookingId       String
   booking         Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  userId          String
-  user            User          @relation(fields: [userId], references: [id])
+  userId          String?
+  user            User?         @relation(fields: [userId], references: [id])
   amount          Int           @default(0)
   currency        String        @default("INR")
   status          PaymentStatus @default(PENDING)
@@ -380,12 +467,37 @@ model Payment {
   stripePaymentId String?
   refundAmount    Int           @default(0)
   refundReason    String?
+  capturedAt      DateTime?
+  refundedAt      DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+
+  ledgerEntries PaymentLedgerEntry[]
 
   @@index([bookingId])
   @@index([userId])
   @@map("payments")
+}
+
+// Immutable accounting entries are the source for revenue and refund totals.
+// The legacy Payment status/amount columns remain as a v1 compatibility view.
+model PaymentLedgerEntry {
+  id             String          @id @default(uuid())
+  bookingId      String
+  booking        Booking         @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  paymentId      String?
+  payment        Payment?        @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  type           LedgerEntryType
+  amount         Int
+  currency       String          @default("INR")
+  idempotencyKey String          @unique
+  metadata       Json?
+  createdById    String?
+  createdAt      DateTime        @default(now())
+
+  @@index([bookingId, createdAt])
+  @@index([type, createdAt])
+  @@map("payment_ledger_entries")
 }
 
 model Coupon {
@@ -400,24 +512,50 @@ model Coupon {
   isActive      Boolean   @default(true)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  deletedById   String?
+  deleteReason  String?
 
+  redemptions CouponRedemption[]
+
+  @@index([deletedAt])
   @@map("coupons")
 }
 
+model CouponRedemption {
+  id             String    @id @default(uuid())
+  couponId       String
+  coupon         Coupon    @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  bookingId      String
+  booking        Booking   @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  discountAmount Int
+  releasedAt     DateTime?
+  idempotencyKey String    @unique
+  createdAt      DateTime  @default(now())
+
+  @@unique([couponId, bookingId])
+  @@index([couponId, releasedAt])
+  @@map("coupon_redemptions")
+}
+
 model Review {
-  id         String   @id @default(uuid())
-  bookingId  String?
-  booking    Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
-  venueId    String
-  venue      Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
-  userId     String
-  user       User     @relation(fields: [userId], references: [id])
-  rating     Int      @default(5)
-  comment    String?
-  isApproved Boolean  @default(false)
-  createdAt  DateTime @default(now())
+  id           String    @id @default(uuid())
+  bookingId    String?
+  booking      Booking?  @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  venueId      String
+  venue        Venue     @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  rating       Int       @default(5)
+  comment      String?
+  isApproved   Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  deletedAt    DateTime?
+  deletedById  String?
+  deleteReason String?
 
   @@unique([userId, venueId])
+  @@index([deletedAt])
   @@map("reviews")
 }
 
@@ -459,6 +597,9 @@ model Season {
   managedBy              User?     @relation("ManagedSeasons", fields: [managedById], references: [id])
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
+  deletedAt              DateTime?
+  deletedById            String?
+  deleteReason           String?
 
   teams               Team[]
   players             Player[]
@@ -473,36 +614,165 @@ model Season {
   friendlyPlayerStats FriendlyPlayerStat[]
   news                News[]
   galleries           Gallery[]
-  transfersFromSeason PlayerTransfer[] @relation("TransfersFromSeason")
-  transfersToSeason   PlayerTransfer[] @relation("TransfersToSeason")
+  transfersFromSeason PlayerTransfer[]         @relation("TransfersFromSeason")
+  transfersToSeason   PlayerTransfer[]         @relation("TransfersToSeason")
+  seasonClubs         SeasonClub[]
+  registrations       PlayerRegistration[]
+  schedulePreviews    FixtureGenerationBatch[]
 
+  @@index([deletedAt])
   @@map("seasons")
 }
 
 model Competition {
-  id        String             @id @default(uuid())
-  seasonId  String
-  season    Season             @relation(fields: [seasonId], references: [id], onDelete: Cascade)
-  name      String
-  slug      String
-  type      FixtureCompetition @default(LEAGUE)
-  isActive  Boolean            @default(true)
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
-  bracketSize Int?
-  bracketStatus String @default("NOT_STARTED")
+  id            String             @id @default(uuid())
+  seasonId      String
+  season        Season             @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  name          String
+  slug          String
+  type          FixtureCompetition @default(LEAGUE)
+  isActive      Boolean            @default(true)
+  timezone      String             @default("Asia/Kolkata")
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  bracketSize   Int?
+  bracketStatus String             @default("NOT_STARTED")
+  deletedAt     DateTime?
+  deletedById   String?
+  deleteReason  String?
 
-  fixtures Fixture[]
-  bracketMatches BracketMatch[]
+  fixtures           Fixture[]
+  bracketMatches     BracketMatch[]
+  entries            CompetitionEntry[]
+  ruleSets           CompetitionRuleSet[]
+  registrations      PlayerRegistration[]
+  projectionVersions ProjectionVersion[]
+  schedulePreviews   FixtureGenerationBatch[]
+  suspensions        Suspension[]
 
   @@unique([seasonId, slug])
+  @@index([deletedAt])
   @@map("competitions")
 }
 
-model Team {
-  id           String   @id @default(uuid())
+// Permanent club identity. Team remains the v1 season-scoped representation
+// until every controller has moved to SeasonClub/CompetitionEntry.
+model Club {
+  id           String    @id @default(uuid())
+  name         String
+  slug         String    @unique
+  shortName    String?
+  logoUrl      String?
+  coverUrl     String?
+  city         String?
+  foundedYear  Int?
+  homeStadium  String?
+  description  String?
+  history      String?
+  achievements Json?
+  website      String?
+  socialLinks  Json?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+  deletedById  String?
+  deleteReason String?
+
+  seasonClubs         SeasonClub[]
+  competitionEntries  CompetitionEntry[]
+  teams               Team[]
+  playerRegistrations PlayerRegistration[]
+  staffRegistrations  StaffRegistration[]
+
+  @@index([deletedAt])
+  @@map("clubs")
+}
+
+model SeasonClub {
+  id           String             @id @default(uuid())
   seasonId     String
-  season       Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  season       Season             @relation(fields: [seasonId], references: [id], onDelete: Restrict)
+  clubId       String
+  club         Club               @relation(fields: [clubId], references: [id], onDelete: Restrict)
+  teamId       String?            @unique
+  team         Team?              @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  status       RegistrationStatus @default(ACTIVE)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  deletedAt    DateTime?
+  deletedById  String?
+  deleteReason String?
+
+  @@unique([seasonId, clubId])
+  @@index([deletedAt])
+  @@map("season_clubs")
+}
+
+model CompetitionEntry {
+  id            String             @id @default(uuid())
+  competitionId String
+  competition   Competition        @relation(fields: [competitionId], references: [id], onDelete: Restrict)
+  clubId        String
+  club          Club               @relation(fields: [clubId], references: [id], onDelete: Restrict)
+  teamId        String?
+  team          Team?              @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  seed          Int?
+  status        RegistrationStatus @default(ACTIVE)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  deletedAt     DateTime?
+  deletedById   String?
+  deleteReason  String?
+
+  homeFixtures Fixture[] @relation("HomeCompetitionEntry")
+  awayFixtures Fixture[] @relation("AwayCompetitionEntry")
+
+  @@unique([competitionId, clubId])
+  @@unique([competitionId, teamId])
+  @@index([deletedAt])
+  @@map("competition_entries")
+}
+
+model CompetitionRuleSet {
+  id                      String      @id @default(uuid())
+  competitionId           String
+  competition             Competition @relation(fields: [competitionId], references: [id], onDelete: Restrict)
+  version                 Int
+  isActive                Boolean     @default(false)
+  format                  String      @default("ROUND_ROBIN")
+  legs                    Int         @default(2)
+  teamSize                Int         @default(6)
+  starterLimit            Int         @default(6)
+  substituteLimit         Int         @default(2)
+  substitutionLimit       Int         @default(2)
+  matchDurationMinutes    Int         @default(90)
+  extraTimeEnabled        Boolean     @default(false)
+  extraTimeMinutes        Int         @default(30)
+  penaltiesEnabled        Boolean     @default(true)
+  pointsForWin            Int         @default(3)
+  pointsForDraw           Int         @default(1)
+  pointsForLoss           Int         @default(0)
+  tieBreakers             Json        @default("[\"HEAD_TO_HEAD_POINTS\",\"HEAD_TO_HEAD_GOAL_DIFFERENCE\",\"GOAL_DIFFERENCE\",\"GOALS_FOR\",\"TEAM_NAME\"]")
+  yellowCardThreshold     Int         @default(2)
+  yellowSuspensionMatches Int         @default(1)
+  suspensionScope         String      @default("COMPETITION")
+  minimumRestHours        Int         @default(24)
+  postseasonRules         Json        @default("{}")
+  createdById             String?
+  createdAt               DateTime    @default(now())
+
+  @@unique([competitionId, version])
+  @@index([competitionId, isActive])
+  @@map("competition_rule_sets")
+}
+
+model Team {
+  id           String    @id @default(uuid())
+  seasonId     String
+  season       Season    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  clubId       String?
+  club         Club?     @relation(fields: [clubId], references: [id], onDelete: Restrict)
   name         String
   slug         String
   shortName    String?
@@ -516,12 +786,15 @@ model Team {
   achievements Json?
   website      String?
   socialLinks  Json?
-  status       String   @default("active")
-  isActive     Boolean  @default(true)
+  status       String    @default("active")
+  isActive     Boolean   @default(true)
   managedById  String?
-  managedBy    User?    @relation("ManagedTeams", fields: [managedById], references: [id])
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  managedBy    User?     @relation("ManagedTeams", fields: [managedById], references: [id])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+  deletedById  String?
+  deleteReason String?
 
   homeMatches           Fixture[]            @relation("HomeTeam")
   awayMatches           Fixture[]            @relation("AwayTeam")
@@ -543,19 +816,127 @@ model Team {
   bracketHomeMatches    BracketMatch[]       @relation("BracketHomeTeam")
   bracketAwayMatches    BracketMatch[]       @relation("BracketAwayTeam")
   bracketWins           BracketMatch[]       @relation("BracketWinner")
-  transfersFrom         PlayerTransfer[]      @relation("TransfersFrom")
-  transfersTo           PlayerTransfer[]      @relation("TransfersTo")
+  transfersFrom         PlayerTransfer[]     @relation("TransfersFrom")
+  transfersTo           PlayerTransfer[]     @relation("TransfersTo")
+  seasonClub            SeasonClub?
+  competitionEntries    CompetitionEntry[]
+  playerRegistrations   PlayerRegistration[]
 
   @@unique([seasonId, slug])
+  @@index([clubId])
+  @@index([deletedAt])
   @@map("teams")
 }
 
+// Permanent person identity. The legacy Player model remains a season record
+// and links here during the compatibility release.
+model PlayerProfile {
+  id            String    @id @default(uuid())
+  slug          String    @unique
+  firstName     String
+  lastName      String
+  nationality   String?
+  dateOfBirth   DateTime?
+  height        Int?
+  weight        Int?
+  preferredFoot String?
+  photoUrl      String?
+  biography     String?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  deletedById   String?
+  deleteReason  String?
+
+  legacyPlayers Player[]
+  registrations PlayerRegistration[]
+
+  @@index([deletedAt])
+  @@map("player_profiles")
+}
+
+model PlayerRegistration {
+  id              String             @id @default(uuid())
+  playerProfileId String
+  playerProfile   PlayerProfile      @relation(fields: [playerProfileId], references: [id], onDelete: Restrict)
+  seasonId        String
+  season          Season             @relation(fields: [seasonId], references: [id], onDelete: Restrict)
+  competitionId   String?
+  competition     Competition?       @relation(fields: [competitionId], references: [id], onDelete: Restrict)
+  clubId          String
+  club            Club               @relation(fields: [clubId], references: [id], onDelete: Restrict)
+  teamId          String?
+  team            Team?              @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  validFrom       DateTime
+  validTo         DateTime?
+  jerseyNumber    Int?
+  position        String?
+  status          RegistrationStatus @default(ACTIVE)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  deletedAt       DateTime?
+  deletedById     String?
+  deleteReason    String?
+
+  @@unique([playerProfileId, seasonId, validFrom])
+  @@index([clubId, validFrom, validTo])
+  @@index([competitionId, status])
+  @@index([deletedAt])
+  @@map("player_registrations")
+}
+
+model StaffProfile {
+  id           String    @id @default(uuid())
+  slug         String    @unique
+  firstName    String
+  lastName     String
+  photoUrl     String?
+  biography    String?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+  deletedById  String?
+  deleteReason String?
+
+  legacyStaff   Staff[]
+  registrations StaffRegistration[]
+
+  @@index([deletedAt])
+  @@map("staff_profiles")
+}
+
+model StaffRegistration {
+  id             String             @id @default(uuid())
+  staffProfileId String
+  staffProfile   StaffProfile       @relation(fields: [staffProfileId], references: [id], onDelete: Restrict)
+  clubId         String
+  club           Club               @relation(fields: [clubId], references: [id], onDelete: Restrict)
+  teamId         String?
+  validFrom      DateTime
+  validTo        DateTime?
+  role           String
+  status         RegistrationStatus @default(ACTIVE)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  deletedAt      DateTime?
+  deletedById    String?
+  deleteReason   String?
+
+  @@index([clubId, validFrom, validTo])
+  @@index([deletedAt])
+  @@map("staff_registrations")
+}
+
 model Player {
-  id            String     @id @default(uuid())
+  id            String         @id @default(uuid())
   seasonId      String
-  season        Season     @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  season        Season         @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  profileId     String?
+  profile       PlayerProfile? @relation(fields: [profileId], references: [id], onDelete: Restrict)
   teamId        String?
-  team          Team?      @relation(fields: [teamId], references: [id])
+  team          Team?          @relation(fields: [teamId], references: [id])
   firstName     String
   lastName      String
   slug          String
@@ -570,9 +951,12 @@ model Player {
   photoUrl      String?
   biography     String?
   squadType     SquadType? // STARTER, SUBSTITUTE, RESERVE
-  isActive      Boolean    @default(true)
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  deletedAt     DateTime?
+  deletedById   String?
+  deleteReason  String?
 
   homeStats          PlayerStat[]
   goals              Goal[]
@@ -599,20 +983,29 @@ model Player {
 
   @@unique([seasonId, slug])
   @@index([teamId])
+  @@index([profileId])
+  @@index([deletedAt])
   @@map("players")
 }
 
 model Staff {
-  id        String   @id @default(uuid())
-  teamId    String
-  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  firstName String
-  lastName  String
-  role      String // Coach, Assistant Coach, Physio, Manager, etc.
-  photoUrl  String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String        @id @default(uuid())
+  teamId       String
+  team         Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  profileId    String?
+  profile      StaffProfile? @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  firstName    String
+  lastName     String
+  role         String // Coach, Assistant Coach, Physio, Manager, etc.
+  photoUrl     String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  deletedAt    DateTime?
+  deletedById  String?
+  deleteReason String?
 
+  @@index([profileId])
+  @@index([deletedAt])
   @@map("staff")
 }
 
@@ -621,26 +1014,35 @@ model Staff {
 // ──────────────────────────────────────────────────────────────
 
 model Fixture {
-  id                     String       @id @default(uuid())
+  id                     String                  @id @default(uuid())
   seasonId               String
-  season                 Season       @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  season                 Season                  @relation(fields: [seasonId], references: [id], onDelete: Cascade)
   competitionId          String?
-  competition            Competition? @relation(fields: [competitionId], references: [id])
+  competition            Competition?            @relation(fields: [competitionId], references: [id])
+  homeEntryId            String?
+  homeEntry              CompetitionEntry?       @relation("HomeCompetitionEntry", fields: [homeEntryId], references: [id], onDelete: Restrict)
+  awayEntryId            String?
+  awayEntry              CompetitionEntry?       @relation("AwayCompetitionEntry", fields: [awayEntryId], references: [id], onDelete: Restrict)
   homeTeamId             String
-  homeTeam               Team         @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  homeTeam               Team                    @relation("HomeTeam", fields: [homeTeamId], references: [id])
   awayTeamId             String
-  awayTeam               Team         @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  awayTeam               Team                    @relation("AwayTeam", fields: [awayTeamId], references: [id])
   venueId                String?
-  venue                  Venue?       @relation(fields: [venueId], references: [id])
+  venue                  Venue?                  @relation(fields: [venueId], references: [id])
   matchDate              DateTime
+  scheduledDate          String?
   kickoffTime            String?
+  kickoffAt              DateTime?
   round                  Int?
   leagueWeek             Int?
-  isGrandFinal           Boolean      @default(false)
-  isRelegationPlayoff    Boolean      @default(false)
-  isFriendly             Boolean      @default(false)
-  status                 MatchStatus  @default(SCHEDULED)
-  matchClockSeconds      Int          @default(0)
+  isGrandFinal           Boolean                 @default(false)
+  isRelegationPlayoff    Boolean                 @default(false)
+  isFriendly             Boolean                 @default(false)
+  status                 MatchStatus             @default(SCHEDULED)
+  version                Int                     @default(0)
+  resultSourceVersion    Int                     @default(0)
+  finalizedAt            DateTime?
+  matchClockSeconds      Int                     @default(0)
   matchClockStartedAt    DateTime?
   homeScore              Int?
   awayScore              Int?
@@ -669,15 +1071,15 @@ model Fixture {
   extraTimeAwayScore     Int?
   penaltiesHomeScore     Int?
   penaltiesAwayScore     Int?
-  winnerTeamId            String?
-  outcome                String       @default("REGULAR") // REGULAR, WALKOVER, FORFEIT
+  winnerTeamId           String?
+  outcome                String                  @default("REGULAR") // REGULAR, WALKOVER, FORFEIT
   attendance             Int?
   stadium                String?
   matchReport            String?
   highlights             String?
   manOfTheMatchId        String?
-  manOfTheMatch          Player?      @relation(fields: [manOfTheMatchId], references: [id])
-  isFeatured             Boolean      @default(false)
+  manOfTheMatch          Player?                 @relation(fields: [manOfTheMatchId], references: [id])
+  isFeatured             Boolean                 @default(false)
   // Tracks whether serveSuspension()/processSuspensions() have successfully
   // run for this fixture, independent of `status`. Gating that step on
   // `status === COMPLETED` alone meant a partial-failure retry (e.g. the
@@ -685,8 +1087,13 @@ model Fixture {
   // silently skip suspension processing forever, since status would no
   // longer look "newly completed" on retry.
   suspensionsProcessedAt DateTime?
-  createdAt              DateTime     @default(now())
-  updatedAt              DateTime     @updatedAt
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  deletedAt              DateTime?
+  deletedById            String?
+  deleteReason           String?
+  generationBatchId      String?
+  generationBatch        FixtureGenerationBatch? @relation(fields: [generationBatchId], references: [id], onDelete: SetNull)
 
   goals              Goal[]
   assists            Assist[]
@@ -702,6 +1109,7 @@ model Fixture {
   rsvps              MatchRsvp[]
   polls              Poll[]
   resultRevisions    MatchResultRevision[]
+  eventStream        MatchEvent[]
   bracketMatch       BracketMatch?
 
   @@index([seasonId])
@@ -709,25 +1117,51 @@ model Fixture {
   @@index([awayTeamId])
   @@index([matchDate])
   @@index([status])
+  @@index([deletedAt])
+  @@index([scheduledDate, kickoffAt, id])
+  @@index([generationBatchId])
+  @@index([homeEntryId])
+  @@index([awayEntryId])
   @@map("fixtures")
 }
 
+model FixtureGenerationBatch {
+  id            String                @id @default(uuid())
+  seasonId      String
+  season        Season                @relation(fields: [seasonId], references: [id], onDelete: Restrict)
+  competitionId String
+  competition   Competition           @relation(fields: [competitionId], references: [id], onDelete: Restrict)
+  status        SchedulePreviewStatus @default(DRAFT)
+  input         Json
+  diff          Json
+  requestedById String?
+  expiresAt     DateTime?
+  publishedAt   DateTime?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  fixtures Fixture[]
+
+  @@index([competitionId, status, createdAt])
+  @@map("fixture_generation_batches")
+}
+
 model BracketMatch {
-  id             String      @id @default(uuid())
-  competitionId  String
-  competition    Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
-  roundNumber    Int
-  position       Int
-  fixtureId      String?     @unique
-  fixture        Fixture?    @relation(fields: [fixtureId], references: [id], onDelete: SetNull)
-  homeTeamId     String?
-  homeTeam       Team?       @relation("BracketHomeTeam", fields: [homeTeamId], references: [id], onDelete: SetNull)
-  awayTeamId     String?
-  awayTeam       Team?       @relation("BracketAwayTeam", fields: [awayTeamId], references: [id], onDelete: SetNull)
-  winnerTeamId   String?
-  winnerTeam     Team?       @relation("BracketWinner", fields: [winnerTeamId], references: [id], onDelete: SetNull)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  id            String      @id @default(uuid())
+  competitionId String
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  roundNumber   Int
+  position      Int
+  fixtureId     String?     @unique
+  fixture       Fixture?    @relation(fields: [fixtureId], references: [id], onDelete: SetNull)
+  homeTeamId    String?
+  homeTeam      Team?       @relation("BracketHomeTeam", fields: [homeTeamId], references: [id], onDelete: SetNull)
+  awayTeamId    String?
+  awayTeam      Team?       @relation("BracketAwayTeam", fields: [awayTeamId], references: [id], onDelete: SetNull)
+  winnerTeamId  String?
+  winnerTeam    Team?       @relation("BracketWinner", fields: [winnerTeamId], references: [id], onDelete: SetNull)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   @@unique([competitionId, roundNumber, position])
   @@index([competitionId, roundNumber])
@@ -735,20 +1169,20 @@ model BracketMatch {
 }
 
 model PlayerTransfer {
-  id           String   @id @default(uuid())
-  playerId     String
-  player       Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  fromTeamId   String?
-  fromTeam     Team?    @relation("TransfersFrom", fields: [fromTeamId], references: [id], onDelete: SetNull)
-  toTeamId     String?
-  toTeam       Team?    @relation("TransfersTo", fields: [toTeamId], references: [id], onDelete: SetNull)
-  fromSeasonId String?
-  fromSeason   Season?  @relation("TransfersFromSeason", fields: [fromSeasonId], references: [id], onDelete: SetNull)
-  toSeasonId   String?
-  toSeason     Season?  @relation("TransfersToSeason", fields: [toSeasonId], references: [id], onDelete: SetNull)
-  reason       String?
-  createdById  String?
-  createdBy    User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  id            String   @id @default(uuid())
+  playerId      String
+  player        Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  fromTeamId    String?
+  fromTeam      Team?    @relation("TransfersFrom", fields: [fromTeamId], references: [id], onDelete: SetNull)
+  toTeamId      String?
+  toTeam        Team?    @relation("TransfersTo", fields: [toTeamId], references: [id], onDelete: SetNull)
+  fromSeasonId  String?
+  fromSeason    Season?  @relation("TransfersFromSeason", fields: [fromSeasonId], references: [id], onDelete: SetNull)
+  toSeasonId    String?
+  toSeason      Season?  @relation("TransfersToSeason", fields: [toSeasonId], references: [id], onDelete: SetNull)
+  reason        String?
+  createdById   String?
+  createdBy     User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
   transferredAt DateTime @default(now())
 
   @@index([playerId, transferredAt])
@@ -756,20 +1190,137 @@ model PlayerTransfer {
 }
 
 model MatchResultRevision {
-  id             String   @id @default(uuid())
-  fixtureId      String
-  fixture        Fixture  @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
-  changedById    String?
-  changedBy      User?    @relation(fields: [changedById], references: [id], onDelete: SetNull)
+  id                String   @id @default(uuid())
+  fixtureId         String
+  fixture           Fixture  @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
+  changedById       String?
+  changedBy         User?    @relation(fields: [changedById], references: [id], onDelete: SetNull)
   previousHomeScore Int?
   previousAwayScore Int?
-  nextHomeScore  Int
-  nextAwayScore  Int
-  reason         String?
-  createdAt      DateTime @default(now())
+  nextHomeScore     Int
+  nextAwayScore     Int
+  reason            String?
+  sourceVersion     Int      @default(0)
+  idempotencyKey    String?  @unique
+  createdAt         DateTime @default(now())
 
   @@index([fixtureId, createdAt])
   @@map("match_result_revisions")
+}
+
+// Append-only authority for v2 match activity. Corrections are represented by
+// CORRECTION/REVERSAL rows; deployed database triggers reject UPDATE/DELETE.
+model MatchEvent {
+  id                               String         @id @default(uuid())
+  fixtureId                        String
+  fixture                          Fixture        @relation(fields: [fixtureId], references: [id], onDelete: Restrict)
+  sequence                         Int
+  type                             MatchEventType
+  minute                           Int?
+  second                           Int?
+  teamIdSnapshot                   String?
+  playerProfileIdSnapshot          String?
+  playerRegistrationIdSnapshot     String?
+  secondaryPlayerProfileIdSnapshot String?
+  payload                          Json?
+  reversalOfId                     String?        @unique
+  reversalOf                       MatchEvent?    @relation("MatchEventReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversedBy                       MatchEvent?    @relation("MatchEventReversal")
+  idempotencyKey                   String         @unique
+  createdById                      String?
+  createdAt                        DateTime       @default(now())
+
+  @@unique([fixtureId, sequence])
+  @@index([fixtureId, createdAt])
+  @@map("match_events")
+}
+
+model ProjectionVersion {
+  id            String      @id @default(uuid())
+  competitionId String
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Restrict)
+  projection    String
+  sourceVersion Int         @default(0)
+  status        String      @default("PENDING")
+  lastBuiltAt   DateTime?
+  lastError     String?
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([competitionId, projection])
+  @@index([status, updatedAt])
+  @@map("projection_versions")
+}
+
+model OutboxEvent {
+  id             String       @id @default(uuid())
+  aggregateType  String
+  aggregateId    String
+  eventType      String
+  payload        Json
+  status         OutboxStatus @default(PENDING)
+  attempts       Int          @default(0)
+  availableAt    DateTime     @default(now())
+  processedAt    DateTime?
+  lastError      String?
+  idempotencyKey String       @unique
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([status, availableAt])
+  @@index([aggregateType, aggregateId])
+  @@map("outbox_events")
+}
+
+model CommandReceipt {
+  id          String    @id @default(uuid())
+  scope       String
+  key         String
+  requestHash String
+  response    Json?
+  statusCode  Int?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([scope, key])
+  @@index([expiresAt])
+  @@map("command_receipts")
+}
+
+model ArchiveRecord {
+  id           String    @id @default(uuid())
+  resourceType String
+  resourceId   String
+  displayName  String
+  deleteReason String?
+  deletedById  String?
+  metadata     Json?
+  deletedAt    DateTime  @default(now())
+  restoredById String?
+  restoredAt   DateTime?
+
+  @@index([restoredAt, deletedAt])
+  @@index([resourceType, restoredAt])
+  @@index([resourceType, resourceId])
+  @@map("archive_records")
+}
+
+model IdentityReconciliationIssue {
+  id           String    @id @default(uuid())
+  entityType   String
+  matchKey     String
+  sourceIds    Json
+  reason       String
+  status       String    @default("OPEN")
+  resolution   Json?
+  resolvedById String?
+  resolvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([entityType, matchKey])
+  @@index([status, entityType])
+  @@map("identity_reconciliation_issues")
 }
 
 model Goal {
@@ -787,6 +1338,7 @@ model Goal {
   createdAt DateTime @default(now())
 
   @@index([fixtureId, teamId])
+  @@index([fixtureId])
   @@index([playerId])
   @@map("goals")
 }
@@ -803,6 +1355,7 @@ model Assist {
   createdAt DateTime @default(now())
 
   @@index([fixtureId, teamId])
+  @@index([fixtureId])
   @@index([playerId])
   @@map("assists")
 }
@@ -820,6 +1373,7 @@ model Card {
   createdAt DateTime @default(now())
 
   @@index([fixtureId, teamId])
+  @@index([fixtureId])
   @@index([playerId, type])
   @@map("cards")
 }
@@ -837,6 +1391,7 @@ model Substitution {
   createdAt   DateTime @default(now())
 
   @@index([fixtureId, teamId])
+  @@index([fixtureId])
   @@map("substitutions")
 }
 
@@ -956,21 +1511,30 @@ model MatchdaySquadEntry {
 }
 
 model Suspension {
-  id        String           @id @default(uuid())
-  seasonId  String
-  season    Season           @relation(fields: [seasonId], references: [id], onDelete: Cascade)
-  playerId  String
-  player    Player           @relation(fields: [playerId], references: [id])
-  reason    SuspensionReason
-  matchBan  Int              @default(1)
-  startDate DateTime         @default(now())
-  endDate   DateTime?
-  served    Int              @default(0)
-  isActive  Boolean          @default(true)
-  notes     String?
-  createdAt DateTime         @default(now())
+  id               String           @id @default(uuid())
+  seasonId         String
+  season           Season           @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  playerId         String
+  player           Player           @relation(fields: [playerId], references: [id])
+  competitionId    String?
+  competition      Competition?     @relation(fields: [competitionId], references: [id], onDelete: Restrict)
+  milestone        Int?
+  reason           SuspensionReason
+  matchBan         Int              @default(1)
+  startDate        DateTime         @default(now())
+  endDate          DateTime?
+  served           Int              @default(0)
+  isActive         Boolean          @default(true)
+  notes            String?
+  createdAt        DateTime         @default(now())
+  deletedAt        DateTime?
+  deletedById      String?
+  deleteReason     String?
+  servedFixtureIds Json             @default("[]")
 
   @@index([seasonId, playerId])
+  @@index([competitionId, playerId, isActive])
+  @@index([deletedAt])
   @@map("suspensions")
 }
 
@@ -996,25 +1560,30 @@ model Standing {
   form           String? // "WWDLW" format
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
   @@unique([seasonId, teamId])
   @@index([seasonId, position])
   @@map("standings")
 }
 
 model StandingAdjustment {
-  id             String   @id @default(uuid())
-  seasonId       String
-  season         Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
-  teamId         String
-  team           Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  pointsDelta    Int      @default(0)
-  goalsForDelta  Int      @default(0)
-  goalsAgainstDelta Int   @default(0)
-  reason         String
-  createdById    String?
-  createdAt      DateTime @default(now())
+  id                String    @id @default(uuid())
+  seasonId          String
+  season            Season    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  teamId            String
+  team              Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  pointsDelta       Int       @default(0)
+  goalsForDelta     Int       @default(0)
+  goalsAgainstDelta Int       @default(0)
+  reason            String
+  createdById       String?
+  createdAt         DateTime  @default(now())
+  deletedAt         DateTime?
+  deletedById       String?
+  deleteReason      String?
 
   @@index([seasonId, teamId])
+  @@index([deletedAt])
   @@map("standing_adjustments")
 }
 
@@ -1137,6 +1706,9 @@ model Award {
   isActive                 Boolean         @default(true)
   createdAt                DateTime        @default(now())
   updatedAt                DateTime        @updatedAt
+  deletedAt                DateTime?
+  deletedById              String?
+  deleteReason             String?
   type                     String          @default("PLAYER")
   winnerTeamId             String?
   winnerTeam               Team?           @relation("TeamAwardWins", fields: [winnerTeamId], references: [id])
@@ -1147,6 +1719,8 @@ model Award {
   galleries       Gallery[]
 
   @@unique([seasonId, slug])
+  @@index([winnerTeamId])
+  @@index([deletedAt])
   @@map("awards")
 }
 
@@ -1203,87 +1777,107 @@ model PreviousWinner {
 // ──────────────────────────────────────────────────────────────
 
 model News {
-  id          String    @id @default(uuid())
-  seasonId    String?
-  season      Season?   @relation(fields: [seasonId], references: [id])
-  teamId      String?
-  team        Team?     @relation(fields: [teamId], references: [id])
-  title       String
-  slug        String    @unique
-  excerpt     String?
-  content     String?
-  imageUrl    String?
-  author      String?
-  isFeatured  Boolean   @default(false)
-  isPublished Boolean   @default(true)
-  publishedAt DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id           String    @id @default(uuid())
+  seasonId     String?
+  season       Season?   @relation(fields: [seasonId], references: [id])
+  teamId       String?
+  team         Team?     @relation(fields: [teamId], references: [id])
+  title        String
+  slug         String    @unique
+  excerpt      String?
+  content      String?
+  imageUrl     String?
+  author       String?
+  isFeatured   Boolean   @default(false)
+  isPublished  Boolean   @default(true)
+  publishedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+  deletedById  String?
+  deleteReason String?
 
   @@index([seasonId])
   @@index([teamId])
   @@index([isFeatured])
+  @@index([deletedAt])
   @@map("news")
 }
 
 model Gallery {
-  id        String   @id @default(uuid())
-  seasonId  String?
-  season    Season?  @relation(fields: [seasonId], references: [id])
-  teamId    String?
-  team      Team?    @relation(fields: [teamId], references: [id])
-  playerId  String?
-  player    Player?  @relation(fields: [playerId], references: [id])
-  fixtureId String?
-  fixture   Fixture? @relation(fields: [fixtureId], references: [id])
-  awardId   String?
-  award     Award?   @relation(fields: [awardId], references: [id])
-  title     String
-  imageUrl  String
-  videoUrl  String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id           String    @id @default(uuid())
+  seasonId     String?
+  season       Season?   @relation(fields: [seasonId], references: [id])
+  teamId       String?
+  team         Team?     @relation(fields: [teamId], references: [id])
+  playerId     String?
+  player       Player?   @relation(fields: [playerId], references: [id])
+  fixtureId    String?
+  fixture      Fixture?  @relation(fields: [fixtureId], references: [id])
+  awardId      String?
+  award        Award?    @relation(fields: [awardId], references: [id])
+  title        String
+  imageUrl     String
+  videoUrl     String?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  deletedAt    DateTime?
+  deletedById  String?
+  deleteReason String?
 
+  @@index([deletedAt])
   @@map("galleries")
 }
 
 model Sponsor {
-  id        String   @id @default(uuid())
-  teamId    String?
-  team      Team?    @relation(fields: [teamId], references: [id])
-  name      String
-  logoUrl   String
-  website   String?
-  tier      String? // Platinum, Gold, Silver
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id           String    @id @default(uuid())
+  teamId       String?
+  team         Team?     @relation(fields: [teamId], references: [id])
+  name         String
+  logoUrl      String
+  website      String?
+  tier         String? // Platinum, Gold, Silver
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  deletedAt    DateTime?
+  deletedById  String?
+  deleteReason String?
 
+  @@index([deletedAt])
   @@map("sponsors")
 }
 
 model Advertisement {
-  id        String    @id @default(uuid())
-  title     String
-  imageUrl  String
-  linkUrl   String?
-  position  String? // hero, sidebar, banner
-  isActive  Boolean   @default(true)
-  startsAt  DateTime?
-  endsAt    DateTime?
-  createdAt DateTime  @default(now())
+  id           String    @id @default(uuid())
+  title        String
+  imageUrl     String
+  linkUrl      String?
+  position     String? // hero, sidebar, banner
+  isActive     Boolean   @default(true)
+  startsAt     DateTime?
+  endsAt       DateTime?
+  createdAt    DateTime  @default(now())
+  deletedAt    DateTime?
+  deletedById  String?
+  deleteReason String?
 
+  @@index([deletedAt])
   @@map("advertisements")
 }
 
 model Faq {
-  id        String   @id @default(uuid())
-  question  String
-  answer    String
-  category  String? // booking, league, general
-  order     Int      @default(0)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id           String    @id @default(uuid())
+  question     String
+  answer       String
+  category     String? // booking, league, general
+  order        Int       @default(0)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  deletedAt    DateTime?
+  deletedById  String?
+  deleteReason String?
 
+  @@index([deletedAt])
   @@map("faqs")
 }
 
@@ -1362,18 +1956,23 @@ model MatchRsvp {
 }
 
 model Poll {
-  id        String       @id @default(uuid())
-  question  String
-  type      String       @default("PLAYER_OF_MATCH")
-  fixtureId String?
-  fixture   Fixture?     @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
-  isActive  Boolean      @default(true)
-  closesAt  DateTime?
-  createdAt DateTime     @default(now())
-  options   PollOption[]
-  votes     PollVote[]
+  id           String       @id @default(uuid())
+  question     String
+  type         String       @default("PLAYER_OF_MATCH")
+  fixtureId    String?
+  fixture      Fixture?     @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
+  isActive     Boolean      @default(true)
+  closesAt     DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  deletedAt    DateTime?
+  deletedById  String?
+  deleteReason String?
+  options      PollOption[]
+  votes        PollVote[]
 
   @@index([fixtureId, isActive])
+  @@index([deletedAt])
   @@map("polls")
 }
 
@@ -1386,8 +1985,8 @@ model PollOption {
   player   Player?    @relation(fields: [playerId], references: [id], onDelete: Cascade)
   votes    PollVote[]
 
-  @@map("poll_options")
   @@index([pollId, id])
+  @@map("poll_options")
 }
 
 model PollVote {

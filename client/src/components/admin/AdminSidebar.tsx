@@ -72,9 +72,10 @@ interface AdminSidebarProps {
   onTabChange: (tab: string) => void;
   onLogout: () => void;
   onClose?: () => void;
+  allowedTabs?: ReadonlySet<string>;
 }
 
-export function AdminSidebar({ activeTab, onTabChange, onLogout, onClose }: AdminSidebarProps) {
+export function AdminSidebar({ activeTab, onTabChange, onLogout, onClose, allowedTabs }: AdminSidebarProps) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const toggleGroup = (label: string | undefined) => {
@@ -103,6 +104,8 @@ export function AdminSidebar({ activeTab, onTabChange, onLogout, onClose }: Admi
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         {navGroups.map((group) => {
+          const visibleItems = group.items.filter((item) => !allowedTabs || allowedTabs.has(item.id));
+          if (visibleItems.length === 0) return null;
           const isCollapsible = !!group.label;
           const isOpen = !group.label || !collapsedGroups.has(group.label);
 
@@ -127,7 +130,7 @@ export function AdminSidebar({ activeTab, onTabChange, onLogout, onClose }: Admi
                     transition={{ duration: 0.2 }}
                     className="overflow-hidden"
                   >
-                    {group.items.map((item) => {
+                    {visibleItems.map((item) => {
                       const isActive = activeTab === item.id || (item.id === "overview" && activeTab === "overview");
                       return (
                         <button

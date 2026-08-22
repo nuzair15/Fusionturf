@@ -7,6 +7,7 @@ import { Select } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
 import { formatCurrency, formatTime } from "@/lib/utils";
+import { businessDateKey } from "@/lib/fixtures";
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
@@ -63,7 +64,7 @@ export function VenueCalendar({ venueId, venues, onClose }: { venueId: string; v
           const key = dateKey(d);
           const dayBookings = bookingsByDate[key];
           const count = dayBookings?.length || 0;
-          const isToday = key === new Date().toISOString().split("T")[0];
+          const isToday = key === businessDateKey();
           return (
             <button
               key={key}

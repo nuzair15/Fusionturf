@@ -40,6 +40,23 @@ services:
     expose:
       - "5432"
 
+  # Run once per release before starting the API. This uses the Dockerfile's
+  # builder stage, where the Prisma CLI is present; the runtime API image is
+  # intentionally pruned of development tooling.
+  api-migrate:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+      target: builder
+    command: ["npx", "prisma", "migrate", "deploy"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-fusion_league}
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: ["migrate"]
+
   api:
     build:
       context: ./server
@@ -50,10 +67,9 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-fusion_league}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?MFA_ENCRYPTION_KEY must be set}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       NODE_ENV: production
-      ADMIN_PANEL_PASSWORD: ${ADMIN_PANEL_PASSWORD:?ADMIN_PANEL_PASSWORD must be set}
-      ADMIN_PANEL_EMAIL: ${ADMIN_PANEL_EMAIL:-super-admin@fusionturf.internal}
       CORS_ORIGIN: ${CORS_ORIGIN:?CORS_ORIGIN must be set}
       FRONTEND_URL: ${FRONTEND_URL:?FRONTEND_URL must be set}
       CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}

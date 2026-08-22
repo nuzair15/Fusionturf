@@ -5,10 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
 import { ErrorState } from "@/components/admin/ErrorState";
 import { ActivityFeed } from "@/components/admin/ActivityFeed";
 import type { DashboardStats, Booking } from "@/types";
+import { businessDateKey, fixtureDateKey, isActiveMatch } from "@/lib/fixtures";
 import {
   DollarSign, Calendar, Building2, Wallet, Clock, Trophy,
   MapPin, Users, XCircle, UserPlus,
@@ -74,7 +75,7 @@ export function AdminDashboard() {
   const recentBookings = dashboard?.recentBookings || [];
   const venues = dashboard?.venues || [];
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = businessDateKey();
 
   const todayBookings = recentBookings.filter((b) => b.date?.startsWith(todayStr));
   const pendingPayments = recentBookings.filter((b) => b.status === "PENDING");
@@ -92,7 +93,7 @@ export function AdminDashboard() {
     show: { opacity: 1, y: 0 },
   };
 
-  const todaySchedule = todayFixtures.length > 0 ? todayFixtures : recentFixtures.slice(0, 5);
+  const todaySchedule = todayFixtures.filter((fixture) => fixtureDateKey(fixture) === todayStr);
 
   if (isError) {
     return (
@@ -141,7 +142,7 @@ export function AdminDashboard() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="flex items-center gap-2 text-base"><Clock className="h-4 w-4" /> Today's Schedule</CardTitle>
-              <Badge variant="outline" className="text-xs">{new Date().toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}</Badge>
+              <Badge variant="outline" className="text-xs">{formatDate(todayStr, { weekday: "short" })}</Badge>
             </CardHeader>
             <CardContent>
               {isLoading ? (
@@ -158,14 +159,14 @@ export function AdminDashboard() {
                   {todaySchedule.map((f) => (
                     <div key={f.id} className="flex items-center gap-3 rounded-lg border p-3 text-sm transition hover:bg-muted/30">
                       <div className="w-14 text-xs font-medium text-muted-foreground">
-                        {f.matchDate ? new Date(f.matchDate).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—"}
+                        {f.kickoffTime ? formatTime(f.kickoffTime) : "TBD"}
                       </div>
                       <div className="flex flex-1 items-center gap-2">
                         <span className="font-medium">{f.homeTeam?.shortName || f.homeTeam?.name || "?"}</span>
                         <span className="text-xs text-muted-foreground">vs</span>
                         <span className="font-medium">{f.awayTeam?.shortName || f.awayTeam?.name || "?"}</span>
                       </div>
-                      <Badge variant="secondary" className="text-xs">{f.status === "COMPLETED" ? "Full time" : f.status === "LIVE" ? "Live" : "Scheduled"}</Badge>
+                      <Badge variant="secondary" className="text-xs">{f.status === "COMPLETED" ? "Full time" : isActiveMatch(f.status) ? f.status.replace(/_/g, " ") : "Scheduled"}</Badge>
                     </div>
                   ))}
                 </div>

@@ -15,7 +15,7 @@ export function BookingPage() {
   const [mapOpen, setMapOpen] = useState(false);
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["venues"],
+    queryKey: ["venues", { limit: 10 }],
     queryFn: () => api.get<{ data: Venue[] }>("/bookings/venues", { limit: 10 }),
   });
 
@@ -45,7 +45,7 @@ export function BookingPage() {
         ) : (
           <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {venues.map((venue) => (
-              <Card key={venue.id} className="cursor-pointer overflow-hidden transition hover:-translate-y-0.5 hover:shadow-md" onClick={() => navigate(`/booking/${venue.slug}`)}>
+              <Card key={venue.id} role="link" tabIndex={0} aria-label={`Open ${venue.name}`} className="cursor-pointer overflow-hidden transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => navigate(`/booking/${venue.slug}`)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); navigate(`/booking/${venue.slug}`); } }}>
                 <div className="aspect-video w-full bg-muted">
                   <img src={venue.coverImage || "/placeholder.svg"} alt={venue.name} className="h-full w-full object-cover" />
                 </div>

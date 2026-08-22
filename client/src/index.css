@@ -111,3 +111,12 @@ html {
 .fc .fc-daygrid-event {
   @apply rounded-md px-2 py-1 text-xs;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -4,7 +4,7 @@ services:
     env: node
     region: oregon
     plan: free
-    buildCommand: cd server && npm install --include=dev && npx prisma generate && npm run build
+    buildCommand: cd server && npm ci --include=dev && npx prisma generate && npx prisma migrate deploy && npm run build
     startCommand: cd server && node dist/production.js
     healthCheckPath: /api/health
     envVars:
@@ -13,6 +13,8 @@ services:
           name: fusion-league-db
           property: connectionString
       - key: JWT_SECRET
+        generateValue: true
+      - key: MFA_ENCRYPTION_KEY
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 7d
@@ -28,7 +30,7 @@ services:
   - type: web
     name: fusion-league-client
     env: static
-    buildCommand: cd client && npm install && npm run build
+    buildCommand: cd client && npm ci && npm run build
     staticPublishPath: ./client/dist
     envVars:
       - key: VITE_API_URL

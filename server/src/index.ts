@@ -11,9 +11,12 @@ import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import { authenticate, authorize } from "./middleware/auth.js";
 import routes from "./routes/index.js";
 import prisma from "./config/database.js";
+import { startOutboxWorker, stopOutboxWorker } from "./services/outbox.js";
+import { randomUUID } from "crypto";
+import { csrfProtection } from "./middleware/csrf.js";
 
 if (config.nodeEnv === "production") {
-  const required = ["DATABASE_URL", "JWT_SECRET", "ADMIN_PANEL_PASSWORD"];
+  const required = ["DATABASE_URL", "JWT_SECRET", "MFA_ENCRYPTION_KEY"];
   const missing = required.filter((key) => !process.env[key]);
   if (missing.length > 0) throw new Error(`Missing required production environment variables: ${missing.join(", ")}`);
 }
@@ -47,6 +50,13 @@ const upload = multer({
 });
 
 const app = express();
+
+app.use((req, res, next) => {
+  const requestId = req.header("X-Request-Id")?.slice(0, 128) || randomUUID();
+  res.locals.requestId = requestId;
+  res.setHeader("X-Request-Id", requestId);
+  next();
+});
 
 // Trust proxy (Nginx)
 app.set("trust proxy", 1);
@@ -98,6 +108,7 @@ const authRateLimit = rateLimit({
 // Body parsing
 app.use(express.json({ limit: config.bodyLimit }));
 app.use(express.urlencoded({ extended: true, limit: config.bodyLimit }));
+app.use(csrfProtection);
 
 // Logging. "dev" is fine for local work but builds a colorized string per
 // request; "tiny" in production keeps request logging (still useful for
@@ -108,7 +119,7 @@ if (config.nodeEnv !== "test") {
 
 app.use("/api/auth/login", authRateLimit);
 app.use("/api/auth/register", authRateLimit);
-app.use("/api/admin/login", authRateLimit);
+app.use("/api/auth/mfa", authRateLimit);
 
 // Upload endpoint
 app.post("/api/upload", authenticate, authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "CONTENT_EDITOR"), upload.single("file"), async (req, res, next) => {
@@ -158,6 +169,7 @@ process.on("uncaughtException", (error) => {
 if (process.env.NODE_ENV !== "test") {
   const server = app.listen(config.port, () => {
     console.log(`🚀 Server running on port ${config.port} in ${config.nodeEnv} mode`);
+    startOutboxWorker();
   });
 
   // On deploy/restart, Render (and Docker) send SIGTERM and expect the
@@ -167,6 +179,7 @@ if (process.env.NODE_ENV !== "test") {
   // "connection closed" errors on whichever requests were in flight.
   const shutdown = (signal: string) => {
     console.log(`${signal} received: closing server gracefully`);
+    stopOutboxWorker();
     server.close(async () => {
       await prisma.$disconnect();
       process.exit(0);

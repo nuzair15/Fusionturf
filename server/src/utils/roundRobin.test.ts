@@ -5,10 +5,9 @@ import { generateRoundRobinPairings, normalizeFixtureDays, planFixtureSchedule, 
 // generator feeds the planner (FixtureSlot[][]).
 function seasonRounds(teamCount: number, matchesPerPair: number) {
   const first = generateRoundRobinPairings(teamCount);
-  const second = matchesPerPair >= 2
-    ? first.map((r) => r.map((f) => ({ homeTeamIdx: f.awayTeamIdx, awayTeamIdx: f.homeTeamIdx })))
-    : [];
-  return [...first, ...second];
+  return Array.from({ length: matchesPerPair }, (_, leg) => first.map((round) => round.map((fixture) => leg % 2 === 0
+    ? { ...fixture }
+    : { homeTeamIdx: fixture.awayTeamIdx, awayTeamIdx: fixture.homeTeamIdx }))).flat();
 }
 
 describe("generateRoundRobinPairings", () => {
@@ -198,7 +197,7 @@ describe("planFixtureSchedule", () => {
   it("never disagrees with actual placement across a sweep of configs", () => {
     for (let teamCount = 4; teamCount <= 12; teamCount++) {
       const maxLegalPerDay = Math.floor(teamCount / 2);
-      for (const matchesPerPair of [1, 2]) {
+      for (const matchesPerPair of [1, 2, 3, 4]) {
         const rounds = seasonRounds(teamCount, matchesPerPair);
         const totalMatches = rounds.reduce((sum, r) => sum + r.length, 0);
         for (let leagueWeeks = 1; leagueWeeks <= 10; leagueWeeks++) {

@@ -21,12 +21,17 @@ export function LeagueHero({
   actions?: ReactNode;
   stats?: Array<{ label: string; value: ReactNode; tone?: string }>;
 }) {
+  const optimizedHero = image === "/hero-1440.webp";
   return (
     <section className="relative overflow-hidden rounded-2xl border bg-card shadow-sm">
       {image && (
         <>
           <div className="absolute inset-0">
-            <img src={image} alt="" className="h-full w-full object-cover" />
+            {optimizedHero ? <picture>
+              <source type="image/avif" srcSet="/hero-640.avif 640w, /hero-960.avif 960w, /hero-1440.avif 1440w, /hero-1920.avif 1920w" sizes="(max-width: 1280px) 100vw, 1280px" />
+              <source type="image/webp" srcSet="/hero-640.webp 640w, /hero-960.webp 960w, /hero-1440.webp 1440w, /hero-1920.webp 1920w" sizes="(max-width: 1280px) 100vw, 1280px" />
+              <img src="/hero-1440.webp" alt="" width={1440} height={1080} fetchPriority="high" className="h-full w-full object-cover" />
+            </picture> : <img src={image} alt="" width={1440} height={900} fetchPriority="high" className="h-full w-full object-cover" />}
           </div>
           <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(6,14,32,0.82),rgba(10,24,56,0.55),rgba(0,214,111,0.24))]" />
         </>

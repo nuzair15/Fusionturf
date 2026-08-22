@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Fusion Turf">
+  <rect width="64" height="64" rx="14" fill="#0f5f44"/>
+  <path d="M15 14h36v9H25v8h22v9H25v14H15z" fill="#fff"/>
+  <circle cx="49" cy="49" r="8" fill="#00d66f"/>
+  <path d="m49 43 4.8 3.5-1.8 5.7h-6l-1.8-5.7z" fill="#0b3d2e"/>
+</svg>

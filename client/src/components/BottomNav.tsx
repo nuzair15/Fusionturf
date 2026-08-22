@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/providers/AuthProvider";
-import { Home, Calendar, Trophy, Settings } from "lucide-react";
+import { Home, Calendar, Trophy, Settings, UserCircle } from "lucide-react";
 
 const links = [
   { to: "/", label: "Home", icon: Home },
@@ -15,7 +15,8 @@ export function BottomNav() {
 
   if (pathname.startsWith("/admin")) return null;
 
-  const visible = isAdmin ? [...links, { to: "/admin", label: "Admin", icon: Settings }] : links;
+  const account = { to: user ? "/dashboard" : "/auth", label: user ? "Account" : "Sign in", icon: UserCircle };
+  const visible = isAdmin ? [...links, { to: "/admin", label: "Admin", icon: Settings }] : [...links, account];
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background md:hidden">

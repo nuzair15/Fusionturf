@@ -12,6 +12,7 @@ import { LeagueHero, LeagueCard, LeaguePills, LeagueEmptyState } from "@/compone
 import { formatDate } from "@/lib/utils";
 import { FollowButton } from "@/components/league/FollowButton";
 import { PageError, PageSkeleton } from "@/components/PageState";
+import { fixtureDateKey, sortedFixtures } from "@/lib/fixtures";
 
 export function TeamDetailPage() {
   const { slug } = useParams();
@@ -27,7 +28,9 @@ export function TeamDetailPage() {
     refetchInterval: 30000,
   });
 
-  const allMatches = useMemo(() => [...(team?.homeMatches || []), ...(team?.awayMatches || [])].sort((a, b) => new Date(b.matchDate).getTime() - new Date(a.matchDate).getTime()), [team]);
+  const allMatches = useMemo(() => {
+    return sortedFixtures([...(team?.homeMatches || []), ...(team?.awayMatches || [])]);
+  }, [team]);
   const standing = team?.standings?.[0];
 
   if (isLoading) return <PageSkeleton />;
@@ -157,7 +160,7 @@ export function TeamDetailPage() {
 
       {tab === "fixtures" && (
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <LeagueCard title="Recent fixtures">
+          <LeagueCard title="Fixtures">
             {allMatches.length > 0 ? (
               <div className="space-y-2 p-4">
                 {allMatches.slice(0, 8).map((match) => (
@@ -166,7 +169,7 @@ export function TeamDetailPage() {
                       <img src={match.homeTeam.logoUrl || "/placeholder.svg"} alt="" className="h-9 w-9 rounded-full bg-muted object-cover" />
                       <div>
                         <p className="font-semibold">{match.homeTeam.shortName || match.homeTeam.name} vs {match.awayTeam.shortName || match.awayTeam.name}</p>
-                        <p className="text-xs text-muted-foreground">{formatDate(match.matchDate)} • {match.kickoffTime || "TBD"}</p>
+                        <p className="text-xs text-muted-foreground">{formatDate(fixtureDateKey(match))} · {match.kickoffTime || "TBD"}</p>
                       </div>
                     </div>
                     <Badge variant={match.status === "COMPLETED" ? "default" : "secondary"}>

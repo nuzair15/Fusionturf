@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from "express";
-import { v4 as uuidv4 } from "uuid";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import prisma from "../../config/database.js";
@@ -8,6 +7,7 @@ import { AppError } from "../../middleware/errorHandler.js";
 import { paginate, paginatedResponse, searchPlayerIds } from "../../utils/helpers.js";
 import { pick } from "../../utils/pick.js";
 import * as leagueSystem from "../../services/league-system.js";
+import { archiveResource } from "../../services/archive.js";
 
 // Players, squads, and matchday squad selection
 
@@ -16,7 +16,7 @@ export const getPlayers = async (req: Request, res: Response, next: NextFunction
   try {
     const { page, limit, skip } = paginate(req.query);
     const { teamId, seasonId, search } = req.query;
-    const where: any = req.query.includeInactive === "true" ? {} : { isActive: true };
+    const where: any = req.query.includeInactive === "true" ? { deletedAt: null } : { isActive: true, deletedAt: null };
     if (teamId) where.teamId = teamId;
     if (seasonId) where.seasonId = seasonId;
     if (search) {
@@ -130,7 +130,7 @@ export const deletePlayer = async (req: Request, res: Response, next: NextFuncti
   try {
     const existing = await prisma.player.findUnique({ where: { id: req.params.id }, select: { id: true, isActive: true } });
     if (!existing) throw new AppError("Player not found", 404);
-    const player = await prisma.player.update({ where: { id: req.params.id }, data: { isActive: false } });
+    const player = await archiveResource({ type: "player", id: req.params.id, actorId: req.user?.userId, reason: req.body?.reason });
     res.json(player);
   } catch (error) {
     next(error);

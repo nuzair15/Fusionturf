@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from "express";
-import { v4 as uuidv4 } from "uuid";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import prisma from "../../config/database.js";
@@ -8,6 +7,7 @@ import { AppError } from "../../middleware/errorHandler.js";
 import { paginate, paginatedResponse, searchPlayerIds } from "../../utils/helpers.js";
 import { pick } from "../../utils/pick.js";
 import * as leagueSystem from "../../services/league-system.js";
+import { archiveResource } from "../../services/archive.js";
 
 // Manual standings adjustments (point deductions, corrections)
 
@@ -15,7 +15,7 @@ import * as leagueSystem from "../../services/league-system.js";
 export const getStandingAdjustments = async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.query.seasonId) throw new AppError("seasonId is required", 400);
-    const adjustments = await prisma.standingAdjustment.findMany({ where: { seasonId: String(req.query.seasonId) }, include: { team: { select: { id: true, name: true, logoUrl: true } } }, orderBy: { createdAt: "desc" } });
+    const adjustments = await prisma.standingAdjustment.findMany({ where: { seasonId: String(req.query.seasonId), deletedAt: null }, include: { team: { select: { id: true, name: true, logoUrl: true } } }, orderBy: { createdAt: "desc" } });
     res.json(adjustments);
   } catch (error) { next(error); }
 };
@@ -37,7 +37,7 @@ export const deleteStandingAdjustment = async (req: Request, res: Response, next
   try {
     const adjustment = await prisma.standingAdjustment.findUnique({ where: { id: req.params.id } });
     if (!adjustment) throw new AppError("Standing adjustment not found", 404);
-    await prisma.standingAdjustment.delete({ where: { id: adjustment.id } });
+    await archiveResource({ type: "standingAdjustment", id: adjustment.id, actorId: req.user?.userId, reason: req.body?.deleteReason || req.body?.reason });
     await leagueSystem.recalculateStandings(adjustment.seasonId);
     res.status(204).end();
   } catch (error) { next(error); }

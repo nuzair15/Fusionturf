@@ -4,11 +4,22 @@ import prisma from "../config/database.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { paginate, paginatedResponse, calculateMatchStats, searchPlayerIds } from "../utils/helpers.js";
 import { LineupRow, serializeTeamLineup } from "../utils/lineup.js";
+import { ACTIVE_MATCH_STATUSES, fixtureDisplayComparator, fixtureTimeDto } from "../utils/fixtures.js";
+import { isValidDateOnly, legacyDateOnly, localNow, zonedDateTimeToUtc } from "../utils/time.js";
+import { sanitizeRichText } from "../utils/content-security.js";
 
 async function resolveSeasonId(requested?: unknown): Promise<string | undefined> {
   if (requested) return String(requested);
-  const current = await prisma.season.findFirst({ where: { isCurrent: true, isActive: true }, select: { id: true } });
+  const current = await prisma.season.findFirst({ where: { isCurrent: true, isActive: true, deletedAt: null }, select: { id: true } });
   return current?.id;
+}
+
+// Fixture dates are stored as calendar dates.  Comparing them to the current
+// timestamp makes every match scheduled for today disappear after midnight.
+function startOfToday(): Date {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
 }
 
 // ─── Seasons ───
@@ -16,6 +27,7 @@ async function resolveSeasonId(requested?: unknown): Promise<string | undefined>
 export const getSeasons = async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const seasons = await prisma.season.findMany({
+      where: { deletedAt: null },
       orderBy: { startDate: "desc" },
       include: { _count: { select: { teams: true, players: true, fixtures: true } } },
     });
@@ -28,7 +40,7 @@ export const getSeasons = async (_req: Request, res: Response, next: NextFunctio
 export const getCurrentSeason = async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const season = await prisma.season.findFirst({
-      where: { isCurrent: true },
+      where: { isCurrent: true, isActive: true, deletedAt: null },
       include: { _count: { select: { teams: true, players: true, fixtures: true } } },
     });
     if (!season) throw new AppError("No active season found", 404);
@@ -40,8 +52,8 @@ export const getCurrentSeason = async (_req: Request, res: Response, next: NextF
 
 export const getCompetitionBracket = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const competition = await prisma.competition.findUnique({
-      where: { id: req.params.id },
+    const competition = await prisma.competition.findFirst({
+      where: { id: req.params.id, isActive: true, deletedAt: null },
       include: {
         bracketMatches: {
           include: {
@@ -64,7 +76,7 @@ export const getCompetitionBracket = async (req: Request, res: Response, next: N
 export const getTeams = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const seasonId = await resolveSeasonId(req.query.seasonId);
-    const where: any = { isActive: true };
+    const where: any = { isActive: true, deletedAt: null };
     if (seasonId) where.seasonId = seasonId;
 
     const teams = await prisma.team.findMany({
@@ -84,24 +96,26 @@ export const getTeams = async (req: Request, res: Response, next: NextFunction) 
 export const getTeamBySlug = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const team = await prisma.team.findFirst({
-      where: { slug: req.params.slug, isActive: true },
+      where: { slug: req.params.slug, isActive: true, deletedAt: null },
       include: {
-        players: { where: { isActive: true }, orderBy: { jerseyNumber: "asc" }, include: { homeStats: true } },
-        staff: true,
+        players: { where: { isActive: true, deletedAt: null }, orderBy: { jerseyNumber: "asc" }, include: { homeStats: true } },
+        staff: { where: { deletedAt: null } },
         standings: { include: { season: true } },
         homeMatches: {
+          where: { deletedAt: null },
           include: { awayTeam: { select: { name: true, slug: true, logoUrl: true } }, season: true },
-          take: 10,
+          take: 100,
           orderBy: { matchDate: "desc" },
         },
         awayMatches: {
+          where: { deletedAt: null },
           include: { homeTeam: { select: { name: true, slug: true, logoUrl: true } }, season: true },
-          take: 10,
+          take: 100,
           orderBy: { matchDate: "desc" },
         },
-        sponsors: { where: { isActive: true } },
-        galleries: { where: { isActive: true }, take: 10, orderBy: { createdAt: "desc" } },
-        news: { take: 5, orderBy: { createdAt: "desc" } },
+        sponsors: { where: { isActive: true, deletedAt: null } },
+        galleries: { where: { isActive: true, deletedAt: null }, take: 10, orderBy: { createdAt: "desc" } },
+        news: { where: { isPublished: true, deletedAt: null }, take: 5, orderBy: { createdAt: "desc" } },
       },
     });
     if (!team) throw new AppError("Team not found", 404);
@@ -112,6 +126,7 @@ export const getTeamBySlug = async (req: Request, res: Response, next: NextFunct
     const playerIds = team.players.map((p) => p.id);
     const friendlyFixtures = await prisma.fixture.findMany({
       where: {
+        deletedAt: null,
         seasonId: team.seasonId,
         status: "COMPLETED",
         AND: [
@@ -195,7 +210,7 @@ export const getTeamBySlug = async (req: Request, res: Response, next: NextFunct
 export const getPlayers = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { page, limit, skip } = paginate(req.query);
-    const where: any = { isActive: true };
+    const where: any = { isActive: true, deletedAt: null };
     const seasonId = await resolveSeasonId(req.query.seasonId);
     if (seasonId) where.seasonId = seasonId;
     if (req.query.teamId) where.teamId = req.query.teamId;
@@ -243,13 +258,13 @@ export const getPlayers = async (req: Request, res: Response, next: NextFunction
 export const getPlayerBySlug = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const player = await prisma.player.findFirst({
-      where: { slug: req.params.slug, isActive: true },
+      where: { slug: req.params.slug, isActive: true, deletedAt: null },
       include: {
         team: true,
         homeStats: { include: { season: true, team: true } },
         friendlyStats: { include: { season: true, team: true } },
-        awardNominations: { include: { award: true } },
-        galleries: { where: { isActive: true }, take: 10, orderBy: { createdAt: "desc" } },
+        awardNominations: { where: { award: { deletedAt: null, isActive: true } }, include: { award: true } },
+        galleries: { where: { isActive: true, deletedAt: null }, take: 10, orderBy: { createdAt: "desc" } },
         transfers: {
           include: {
             fromTeam: { select: { id: true, name: true, slug: true } },
@@ -271,6 +286,7 @@ export const getPlayerBySlug = async (req: Request, res: Response, next: NextFun
       const rows = await Promise.all([false, true].map(async (friendly) => {
         const fixtures = await prisma.fixture.findMany({
           where: {
+            deletedAt: null,
             seasonId,
             status: "COMPLETED",
             ...(friendly
@@ -283,7 +299,7 @@ export const getPlayerBySlug = async (req: Request, res: Response, next: NextFun
         const [lineups, squadEntries, goals, assists, cards, ratings] = fixtureIds.length ? await Promise.all([
           prisma.lineup.findMany({ where: { playerId: player.id, fixtureId: { in: fixtureIds } }, select: { fixtureId: true } }),
           prisma.matchdaySquadEntry.findMany({ where: { playerId: player.id, squad: { fixtureId: { in: fixtureIds } } }, select: { squad: { select: { fixtureId: true } } } }),
-          prisma.goal.count({ where: { playerId: player.id, fixtureId: { in: fixtureIds } } }),
+          prisma.goal.count({ where: { playerId: player.id, fixtureId: { in: fixtureIds }, isOwnGoal: false } }),
           prisma.assist.count({ where: { playerId: player.id, fixtureId: { in: fixtureIds } } }),
           prisma.card.findMany({ where: { playerId: player.id, fixtureId: { in: fixtureIds } }, select: { type: true } }),
           prisma.matchPlayerRating.aggregate({ where: { playerId: player.id, fixtureId: { in: fixtureIds } }, _avg: { rating: true } }),
@@ -310,10 +326,10 @@ export const getPlayerBySlug = async (req: Request, res: Response, next: NextFun
 
 // ─── Fixtures ───
 
-export const getFixtures = async (req: Request, res: Response, next: NextFunction) => {
+const getFixturesLegacy = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { page, limit, skip } = paginate(req.query);
-    const where: any = {};
+    const where: any = { deletedAt: null };
     const seasonId = await resolveSeasonId(req.query.seasonId);
     if (seasonId) where.seasonId = seasonId;
     if (req.query.teamId) where.OR = [{ homeTeamId: req.query.teamId }, { awayTeamId: req.query.teamId }];
@@ -337,7 +353,7 @@ export const getFixtures = async (req: Request, res: Response, next: NextFunctio
     // the matches about to be played.
     const upcoming = req.query.upcoming === "true";
     if (upcoming) {
-      where.matchDate = { ...(where.matchDate || {}), gte: new Date() };
+      where.matchDate = { ...(where.matchDate || {}), gte: startOfToday() };
       where.status = { in: ["SCHEDULED", "LIVE", "HALF_TIME", "PAUSED", "EXTRA_TIME", "PENALTIES"] };
     }
 
@@ -363,10 +379,127 @@ export const getFixtures = async (req: Request, res: Response, next: NextFunctio
   }
 };
 
+export const getFixtures = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { page, limit, skip } = paginate(req.query);
+    const requestedScope = typeof req.query.scope === "string" ? req.query.scope : undefined;
+    const scope = requestedScope || (req.query.upcoming === "true" ? "upcoming" : undefined);
+    if (scope && !["live", "upcoming", "recent", "range"].includes(scope)) throw new AppError("scope must be live, upcoming, recent, or range", 400);
+    const from = typeof req.query.from === "string" ? req.query.from : undefined;
+    const to = typeof req.query.to === "string" ? req.query.to : undefined;
+    if (from && !isValidDateOnly(from)) throw new AppError("from must use YYYY-MM-DD", 400);
+    if (to && !isValidDateOnly(to)) throw new AppError("to must use YYYY-MM-DD", 400);
+    if (from && to && from > to) throw new AppError("from must not be after to", 400);
+
+    const seasonId = await resolveSeasonId(req.query.seasonId);
+    const competition = req.query.competitionId
+      ? await prisma.competition.findFirst({ where: { id: String(req.query.competitionId), deletedAt: null }, select: { timezone: true } })
+      : null;
+    const timezone = competition?.timezone || "Asia/Kolkata";
+    const today = localNow(timezone).date;
+    const baseWhere: any = { deletedAt: null };
+    if (seasonId) baseWhere.seasonId = seasonId;
+    if (req.query.teamId) baseWhere.OR = [{ homeTeamId: req.query.teamId }, { awayTeamId: req.query.teamId }];
+    if (req.query.status) baseWhere.status = req.query.status;
+    if (req.query.competitionId) baseWhere.competitionId = req.query.competitionId;
+    if (req.query.venueId) baseWhere.venueId = req.query.venueId;
+    if (req.query.round) baseWhere.round = Number(req.query.round);
+    if (req.query.date) {
+      const date = String(req.query.date);
+      if (!isValidDateOnly(date)) throw new AppError("date must use YYYY-MM-DD", 400);
+      baseWhere.scheduledDate = date;
+    } else if (from || to) {
+      baseWhere.scheduledDate = { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) };
+    }
+
+    const include = {
+      homeTeam: { select: { name: true, slug: true, logoUrl: true } },
+      awayTeam: { select: { name: true, slug: true, logoUrl: true } },
+      season: { select: { name: true, slug: true } },
+      competition: { select: { name: true, timezone: true } },
+      goals: { include: { player: { select: { firstName: true, lastName: true } } } },
+    } as const;
+    const statusWasRequested = typeof req.query.status === "string";
+    const statusMatches = (allowed: string[]) => !statusWasRequested || allowed.includes(String(req.query.status));
+    if (scope === "range") {
+      const [rows, total] = await Promise.all([
+        prisma.fixture.findMany({
+          where: baseWhere,
+          include,
+          orderBy: [{ scheduledDate: "asc" }, { kickoffAt: { sort: "asc", nulls: "last" } }, { id: "asc" }],
+          skip,
+          take: limit,
+        }),
+        prisma.fixture.count({ where: baseWhere }),
+      ]);
+      const normalized = rows
+        .map((fixture) => fixtureTimeDto(fixture, fixture.competition?.timezone || timezone))
+        .sort(fixtureDisplayComparator(timezone));
+      return res.json(paginatedResponse(normalized, total, page, limit));
+    }
+    const buckets: Array<{ where: any; orderBy: any }> = [];
+    if ((!scope || scope === "live" || scope === "upcoming" || scope === "range") && statusMatches(ACTIVE_MATCH_STATUSES)) {
+      buckets.push({
+        where: { ...baseWhere, status: statusWasRequested ? req.query.status : { in: ACTIVE_MATCH_STATUSES } },
+        orderBy: [{ scheduledDate: "asc" }, { kickoffAt: { sort: "asc", nulls: "last" } }, { id: "asc" }],
+      });
+    }
+    if ((!scope || scope === "upcoming" || scope === "range") && statusMatches(["SCHEDULED"])) {
+      const scheduledBase = { ...baseWhere, status: "SCHEDULED" };
+      buckets.push({ where: { ...scheduledBase, scheduledDate: today }, orderBy: [{ kickoffAt: { sort: "asc", nulls: "last" } }, { id: "asc" }] });
+      buckets.push({ where: { ...scheduledBase, scheduledDate: { gt: today } }, orderBy: [{ scheduledDate: "asc" }, { kickoffAt: { sort: "asc", nulls: "last" } }, { id: "asc" }] });
+    }
+    if ((!scope || scope === "recent" || scope === "range") && statusMatches(["COMPLETED"])) {
+      buckets.push({
+        where: { ...baseWhere, status: "COMPLETED" },
+        orderBy: [{ scheduledDate: "desc" }, { kickoffAt: { sort: "desc", nulls: "last" } }, { id: "asc" }],
+      });
+    }
+    if (!scope || scope === "range") {
+      const excluded = [...ACTIVE_MATCH_STATUSES, "SCHEDULED", "COMPLETED"];
+      if (!statusWasRequested || !excluded.includes(String(req.query.status))) {
+        buckets.push({
+          where: { ...baseWhere, ...(statusWasRequested ? {} : { status: { notIn: [...ACTIVE_MATCH_STATUSES, "SCHEDULED", "COMPLETED"] } }) },
+          orderBy: [{ scheduledDate: "desc" }, { kickoffAt: { sort: "desc", nulls: "last" } }, { id: "asc" }],
+        });
+      }
+    }
+
+    const counts = await Promise.all(buckets.map((bucket) => prisma.fixture.count({ where: bucket.where })));
+    const total = counts.reduce((sum, count) => sum + count, 0);
+    let remainingSkip = skip;
+    let remainingTake = limit;
+    const data: any[] = [];
+    for (let index = 0; index < buckets.length && remainingTake > 0; index += 1) {
+      const count = counts[index];
+      if (remainingSkip >= count) {
+        remainingSkip -= count;
+        continue;
+      }
+      const rows = await prisma.fixture.findMany({
+        where: buckets[index].where,
+        include,
+        orderBy: buckets[index].orderBy,
+        skip: remainingSkip,
+        take: remainingTake,
+      });
+      data.push(...rows);
+      remainingTake -= rows.length;
+      remainingSkip = 0;
+    }
+    const normalized = data
+      .map((fixture) => fixtureTimeDto(fixture, fixture.competition?.timezone || timezone))
+      .sort(fixtureDisplayComparator(timezone));
+    res.json(paginatedResponse(normalized, total, page, limit));
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getFixtureById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const fixture = await prisma.fixture.findUnique({
-      where: { id: req.params.id },
+    const fixture = await prisma.fixture.findFirst({
+      where: { id: req.params.id, deletedAt: null },
       include: {
         homeTeam: true,
         awayTeam: true,
@@ -407,8 +540,8 @@ export const getFixtureById = async (req: Request, res: Response, next: NextFunc
 
 export const getFixtureLineups = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const fixture = await prisma.fixture.findUnique({
-      where: { id: req.params.id },
+    const fixture = await prisma.fixture.findFirst({
+      where: { id: req.params.id, deletedAt: null },
       include: {
         homeTeam: { select: { id: true, name: true, shortName: true, logoUrl: true } },
         awayTeam: { select: { id: true, name: true, shortName: true, logoUrl: true } },
@@ -446,7 +579,7 @@ export const getStandings = async (req: Request, res: Response, next: NextFuncti
     }
     if (req.query.competitionId) {
       const fixtures = await prisma.fixture.findMany({
-        where: { competitionId: req.query.competitionId as string, seasonId, status: "COMPLETED" },
+        where: { competitionId: req.query.competitionId as string, seasonId, status: "COMPLETED", deletedAt: null },
         select: { homeTeamId: true, awayTeamId: true },
       });
       const teamIds = [...new Set(fixtures.flatMap((fixture) => [fixture.homeTeamId, fixture.awayTeamId]))];
@@ -458,7 +591,7 @@ export const getStandings = async (req: Request, res: Response, next: NextFuncti
       include: {
         team: { select: { name: true, slug: true, logoUrl: true, shortName: true } },
       },
-      orderBy: [{ points: "desc" }, { goalDifference: "desc" }, { goalsFor: "desc" }],
+      orderBy: { position: "asc" },
     });
     res.json(standings);
   } catch (error) {
@@ -516,6 +649,7 @@ export const getPlayerStats = async (req: Request, res: Response, next: NextFunc
       const fixtures = await prisma.fixture.findMany({
         where: {
           seasonId,
+          deletedAt: null,
           manOfTheMatchId: { not: null },
           ...(friendly
             ? { OR: [{ isFriendly: true }, { competition: { is: { type: "FRIENDLY" } } }] }
@@ -532,17 +666,17 @@ export const getPlayerStats = async (req: Request, res: Response, next: NextFunc
 
     if (req.query.friendly === "true") {
       const fixtures = await prisma.fixture.findMany({
-        where: { seasonId, status: "COMPLETED", OR: [{ isFriendly: true }, { competition: { is: { type: "FRIENDLY" } } }] },
+        where: { seasonId, status: "COMPLETED", deletedAt: null, OR: [{ isFriendly: true }, { competition: { is: { type: "FRIENDLY" } } }] },
         select: { id: true, homeTeamId: true, awayTeamId: true },
       });
       const fixtureIds = fixtures.map((f) => f.id);
       const [goals, assists, cards, lineups, squadEntries, players, motm] = await Promise.all([
-        prisma.goal.groupBy({ by: ["playerId"], where: { fixtureId: { in: fixtureIds } }, _count: { _all: true } }),
+        prisma.goal.groupBy({ by: ["playerId"], where: { fixtureId: { in: fixtureIds }, isOwnGoal: false }, _count: { _all: true } }),
         prisma.assist.groupBy({ by: ["playerId"], where: { fixtureId: { in: fixtureIds } }, _count: { _all: true } }),
         prisma.card.groupBy({ by: ["playerId", "type"], where: { fixtureId: { in: fixtureIds } }, _count: { _all: true } }),
         prisma.lineup.findMany({ where: { fixtureId: { in: fixtureIds } }, select: { fixtureId: true, playerId: true } }),
         prisma.matchdaySquadEntry.findMany({ where: { squad: { fixtureId: { in: fixtureIds } } }, select: { playerId: true, squad: { select: { fixtureId: true } } } }),
-        prisma.player.findMany({ where: { seasonId, isActive: true }, include: { team: { select: { name: true, slug: true, logoUrl: true } } } }),
+        prisma.player.findMany({ where: { seasonId, isActive: true, deletedAt: null }, include: { team: { select: { name: true, slug: true, logoUrl: true } } } }),
         motmQuery(true),
       ]);
       const goalMap = new Map(goals.map((g) => [g.playerId, g._count._all]));
@@ -576,7 +710,7 @@ export const getPlayerStats = async (req: Request, res: Response, next: NextFunc
       if (req.query.stat === "motm") {
         const motm = await motmQuery(false);
         const players = await prisma.player.findMany({
-          where: { seasonId, isActive: true, id: { in: [...motm.keys()] } },
+          where: { seasonId, isActive: true, deletedAt: null, id: { in: [...motm.keys()] } },
           include: {
             team: { select: { name: true, slug: true, logoUrl: true } },
             homeStats: { where: { seasonId } },
@@ -642,7 +776,7 @@ export const getTeamStats = async (req: Request, res: Response, next: NextFuncti
 
 export const getAwards = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const where: any = { isActive: true };
+    const where: any = { isActive: true, deletedAt: null };
     if (req.query.seasonId) where.seasonId = req.query.seasonId;
 
     const awards = await prisma.award.findMany({
@@ -668,7 +802,7 @@ export const getAwards = async (req: Request, res: Response, next: NextFunction)
 export const getAwardBySlug = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const award = await prisma.award.findFirst({
-      where: { slug: req.params.slug },
+      where: { slug: req.params.slug, deletedAt: null },
       include: {
         winner: true,
         winnerTeam: true,
@@ -678,10 +812,6 @@ export const getAwardBySlug = async (req: Request, res: Response, next: NextFunc
         previousWinners: {
           include: { player: true, team: { select: { name: true, logoUrl: true } }, season: { select: { name: true } } },
           orderBy: { year: "desc" },
-        },
-        votes: {
-          include: { nominee: { select: { firstName: true, lastName: true, photoUrl: true } } },
-          take: 10,
         },
       },
     });
@@ -694,40 +824,77 @@ export const getAwardBySlug = async (req: Request, res: Response, next: NextFunc
 
 export const voteForAward = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { awardId, nomineeId, isAnonymous } = req.body;
-    const award = await prisma.award.findUnique({ where: { id: awardId } });
+    const input = z.object({ awardId: z.string().uuid(), nomineeId: z.string().uuid() }).parse(req.body);
+    if (!req.user) throw new AppError("Authentication required", 401);
+    const { awardId, nomineeId } = input;
+    const award = await prisma.award.findFirst({ where: { id: awardId, isActive: true, deletedAt: null } });
     if (!award) throw new AppError("Award not found", 404);
     if (!award.votingEnabled) throw new AppError("Voting is disabled for this award", 400);
     if (award.votingType === "DISABLED") throw new AppError("Voting is disabled", 400);
-    if (award.votingType === "ADMIN_ONLY" && req.user?.role === "CUSTOMER") {
+    // Public/device/anonymous/OTP/captcha modes are intentionally unavailable
+    // until their complete integrity controls are implemented.
+    if (award.votingType === "PUBLIC" || award.allowAnonymous || award.requireOTP || award.requireCaptcha || award.deviceFingerprint) {
+      throw new AppError("This voting mode is not currently supported", 409, "VOTING_MODE_UNAVAILABLE");
+    }
+    if (["ONCE_PER_DEVICE", "MULTIPLE"].includes(award.voteFrequency)) {
+      throw new AppError("This voting frequency is not currently supported", 409, "VOTING_MODE_UNAVAILABLE");
+    }
+    if (award.votingType === "ADMIN_ONLY" && req.user.role === "CUSTOMER") {
       throw new AppError("Only admins can vote", 403);
     }
-    if (award.votingType === "REGISTERED_ONLY" && !req.user) {
-      throw new AppError("Only registered users can vote", 401);
-    }
 
-    if (award.votingStartDate && new Date() < award.votingStartDate) {
+    const now = new Date();
+    if (award.votingStartDate && now < award.votingStartDate) {
       throw new AppError("Voting has not started yet", 400);
     }
-    if (award.votingEndDate && new Date() > award.votingEndDate) {
+    if (award.votingEndDate && now > award.votingEndDate) {
       throw new AppError("Voting period has ended", 400);
     }
-
-    const existing = await prisma.vote.findFirst({
-      where: { awardId, userId: req.user?.userId, nomineeId },
+    const nomination = await prisma.awardNomination.findUnique({
+      where: { awardId_playerId: { awardId, playerId: nomineeId } },
+      select: { id: true },
     });
-    if (existing) throw new AppError("You have already voted", 409);
+    if (!nomination) throw new AppError("The selected player is not a nominee for this award", 400, "INVALID_NOMINEE");
+    if (award.requireEmailVerification) {
+      const user = await prisma.user.findUnique({ where: { id: req.user.userId }, select: { emailVerified: true } });
+      if (!user?.emailVerified) throw new AppError("Email verification is required", 403, "EMAIL_NOT_VERIFIED");
+    }
 
-    const vote = await prisma.vote.create({
-      data: {
-        awardId,
-        nomineeId,
-        userId: req.user?.userId,
-        isAnonymous: isAnonymous || false,
-        ipAddress: req.ip,
-        status: award.voteModeration ? "PENDING" : "APPROVED",
-      },
-    });
+    const timezone = "Asia/Kolkata";
+    let createdAt: { gte?: Date; lt?: Date } | undefined;
+    if (award.voteFrequency === "ONCE_PER_DAY") {
+      const dateOnly = localNow(timezone, now).date;
+      const tomorrow = new Date(legacyDateOnly(dateOnly).getTime() + 86_400_000).toISOString().slice(0, 10);
+      createdAt = {
+        gte: zonedDateTimeToUtc(dateOnly, "00:00", timezone),
+        lt: zonedDateTimeToUtc(tomorrow, "00:00", timezone),
+      };
+    }
+
+    const vote = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`award-vote:${awardId}:${req.user!.userId}`}))`;
+      const existing = await tx.vote.findFirst({
+        where: {
+          awardId,
+          userId: req.user!.userId,
+          ...(award.voteFrequency === "ONCE_PER_DAY" ? { createdAt } : {}),
+        },
+        select: { id: true },
+      });
+      if (existing) throw new AppError("You have already voted in the allowed period", 409, "ALREADY_VOTED");
+      return tx.vote.create({
+        data: {
+          awardId,
+          nomineeId,
+          userId: req.user!.userId,
+          isAnonymous: false,
+          // Kept internally for abuse investigation; never exposed publicly.
+          ipAddress: award.ipProtection ? req.ip : null,
+          status: award.voteModeration || award.manualApproval ? "PENDING" : "APPROVED",
+        },
+        select: { id: true, status: true, createdAt: true },
+      });
+    }, { isolationLevel: "Serializable" });
     res.status(201).json(vote);
   } catch (error) {
     next(error);
@@ -739,7 +906,7 @@ export const voteForAward = async (req: Request, res: Response, next: NextFuncti
 export const getNews = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { page, limit, skip } = paginate(req.query);
-    const where: any = { isPublished: true };
+    const where: any = { isPublished: true, deletedAt: null };
     if (req.query.seasonId) where.seasonId = req.query.seasonId;
     if (req.query.teamId) where.teamId = req.query.teamId;
 
@@ -753,7 +920,10 @@ export const getNews = async (req: Request, res: Response, next: NextFunction) =
       }),
       prisma.news.count({ where }),
     ]);
-    res.json(paginatedResponse(data, total, page, limit));
+    res.json(paginatedResponse(data.map((article) => ({
+      ...article,
+      content: sanitizeRichText(article.content) || "",
+    })), total, page, limit));
   } catch (error) {
     next(error);
   }
@@ -763,7 +933,7 @@ export const getNews = async (req: Request, res: Response, next: NextFunction) =
 
 export const getGallery = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const where: any = { isActive: true };
+    const where: any = { isActive: true, deletedAt: null };
     if (req.query.seasonId) where.seasonId = req.query.seasonId;
     if (req.query.teamId) where.teamId = req.query.teamId;
     if (req.query.fixtureId) where.fixtureId = req.query.fixtureId;
@@ -782,7 +952,7 @@ export const getGallery = async (req: Request, res: Response, next: NextFunction
 export const getSponsors = async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const sponsors = await prisma.sponsor.findMany({
-      where: { isActive: true },
+      where: { isActive: true, deletedAt: null },
       orderBy: { tier: "asc" },
     });
     res.json({ data: sponsors });
@@ -811,7 +981,7 @@ export const getMatchdaySquad = async (req: Request, res: Response, next: NextFu
 export const getSuspensions = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { seasonId, teamId } = req.query;
-    const where: any = { isActive: true };
+    const where: any = { isActive: true, deletedAt: null };
     if (seasonId) where.seasonId = seasonId;
     if (teamId) where.player = { teamId: teamId as string };
     const suspensions = await prisma.suspension.findMany({
@@ -830,7 +1000,7 @@ export const getSuspensions = async (req: Request, res: Response, next: NextFunc
 export const getPlayerSuspensions = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const suspensions = await prisma.suspension.findMany({
-      where: { playerId: req.params.playerId, isActive: true },
+      where: { playerId: req.params.playerId, isActive: true, deletedAt: null },
       include: { season: { select: { id: true, name: true } } },
       orderBy: { createdAt: "desc" },
     });

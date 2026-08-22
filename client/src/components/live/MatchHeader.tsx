@@ -3,6 +3,7 @@ import type { LiveMatchData } from "@/types/live";
 import { Scoreboard } from "./Scoreboard";
 import { MatchTimer } from "./MatchTimer";
 import { formatDate, formatTime } from "@/lib/utils";
+import { fixtureDateKey } from "@/lib/fixtures";
 
 export function MatchHeader({ data, minute, onMinuteChange, onClose, onTogglePause, onResetTimer, timerRunning, clockSeconds }: {
   data: LiveMatchData;
@@ -31,7 +32,7 @@ export function MatchHeader({ data, minute, onMinuteChange, onClose, onTogglePau
           </div>
           <div className="flex items-center gap-2 text-[11px] text-emerald-100/70">
             <CalendarClock className="h-3.5 w-3.5" />
-            {formatDate(fixture.matchDate)} {fixture.kickoffTime ? `• ${formatTime(fixture.kickoffTime)}` : ""}
+            {formatDate(fixtureDateKey(fixture))} {fixture.kickoffTime ? `· ${formatTime(fixture.kickoffTime)}` : ""}
             {(fixture as any).stadium && (
               <span className="hidden items-center gap-1 sm:flex"><MapPin className="h-3.5 w-3.5" />{(fixture as any).stadium}</span>
             )}

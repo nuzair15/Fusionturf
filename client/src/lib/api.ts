@@ -1,42 +1,31 @@
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
 class ApiClient {
-  private token: string | null = null;
-  private adminToken: string | null = null;
-
+  private csrfValue = "";
   constructor() {
-    this.token = localStorage.getItem("token");
-    this.adminToken = sessionStorage.getItem("admin_token");
+    // Remove credentials persisted by the v1 client. Authentication now uses
+    // Secure HttpOnly cookies, which JavaScript (and injected scripts) cannot read.
+    localStorage.removeItem("token");
+    sessionStorage.removeItem("admin_token");
   }
 
   setToken(token: string | null) {
-    this.token = token;
-    if (token) {
-      localStorage.setItem("token", token);
-    } else {
-      localStorage.removeItem("token");
-    }
+    if (token) localStorage.setItem("fusion_session_hint", "1");
+    else localStorage.removeItem("fusion_session_hint");
   }
 
-  setAdminToken(token: string | null) {
-    this.adminToken = token;
-    if (token) {
-      sessionStorage.setItem("admin_token", token);
-    } else {
-      sessionStorage.removeItem("admin_token");
-    }
+  private csrfToken() {
+    if (this.csrfValue) return this.csrfValue;
+    const match = document.cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith("XSRF-TOKEN="));
+    return match ? decodeURIComponent(match.slice("XSRF-TOKEN=".length)) : "";
   }
 
-  private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  private async request<T>(path: string, options: RequestInit = {}, retried = false): Promise<T> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...(options.headers as Record<string, string>),
     };
-
-    const authToken = this.adminToken || this.token || sessionStorage.getItem("admin_token") || localStorage.getItem("token");
-    if (authToken) {
-      headers["Authorization"] = `Bearer ${authToken}`;
-    }
+    if (options.method && !["GET", "HEAD"].includes(options.method)) headers["X-XSRF-TOKEN"] = this.csrfToken();
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
@@ -44,14 +33,27 @@ class ApiClient {
     try {
       const response = await fetch(`${API_BASE}${path}`, {
         ...options,
+        credentials: "include",
         cache: options.method && options.method !== "GET" ? undefined : "no-store",
         headers,
         signal: controller.signal,
       });
 
       if (!response.ok) {
+        if (response.status === 401 && !retried && !path.startsWith("/auth/")) {
+          const refreshed = await fetch(`${API_BASE}/auth/refresh`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json", "X-XSRF-TOKEN": this.csrfToken() },
+          });
+          if (refreshed.ok) {
+            const session = await refreshed.json().catch(() => ({}));
+            if (session.csrfToken) this.csrfValue = session.csrfToken;
+            return this.request<T>(path, options, true);
+          }
+        }
         const error = await response.json().catch(() => ({ error: "Request failed" }));
-        const message = error.error || `HTTP ${response.status}`;
+        const message = error.error || error.message || `HTTP ${response.status}`;
 
         // A 401 on a request that WAS sent with a token (as opposed to a
         // login/register attempt, which has no token yet) means the server
@@ -62,8 +64,8 @@ class ApiClient {
         // happened to open dev tools or manually logged out. Clearing it
         // here and telling AuthProvider fixes both the token and the UI
         // state in one place instead of every call site handling its own 401.
-        if (response.status === 401 && authToken) {
-          this.logout();
+        if (response.status === 401 && this.isAuthenticated()) {
+          this.clearSessionHint();
           window.dispatchEvent(new CustomEvent("fusion-auth-expired"));
         }
 
@@ -89,8 +91,8 @@ class ApiClient {
     return this.request<T>(`${path}${query ? `?${query}` : ""}`);
   }
 
-  post<T>(path: string, body?: any) {
-    return this.request<T>(path, { method: "POST", body: JSON.stringify(body) });
+  post<T>(path: string, body?: any, headers?: Record<string, string>) {
+    return this.request<T>(path, { method: "POST", body: JSON.stringify(body), headers });
   }
 
   patch<T>(path: string, body?: any) {
@@ -106,15 +108,25 @@ class ApiClient {
   }
 
   // Auth
-  async login(email: string, password: string) {
-    const res = await this.post<{ user: any; token: string }>("/auth/login", { email, password });
-    this.setToken(res.token);
+  async login(email: string, password: string, otp?: string) {
+    const res = await this.post<{ user?: any; csrfToken?: string; mfaRequired?: boolean; mfaSetupRequired?: boolean; setupToken?: string }>("/auth/login", { email, password, ...(otp ? { otp } : {}) });
+    if (res.csrfToken) this.csrfValue = res.csrfToken;
+    if (res.user) this.setToken("cookie-session");
     return res;
   }
 
+  beginMfaSetup(setupToken: string) {
+    return this.post<{ secret: string; otpAuthUri: string }>("/auth/mfa/setup", { setupToken });
+  }
+
+  confirmMfaSetup(setupToken: string, otp: string) {
+    return this.post<{ enrolled: boolean }>("/auth/mfa/confirm", { setupToken, otp });
+  }
+
   async register(data: { email: string; password: string; firstName: string; lastName: string; phone?: string }) {
-    const res = await this.post<{ user: any; token: string }>("/auth/register", data);
-    this.setToken(res.token);
+    const res = await this.post<{ user: any; csrfToken?: string }>("/auth/register", data);
+    if (res.csrfToken) this.csrfValue = res.csrfToken;
+    this.setToken("cookie-session");
     return res;
   }
 
@@ -122,19 +134,46 @@ class ApiClient {
     return this.get<any>("/auth/me");
   }
 
-  async adminLogin(password: string) {
-    const res = await this.post<{ token: string }>("/admin/login", { password });
-    this.setAdminToken(res.token);
-    return res;
+  async bootstrapCsrf() {
+    const response = await this.get<{ csrfToken: string }>("/auth/csrf");
+    this.csrfValue = response.csrfToken;
   }
 
-  logout() {
+  async uploadImage(file: File, uploadUrl = `${API_BASE}/upload`) {
+    const form = new FormData();
+    form.append("file", file);
+    const response = await fetch(uploadUrl, { method: "POST", body: form, credentials: "include", headers: { "X-XSRF-TOKEN": this.csrfToken() } });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || data.error || "Upload failed");
+    return data as { url: string };
+  }
+
+  private clearSessionHint() {
     this.setToken(null);
-    this.setAdminToken(null);
+  }
+
+  getGuestBooking<T>(token: string) {
+    return this.request<T>("/bookings/guest/manage", { headers: { "X-Guest-Token": token } });
+  }
+
+  cancelGuestBooking<T>(token: string, reason?: string) {
+    return this.request<T>("/bookings/guest/manage/cancel", { method: "PATCH", body: JSON.stringify({ reason }), headers: { "X-Guest-Token": token } });
+  }
+
+  async logout() {
+    await fetch(`${API_BASE}/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", "X-XSRF-TOKEN": this.csrfToken() },
+    }).finally(() => { this.csrfValue = ""; this.clearSessionHint(); });
   }
 
   isAuthenticated() {
-    return !!this.token;
+    return localStorage.getItem("fusion_session_hint") === "1";
+  }
+
+  fixtureEventStreamUrl(fixtureId: string) {
+    return `${API_BASE}/v2/fixtures/${encodeURIComponent(fixtureId)}/events/stream`;
   }
 }
 

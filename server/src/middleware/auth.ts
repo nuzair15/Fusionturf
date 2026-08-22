@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { config } from "../config/index.js";
 import prisma from "../config/database.js";
+import { ACCESS_COOKIE, readCookie } from "../utils/session.js";
+import { sendError } from "./errorHandler.js";
 
 export interface JwtPayload {
   userId: string;
@@ -19,11 +21,12 @@ declare global {
 export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ error: "Authentication required" });
+    const cookieToken = readCookie(req, ACCESS_COOKIE);
+    if ((!authHeader || !authHeader.startsWith("Bearer ")) && !cookieToken) {
+      return sendError(req, res, 401, "AUTHENTICATION_REQUIRED", "Authentication required");
     }
 
-    const token = authHeader.split(" ")[1];
+    const token = authHeader?.startsWith("Bearer ") ? authHeader.split(" ")[1] : cookieToken!;
 
     const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
 
@@ -33,7 +36,7 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     // logging attributable to a real user id.
     const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
     if (!user || !user.isActive) {
-      return res.status(401).json({ error: "User not found or inactive" });
+      return sendError(req, res, 401, "SESSION_USER_INACTIVE", "User not found or inactive");
     }
 
     // Trust the role currently stored on the user record rather than the
@@ -43,17 +46,17 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     req.user = { userId: user.id, role: user.role };
     next();
   } catch (error) {
-    return res.status(401).json({ error: "Invalid or expired token" });
+    return sendError(req, res, 401, "INVALID_SESSION", "Invalid or expired token");
   }
 };
 
 export const authorize = (...roles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
-      return res.status(401).json({ error: "Authentication required" });
+      return sendError(req, res, 401, "AUTHENTICATION_REQUIRED", "Authentication required");
     }
     if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ error: "Insufficient permissions" });
+      return sendError(req, res, 403, "INSUFFICIENT_PERMISSIONS", "Insufficient permissions");
     }
     next();
   };
@@ -62,8 +65,9 @@ export const authorize = (...roles: string[]) => {
 export const optionalAuth = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.split(" ")[1];
+    const cookieToken = readCookie(req, ACCESS_COOKIE);
+    if ((authHeader && authHeader.startsWith("Bearer ")) || cookieToken) {
+      const token = authHeader?.startsWith("Bearer ") ? authHeader.split(" ")[1] : cookieToken!;
       const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
       // Optional authentication is anonymous only when no valid session is
       // supplied. Never promote a request from claims in an old JWT: roles and

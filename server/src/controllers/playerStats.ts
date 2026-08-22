@@ -5,7 +5,7 @@ import { AppError } from "../middleware/errorHandler.js";
 const numericFields = ["goals", "assists", "minutesPlayed", "shots", "shotsOnTarget", "yellowCards", "redCards"] as const;
 
 async function eligibleAppearances(playerId: string, seasonId: string, friendly: boolean) {
-  const fixtures = await prisma.fixture.findMany({ where: { seasonId, status: { in: ["COMPLETED", "LIVE", "HALF_TIME", "PAUSED", "EXTRA_TIME", "PENALTIES"] }, ...(friendly ? { OR: [{ isFriendly: true }, { competition: { is: { type: "FRIENDLY" } } }] } : { isFriendly: false }) }, select: { id: true } });
+  const fixtures = await prisma.fixture.findMany({ where: { seasonId, deletedAt: null, status: { in: ["COMPLETED", "LIVE", "HALF_TIME", "PAUSED", "EXTRA_TIME", "PENALTIES"] }, ...(friendly ? { OR: [{ isFriendly: true }, { competition: { is: { type: "FRIENDLY" } } }] } : { isFriendly: false }) }, select: { id: true } });
   if (!fixtures.length) return 0;
   const fixtureIds = fixtures.map((f) => f.id);
   const [lineups, squadEntries] = await Promise.all([
@@ -22,7 +22,7 @@ export const getAdminPlayerStats = async (req: Request, res: Response, next: Nex
     if (!seasonId) throw new AppError("seasonId is required", 400);
     const stats = friendly
       ? await prisma.player.findMany({
-          where: { seasonId, isActive: true, teamId: { not: null } },
+          where: { seasonId, isActive: true, deletedAt: null, teamId: { not: null }, team: { deletedAt: null } },
           include: { team: true, friendlyStats: { where: { seasonId } } },
           orderBy: { firstName: "asc" },
         }).then((players) => players.map((player) => ({
@@ -30,7 +30,7 @@ export const getAdminPlayerStats = async (req: Request, res: Response, next: Nex
           player,
           team: player.team,
         })))
-      : await prisma.playerStat.findMany({ where: { seasonId }, include: { player: true, team: true }, orderBy: { player: { firstName: "asc" } } });
+      : await prisma.playerStat.findMany({ where: { seasonId, player: { deletedAt: null }, team: { deletedAt: null } }, include: { player: true, team: true }, orderBy: { player: { firstName: "asc" } } });
     res.json(stats);
   } catch (e) { next(e); }
 };
@@ -40,7 +40,7 @@ export const updateAdminPlayerStats = async (req: Request, res: Response, next: 
     const { seasonId, teamId, friendly = false } = req.body;
     const playerId = req.params.playerId;
     if (!seasonId || !teamId) throw new AppError("seasonId and teamId are required", 400);
-    const player = await prisma.player.findUnique({ where: { id: playerId }, select: { id: true, teamId: true } });
+    const player = await prisma.player.findFirst({ where: { id: playerId, deletedAt: null }, select: { id: true, teamId: true } });
     if (!player) throw new AppError("Player not found", 404);
     const appearancesAllowed = await eligibleAppearances(playerId, seasonId, !!friendly);
     const data: any = { appearances: Math.min(Math.max(0, Number(req.body.appearances) || 0), appearancesAllowed) };

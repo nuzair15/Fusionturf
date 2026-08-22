@@ -3,14 +3,16 @@ import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "@/providers/ThemeProvider";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import { Moon, Sun, Calendar, Search } from "lucide-react";
+import { Moon, Sun, Calendar, Search, UserCircle } from "lucide-react";
 import { useState } from "react";
+import { useAuth } from "@/providers/AuthProvider";
 
 export function Navbar() {
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [search, setSearch] = useState("");
+  const { user } = useAuth();
 
   const { data: settings } = useQuery({
     queryKey: ["settings"],
@@ -38,6 +40,9 @@ export function Navbar() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button onClick={() => navigate(user ? "/dashboard" : "/auth")} variant="ghost" size="sm" className="gap-1.5">
+            <UserCircle className="h-4 w-4" /> <span className="hidden sm:inline">{user ? "My account" : "Sign in"}</span>
+          </Button>
           <Button onClick={() => navigate("/booking")} size="sm" className="gap-1.5">
             <Calendar className="h-4 w-4" /> Book Now
           </Button>

@@ -8,6 +8,7 @@ import { formatDate, formatTime } from "@/lib/utils";
 import type { Fixture, Standing, Venue, News, PaginatedResponse, Sponsor, Season } from "@/types";
 import { Calendar, Trophy, MapPin, Star, ArrowUpRight, Flame, Target } from "lucide-react";
 import { LeagueHero, LeagueCard, LeagueEmptyState, SectionLink } from "@/components/league/LeagueUI";
+import { fixtureDateKey, fixtureScoreLabel } from "@/lib/fixtures";
 
 export function HomePage() {
   const navigate = useNavigate();
@@ -18,20 +19,20 @@ export function HomePage() {
     retry: false,
   });
 
-  const { data: fixtures } = useQuery({ queryKey: ["featured-fixtures"], queryFn: () => api.get<PaginatedResponse<Fixture>>("/league/fixtures?limit=6&upcoming=true"), staleTime: 0, refetchOnWindowFocus: true, refetchInterval: 15000 });
+  const { data: fixtures } = useQuery({ queryKey: ["fixtures", "home", "upcoming", 6], queryFn: () => api.get<PaginatedResponse<Fixture>>("/v2/fixtures", { limit: 6, scope: "upcoming" }), staleTime: 0, refetchOnWindowFocus: true, refetchInterval: 15000 });
   const { data: recentFixtures } = useQuery({
     queryKey: ["featured-fixtures-recent"],
-    queryFn: () => api.get<PaginatedResponse<Fixture>>("/league/fixtures?limit=6"),
+    queryFn: () => api.get<PaginatedResponse<Fixture>>("/v2/fixtures", { limit: 6, scope: "recent" }),
     staleTime: 0,
     enabled: (fixtures?.data?.length ?? 0) === 0,
   });
   const { data: standings } = useQuery({ queryKey: ["standings"], queryFn: () => api.get<Standing[]>("/league/standings"), staleTime: 60_000, refetchOnWindowFocus: false });
-  const { data: venues } = useQuery({ queryKey: ["venues"], queryFn: () => api.get<PaginatedResponse<Venue>>("/bookings/venues?limit=4"), refetchOnWindowFocus: true, refetchInterval: 60000 });
+  const { data: venues } = useQuery({ queryKey: ["venues", { limit: 4 }], queryFn: () => api.get<PaginatedResponse<Venue>>("/bookings/venues", { limit: 4 }), refetchOnWindowFocus: true, refetchInterval: 60000 });
   const { data: news } = useQuery({ queryKey: ["home-news"], queryFn: () => api.get<PaginatedResponse<News>>("/league/news?limit=4"), refetchOnWindowFocus: true, refetchInterval: 60000 });
   const { data: sponsors } = useQuery({ queryKey: ["sponsors"], queryFn: () => api.get<{ data: Sponsor[] }>("/league/sponsors"), refetchOnWindowFocus: true, refetchInterval: 60000 });
   const { data: currentSeason } = useQuery({ queryKey: ["current-season"], queryFn: () => api.get<Season>("/league/seasons/current"), retry: false, refetchOnWindowFocus: true, refetchInterval: 60000 });
 
-  const heroImage = settings?.site_hero_url || "/hero.jpeg";
+  const heroImage = settings?.site_hero_url || "/hero-1440.webp";
   const itemList = (fixtures?.data?.length ? fixtures.data : recentFixtures?.data) || [];
   const standingsList = standings || [];
   const venueList = venues?.data || [];
@@ -62,9 +63,9 @@ export function HomePage() {
           <LeagueCard title="Available Turfs" action={<SectionLink onClick={() => navigate("/booking")}>Book now</SectionLink>}>
             <div className="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4">
               {venueList.map((venue) => (
-                <Card key={venue.id} className="cursor-pointer overflow-hidden border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md" onClick={() => navigate(`/booking/${venue.slug}`)}>
+                <Card key={venue.id} role="link" tabIndex={0} aria-label={`Open ${venue.name}`} className="cursor-pointer overflow-hidden border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => navigate(`/booking/${venue.slug}`)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); navigate(`/booking/${venue.slug}`); } }}>
                   <div className="aspect-[4/3] bg-muted">
-                    <img src={venue.coverImage || "/placeholder.svg"} alt={venue.name} className="h-full w-full object-cover" />
+                    <img src={venue.coverImage || "/placeholder.svg"} alt={venue.name} width={480} height={360} loading="lazy" className="h-full w-full object-cover" />
                   </div>
                   <CardContent className="space-y-2 p-4">
                     <p className="text-sm font-semibold">{venue.name}</p>
@@ -100,7 +101,7 @@ export function HomePage() {
                       {fixture.isFriendly && <Badge variant="secondary" className="text-violet-600 dark:text-violet-400">Friendly</Badge>}
                       {!fixture.isFriendly && fixture.competition?.name && <Badge variant="secondary">{fixture.competition.name}</Badge>}
                     </div>
-                    <span className="text-xs text-muted-foreground">{formatDate(fixture.matchDate)} {fixture.kickoffTime ? `• ${formatTime(fixture.kickoffTime)}` : ""}</span>
+                    <span className="text-xs text-muted-foreground">{formatDate(fixtureDateKey(fixture))} {fixture.kickoffTime ? `· ${formatTime(fixture.kickoffTime)}` : ""}</span>
                   </div>
                   <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
                     <div className="flex flex-col items-center gap-2 text-center">
@@ -109,7 +110,7 @@ export function HomePage() {
                     </div>
                     <div className="text-center">
                       <p className="text-2xl font-bold tabular-nums">
-                        {fixture.status === "COMPLETED" ? `${fixture.homeScore ?? 0}-${fixture.awayScore ?? 0}` : "VS"}
+                        {fixtureScoreLabel(fixture)}
                       </p>
                       {fixture.round ? <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Round {fixture.round}</p> : null}
                     </div>

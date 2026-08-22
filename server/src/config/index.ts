@@ -26,10 +26,7 @@ export const config = {
     expiresIn: process.env.JWT_EXPIRES_IN || "7d",
   },
 
-  adminPanel: {
-    password: process.env.ADMIN_PANEL_PASSWORD || "",
-    bootstrapEmail: process.env.ADMIN_PANEL_EMAIL || "super-admin@fusionturf.internal",
-  },
+  mfaEncryptionKey: process.env.MFA_ENCRYPTION_KEY || process.env.JWT_SECRET || "dev-only-mfa-key",
 
   cloudinary: {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME || "",

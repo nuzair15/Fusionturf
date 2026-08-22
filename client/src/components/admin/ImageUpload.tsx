@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Upload, X } from "lucide-react";
+import { api } from "@/lib/api";
 
 interface ImageUploadProps {
   value: string;
@@ -15,23 +16,18 @@ const API_BASE = import.meta.env.VITE_API_URL || "/api";
 export function ImageUpload({ value, onChange, label = "Image", uploadUrl = `${API_BASE}/upload` }: ImageUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
+    setUploadError("");
     try {
-      const form = new FormData();
-      form.append("file", file);
-      const token = sessionStorage.getItem("admin_token");
-      const res = await fetch(uploadUrl, {
-        method: "POST",
-        body: form,
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
-      const data = await res.json();
+      const data = await api.uploadImage(file, uploadUrl);
       if (data.url) onChange(data.url);
-    } catch {
+    } catch (error: any) {
+      setUploadError(error.message || "Upload failed");
     } finally {
       setUploading(false);
     }
@@ -56,8 +52,9 @@ export function ImageUpload({ value, onChange, label = "Image", uploadUrl = `${A
         <Button type="button" variant="outline" size="sm" disabled={uploading} onClick={() => inputRef.current?.click()}>
           <Upload className="mr-1 h-4 w-4" /> {uploading ? "Uploading..." : "Upload File"}
         </Button>
-        <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+        <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" className="hidden" onChange={handleFile} />
       </div>
+      {uploadError && <p role="alert" className="text-sm text-destructive">{uploadError}</p>}
     </div>
   );
 }

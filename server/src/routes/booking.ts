@@ -2,6 +2,8 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import {
   getVenues, getVenueBySlug, getAvailableSlots, getBookedSlotsForTurf, validateCoupon, createBooking,
+  getBookingQuote,
+  getGuestBooking, cancelGuestBooking,
   getMyBookings, cancelBooking,
   adminGetAllBookings, adminBlockDate, adminRevenueAnalytics, getCalendarBookings,
 } from "../controllers/booking.js";
@@ -26,6 +28,9 @@ router.get("/venues/:slug", getVenueBySlug);
 router.get("/slots", getAvailableSlots);
 router.get("/booked-slots/:turfId", getBookedSlotsForTurf);
 router.post("/validate-coupon", validateCoupon);
+router.post("/quote", getBookingQuote);
+router.get("/guest/manage", getGuestBooking);
+router.patch("/guest/manage/cancel", cancelGuestBooking);
 router.post("/", createBookingRateLimit, optionalAuth, createBooking);
 router.get("/my", authenticate, getMyBookings);
 router.patch("/:id/cancel", authenticate, cancelBooking);

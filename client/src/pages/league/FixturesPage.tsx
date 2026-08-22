@@ -9,9 +9,18 @@ import { api } from "@/lib/api";
 import type { Fixture, PaginatedResponse, Season } from "@/types";
 import { ChevronLeft, ChevronRight, Flame, Trophy } from "lucide-react";
 import { formatDate, formatTime, getMatchStatusColor } from "@/lib/utils";
+import { ACTIVE_MATCH_STATUSES, businessDateKey, fixtureDateKey, fixtureScoreLabel, sortedFixtures } from "@/lib/fixtures";
 import { LeagueHero, LeagueCard, LeagueEmptyState, TrendBadge } from "@/components/league/LeagueUI";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+async function fetchAllFixturePages(params: Record<string, string>) {
+  const first = await api.get<PaginatedResponse<Fixture>>("/v2/fixtures", { ...params, page: 1, limit: 100 });
+  if (!first.meta.hasNext) return first.data;
+  const rest = await Promise.all(Array.from({ length: first.meta.totalPages - 1 }, (_, index) =>
+    api.get<PaginatedResponse<Fixture>>("/v2/fixtures", { ...params, page: index + 2, limit: 100 })));
+  return [first, ...rest].flatMap((page) => page.data);
+}
 
 export function FixturesPage() {
   const navigate = useNavigate();
@@ -24,15 +33,33 @@ export function FixturesPage() {
 
   const { data: currentSeason } = useQuery({ queryKey: ["current-season"], queryFn: () => api.get<Season>("/league/seasons/current"), retry: false, refetchOnWindowFocus: true, refetchInterval: 60000 });
   const { data: teams } = useQuery({ queryKey: ["fixture-teams"], queryFn: () => api.get<any[]>("/league/teams"), refetchOnWindowFocus: true, refetchInterval: 60000 });
-  const { data } = useQuery({ queryKey: ["fixtures-calendar", teamFilter, statusFilter, roundFilter], queryFn: () => api.get<PaginatedResponse<Fixture>>("/league/fixtures", { limit: "120", ...(teamFilter ? { teamId: teamFilter } : {}), ...(statusFilter ? { status: statusFilter } : {}), ...(roundFilter ? { round: roundFilter } : {}) }), staleTime: 0, refetchOnWindowFocus: true, refetchInterval: 15000 });
+  const rangeStart = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-01`;
+  const rangeEnd = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${String(new Date(viewYear, viewMonth + 1, 0).getDate()).padStart(2, "0")}`;
+  const fixtureFilters = { scope: "range", from: rangeStart, to: rangeEnd, ...(teamFilter ? { teamId: teamFilter } : {}), ...(statusFilter ? { status: statusFilter } : {}), ...(roundFilter ? { round: roundFilter } : {}) };
+  const { data: fixtureData, isLoading, isError, refetch } = useQuery({
+    queryKey: ["fixtures-calendar-range", rangeStart, rangeEnd, teamFilter, statusFilter, roundFilter],
+    queryFn: () => fetchAllFixturePages(fixtureFilters),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchInterval: 15000,
+  });
+  const { data: liveData } = useQuery({
+    queryKey: ["fixtures-live", teamFilter],
+    queryFn: () => fetchAllFixturePages({ scope: "live", ...(teamFilter ? { teamId: teamFilter } : {}) }),
+    refetchInterval: 15000,
+  });
 
-  const fixtures = data?.data || [];
-  const todayKey = today.toISOString().split("T")[0];
+  const fixtures = useMemo(() => {
+    const merged = new Map<string, Fixture>();
+    [...(liveData || []), ...(fixtureData || [])].forEach((fixture) => merged.set(fixture.id, fixture));
+    return sortedFixtures([...merged.values()]);
+  }, [fixtureData, liveData]);
+  const todayKey = businessDateKey();
 
   const fixturesByDate = useMemo(() => {
     const map: Record<string, Fixture[]> = {};
     fixtures.forEach((fixture) => {
-      const dateKey = fixture.matchDate.split("T")[0];
+      const dateKey = fixtureDateKey(fixture);
       if (!map[dateKey]) map[dateKey] = [];
       map[dateKey].push(fixture);
     });
@@ -40,11 +67,20 @@ export function FixturesPage() {
   }, [fixtures]);
 
   const groupedFixtures = useMemo(() => {
-    const keys = Object.keys(fixturesByDate).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
-    return keys.map((key) => ({ date: key, fixtures: fixturesByDate[key] }));
-  }, [fixturesByDate]);
+    const groups: Array<{ section: string; date: string; fixtures: Fixture[] }> = [];
+    for (const fixture of fixtures) {
+      const section = ACTIVE_MATCH_STATUSES.includes(fixture.status)
+        ? "Live now"
+        : fixture.status === "SCHEDULED" ? "Upcoming" : fixture.status === "COMPLETED" ? "Results" : "Other";
+      const date = fixtureDateKey(fixture);
+      const previous = groups[groups.length - 1];
+      if (previous?.section === section && previous.date === date) previous.fixtures.push(fixture);
+      else groups.push({ section, date, fixtures: [fixture] });
+    }
+    return groups;
+  }, [fixtures]);
 
-  const liveFixtures = useMemo(() => fixtures.filter((f) => f.status === "LIVE"), [fixtures]);
+  const liveFixtures = useMemo(() => fixtures.filter((f) => ACTIVE_MATCH_STATUSES.includes(f.status)), [fixtures]);
   const upcomingFixtures = useMemo(() => fixtures.filter((f) => f.status === "SCHEDULED"), [fixtures]);
   const completedFixtures = useMemo(() => fixtures.filter((f) => f.status === "COMPLETED"), [fixtures]);
 
@@ -152,9 +188,11 @@ export function FixturesPage() {
       <div className="mx-auto grid max-w-7xl gap-6 px-4 sm:px-6 xl:grid-cols-[0.95fr_1.05fr]">
           <LeagueCard title="Matchday blocks" action={<Badge variant="secondary" className="rounded-full">{fixtures.length} fixtures</Badge>}>
             <div className="space-y-4 p-4">
-              {groupedFixtures.length > 0 ? groupedFixtures.map((group) => (
-                <div key={group.date} className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{formatDate(group.date)}</p>
+              {isLoading ? <p className="py-8 text-center text-sm text-muted-foreground">Loading fixtures…</p> : isError ? (
+                <div className="py-8 text-center"><p className="text-sm text-destructive">Fixtures could not be loaded.</p><Button variant="outline" className="mt-3" onClick={() => refetch()}>Try again</Button></div>
+              ) : groupedFixtures.length > 0 ? groupedFixtures.map((group) => (
+                <div key={`${group.section}-${group.date}`} className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.section} · {formatDate(group.date)}</p>
                   <div className="space-y-2">
                     {group.fixtures.map((fixture) => (
                       <button
@@ -172,7 +210,7 @@ export function FixturesPage() {
                         <div className="text-center">
                           <TrendBadge>{fixture.status}</TrendBadge>
                           <p className="mt-2 text-xl font-bold tabular-nums">
-                            {fixture.status === "COMPLETED" ? `${fixture.homeScore ?? 0}-${fixture.awayScore ?? 0}` : fixture.status === "LIVE" ? "LIVE" : "VS"}
+                            {fixtureScoreLabel(fixture)}
                           </p>
                           <p className="text-[11px] text-muted-foreground">{fixture.kickoffTime ? formatTime(fixture.kickoffTime) : "TBD"}</p>
                         </div>
@@ -223,8 +261,8 @@ export function FixturesPage() {
                 {[
                   ["Upcoming", upcomingFixtures.length],
                   ["Completed", completedFixtures.length],
-                  ["This month", fixtures.filter((f) => f.matchDate.startsWith(`${viewYear}-${String(viewMonth + 1).padStart(2, "0")}`)).length],
-                  ["Today", fixtures.filter((f) => f.matchDate.startsWith(todayKey)).length],
+                  ["This month", fixtures.filter((f) => fixtureDateKey(f).startsWith(`${viewYear}-${String(viewMonth + 1).padStart(2, "0")}`)).length],
+                  ["Today", fixtures.filter((f) => fixtureDateKey(f) === todayKey).length],
                 ].map(([label, value]) => (
                   <div key={label as string} className="rounded-2xl border bg-secondary/30 p-4">
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>

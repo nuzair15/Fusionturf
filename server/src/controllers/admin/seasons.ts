@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from "express";
-import { v4 as uuidv4 } from "uuid";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import prisma from "../../config/database.js";
@@ -8,6 +7,7 @@ import { AppError } from "../../middleware/errorHandler.js";
 import { paginate, paginatedResponse, searchPlayerIds } from "../../utils/helpers.js";
 import { pick } from "../../utils/pick.js";
 import * as leagueSystem from "../../services/league-system.js";
+import { archiveResource } from "../../services/archive.js";
 
 // Seasons, transfer windows, and season rollover
 
@@ -15,6 +15,7 @@ import * as leagueSystem from "../../services/league-system.js";
 export const getSeasons = async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const seasons = await prisma.season.findMany({
+      where: { deletedAt: null },
       orderBy: { startDate: "desc" },
       include: { _count: { select: { teams: { where: { isActive: true } }, players: true, fixtures: true } } },
     });
@@ -64,8 +65,8 @@ export const updateSeason = async (req: Request, res: Response, next: NextFuncti
 
 export const deleteSeason = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const season = await prisma.season.update({ where: { id: req.params.id }, data: { isActive: false, isCurrent: false } });
-    res.json(season);
+    const archive = await archiveResource({ type: "season", id: req.params.id, actorId: req.user?.userId, reason: req.body?.reason });
+    res.json(archive);
   } catch (error) {
     next(error);
   }
@@ -94,9 +95,9 @@ export const adminCloseTransferWindow = async (req: Request, res: Response, next
 
 export const adminCreateNextSeason = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name, startDate, endDate } = req.body;
+    const { name, startDate, endDate, relegatedClubId, promotedClubId } = req.body;
     if (!name || !startDate || !endDate) throw new AppError("name, startDate, endDate required", 400);
-    const newSeasonId = await leagueSystem.createNextSeason(req.params.id, name, new Date(startDate), new Date(endDate));
+    const newSeasonId = await leagueSystem.createNextSeason(req.params.id, name, new Date(startDate), new Date(endDate), { relegatedClubId, promotedClubId });
     res.status(201).json({ id: newSeasonId });
   } catch (error) {
     next(error);

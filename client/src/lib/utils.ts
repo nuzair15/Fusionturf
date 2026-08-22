@@ -15,7 +15,14 @@ export const formatCurrency = (amount: number, currency = "INR"): string => {
 };
 
 export const formatDate = (date: string | Date, options?: Intl.DateTimeFormatOptions): string => {
-  return new Date(date).toLocaleDateString("en-IN", {
+  const value = typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)
+    ? (() => {
+        const [year, month, day] = date.split("-").map(Number);
+        return new Date(Date.UTC(year, month - 1, day, 12));
+      })()
+    : new Date(date);
+  return value.toLocaleDateString("en-IN", {
+    ...(typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date) ? { timeZone: "UTC" } : {}),
     day: "numeric",
     month: "short",
     year: "numeric",

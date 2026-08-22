@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from "express";
-import { v4 as uuidv4 } from "uuid";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import prisma from "../../config/database.js";
@@ -8,6 +7,7 @@ import { AppError } from "../../middleware/errorHandler.js";
 import { paginate, paginatedResponse, searchPlayerIds } from "../../utils/helpers.js";
 import { pick } from "../../utils/pick.js";
 import * as leagueSystem from "../../services/league-system.js";
+import { archiveResource } from "../../services/archive.js";
 
 // Teams management
 
@@ -15,7 +15,7 @@ import * as leagueSystem from "../../services/league-system.js";
 export const getTeams = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { seasonId, search } = req.query;
-    const where: any = {};
+    const where: any = { deletedAt: null };
     if (seasonId) where.seasonId = seasonId;
     if (search) where.OR = [
       { name: { contains: search as string, mode: "insensitive" } },
@@ -91,7 +91,7 @@ export const deleteTeam = async (req: Request, res: Response, next: NextFunction
   try {
     const existing = await prisma.team.findUnique({ where: { id: req.params.id }, select: { seasonId: true } });
     if (!existing) throw new AppError("Team not found", 404);
-    const team = await prisma.team.update({ where: { id: req.params.id }, data: { isActive: false, status: "inactive" } });
+    const team = await archiveResource({ type: "team", id: req.params.id, actorId: req.user?.userId, reason: req.body?.reason });
     await leagueSystem.recalculateStandings(existing.seasonId);
     res.json(team);
   } catch (error) {

@@ -10,11 +10,14 @@
     "build:server": "cd server && npm run build",
     "build:client": "cd client && npm run build",
     "build": "npm run build:server && npm run build:client",
+    "check:budgets": "node scripts/check-budgets.mjs",
     "start": "cd server && node dist/production.js",
     "db:migrate": "cd server && npx prisma migrate deploy",
     "db:seed": "cd server && npx prisma db seed",
+    "db:reset-demo": "cd server && npm run db:reset-demo",
     "db:generate": "cd server && npx prisma generate",
-    "setup": "npm install && cd server && npm install && npx prisma generate && npx prisma migrate deploy && npx prisma db seed && cd ../client && npm install"
+    "setup": "npm install && cd server && npm install && npx prisma generate && npx prisma migrate deploy && npx prisma db seed && cd ../client && npm install",
+    "verify": "npm run build && npm run check:budgets && cd server && npm test && npm audit --audit-level=high && cd ../client && npm test && npm audit --audit-level=high"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

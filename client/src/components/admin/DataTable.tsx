@@ -240,15 +240,14 @@ if (!isServerDriven && clientSort) {
                     <tr>
                       {(bulkActions || onDelete) && (
                         <th className="w-10 p-3">
-                          <button onClick={toggleAll} className="flex items-center justify-center">
+                          <button type="button" aria-label={allSelected ? "Clear row selection" : "Select all visible rows"} onClick={toggleAll} className="flex items-center justify-center rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                             {allSelected ? <CheckSquare className="h-4 w-4 text-primary" /> : someSelected ? <CheckSquare className="h-4 w-4 text-primary/60" /> : <Square className="h-4 w-4 text-muted-foreground" />}
                           </button>
                         </th>
                       )}
                       {visibleCols.map((col) => (
-                        <th key={col.key} className={cn("p-3 text-left font-medium text-muted-foreground", col.sortable && "cursor-pointer select-none hover:text-foreground")}
-                          onClick={() => col.sortable && handleSort(col.key)}>
-                          <div className="flex items-center">{col.label}{col.sortable && sortIndicator(col.key)}</div>
+                        <th key={col.key} className="p-3 text-left font-medium text-muted-foreground">
+                          {col.sortable ? <button type="button" onClick={() => handleSort(col.key)} className="flex items-center rounded hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Sort by ${col.label}`}>{col.label}{sortIndicator(col.key)}</button> : <div className="flex items-center">{col.label}</div>}
                         </th>
                       ))}
                       {(onEdit || onDelete) && <th className="w-20 p-3 text-right text-muted-foreground">Actions</th>}

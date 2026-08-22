@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from "express";
-import { v4 as uuidv4 } from "uuid";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import prisma from "../../config/database.js";
@@ -8,6 +7,7 @@ import { AppError } from "../../middleware/errorHandler.js";
 import { paginate, paginatedResponse, searchPlayerIds } from "../../utils/helpers.js";
 import { pick } from "../../utils/pick.js";
 import * as leagueSystem from "../../services/league-system.js";
+import { archiveResource } from "../../services/archive.js";
 
 // Venues, turfs, coupons, and advertisements
 
@@ -21,14 +21,14 @@ const VENUE_WRITABLE_FIELDS = [
 export const getVenues = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { search } = req.query;
-    const where: any = {};
+    const where: any = { deletedAt: null };
     if (search) where.OR = [
       { name: { contains: search as string, mode: "insensitive" } },
       { city: { contains: search as string, mode: "insensitive" } },
     ];
     const venues = await prisma.venue.findMany({
       where,
-      include: { turfs: { where: { isActive: true } }, _count: { select: { turfs: true } } },
+      include: { turfs: { where: { isActive: true, deletedAt: null } }, _count: { select: { turfs: true } } },
       orderBy: { name: "asc" },
     });
     res.json({ data: venues });
@@ -61,7 +61,7 @@ export const updateVenue = async (req: Request, res: Response, next: NextFunctio
 
 export const deleteVenue = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await prisma.venue.delete({ where: { id: req.params.id } });
+    await archiveResource({ type: "venue", id: req.params.id, actorId: req.user?.userId, reason: req.body?.reason });
     res.status(204).end();
   } catch (error) {
     next(error);
@@ -97,7 +97,7 @@ export const updateTurf = async (req: Request, res: Response, next: NextFunction
 
 export const deleteTurf = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await prisma.turf.delete({ where: { id: req.params.id } });
+    await archiveResource({ type: "turf", id: req.params.id, actorId: req.user?.userId, reason: req.body?.reason });
     res.status(204).end();
   } catch (error) {
     next(error);
@@ -114,7 +114,7 @@ const COUPON_WRITABLE_FIELDS = [
 
 export const getCoupons = async (_req: Request, res: Response, next: NextFunction) => {
   try {
-    const items = await prisma.coupon.findMany({ orderBy: { createdAt: "desc" } });
+    const items = await prisma.coupon.findMany({ where: { deletedAt: null }, orderBy: { createdAt: "desc" } });
     res.json({ data: items });
   } catch (error) {
     next(error);
@@ -148,7 +148,7 @@ export const updateCoupon = async (req: Request, res: Response, next: NextFuncti
 
 export const deleteCoupon = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await prisma.coupon.delete({ where: { id: req.params.id } });
+    await archiveResource({ type: "coupon", id: req.params.id, actorId: req.user?.userId, reason: req.body?.reason });
     res.status(204).end();
   } catch (error) {
     next(error);
@@ -159,7 +159,7 @@ const AD_WRITABLE_FIELDS = ["title", "imageUrl", "linkUrl", "position", "isActiv
 
 export const getAdvertisements = async (_req: Request, res: Response, next: NextFunction) => {
   try {
-    const items = await prisma.advertisement.findMany({ orderBy: { createdAt: "desc" } });
+    const items = await prisma.advertisement.findMany({ where: { deletedAt: null }, orderBy: { createdAt: "desc" } });
     res.json({ data: items });
   } catch (error) {
     next(error);
@@ -193,7 +193,7 @@ export const updateAdvertisement = async (req: Request, res: Response, next: Nex
 
 export const deleteAdvertisement = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await prisma.advertisement.delete({ where: { id: req.params.id } });
+    await archiveResource({ type: "advertisement", id: req.params.id, actorId: req.user?.userId, reason: req.body?.reason });
     res.status(204).end();
   } catch (error) {
     next(error);

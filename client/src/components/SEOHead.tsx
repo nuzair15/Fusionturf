@@ -1,8 +1,10 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useLocation } from "react-router-dom";
 
 export function SEOHead() {
+  const location = useLocation();
   const { data: settings } = useQuery({
     queryKey: ["settings"],
     queryFn: () => api.get<Record<string, string>>("/settings"),
@@ -14,8 +16,17 @@ export function SEOHead() {
   const faviconUrl = settings?.site_favicon_url || "";
 
   useEffect(() => {
-    document.title = siteName ? `${siteName} - Turf Booking & Football League in Bhramavar, Udupi` : "Fusion Turf - Turf Booking & Football League in Bhramavar, Udupi";
-  }, [siteName]);
+    const section = location.pathname.startsWith("/booking") ? "Turf Booking" : location.pathname.startsWith("/league/fixtures") ? "Fixtures" : location.pathname.startsWith("/league/standings") ? "Standings" : location.pathname.startsWith("/league") ? "Football League" : location.pathname.startsWith("/auth") ? "Account" : "Turf Booking & Football League";
+    document.title = `${section} | ${siteName}`;
+    let canonical = document.querySelector<HTMLLinkElement>("link[rel='canonical']");
+    if (!canonical) { canonical = document.createElement("link"); canonical.rel = "canonical"; document.head.appendChild(canonical); }
+    canonical.href = `${window.location.origin}${location.pathname}`;
+    for (const [property, content] of [["og:title", document.title], ["og:url", canonical.href], ["og:type", "website"]]) {
+      let meta = document.querySelector<HTMLMetaElement>(`meta[property='${property}']`);
+      if (!meta) { meta = document.createElement("meta"); meta.setAttribute("property", property); document.head.appendChild(meta); }
+      meta.content = content;
+    }
+  }, [siteName, location.pathname]);
 
   useEffect(() => {
     if (faviconUrl) {

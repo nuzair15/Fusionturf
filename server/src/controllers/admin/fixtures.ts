@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from "express";
-import { v4 as uuidv4 } from "uuid";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import prisma from "../../config/database.js";
@@ -8,6 +7,23 @@ import { AppError } from "../../middleware/errorHandler.js";
 import { paginate, paginatedResponse, searchPlayerIds } from "../../utils/helpers.js";
 import { pick } from "../../utils/pick.js";
 import * as leagueSystem from "../../services/league-system.js";
+import { archiveResource, restoreArchiveRecord } from "../../services/archive.js";
+import { ACTIVE_MATCH_STATUSES, fixtureScheduleFields, fixtureTimeDto } from "../../utils/fixtures.js";
+import { canTransitionMatch } from "../../utils/match-state.js";
+import { localNow } from "../../utils/time.js";
+import { appendMatchEvent } from "../../services/match-events.js";
+
+async function resolveFixtureTimezone(competitionId?: string | null, venueId?: string | null) {
+  if (competitionId) {
+    const competition = await prisma.competition.findFirst({ where: { id: competitionId, deletedAt: null }, select: { timezone: true } });
+    if (competition?.timezone) return competition.timezone;
+  }
+  if (venueId) {
+    const venue = await prisma.venue.findFirst({ where: { id: venueId, deletedAt: null }, select: { timezone: true } });
+    if (venue?.timezone) return venue.timezone;
+  }
+  return "Asia/Kolkata";
+}
 
 // Fixtures: scheduling, lineups, scores, and league/post-season generation
 
@@ -34,10 +50,12 @@ async function validateFixtureReferences(data: Record<string, any>, excludeFixtu
   }
   const matchDate = new Date(data.matchDate);
   if (Number.isNaN(matchDate.getTime())) throw new AppError("A valid match date is required", 400);
+  const schedule = fixtureScheduleFields(matchDate, data.kickoffTime, await resolveFixtureTimezone(data.competitionId, data.venueId));
   const scheduledStatuses = { notIn: ["CANCELLED", "POSTPONED"] };
   const conflictWhere: any = {
+    deletedAt: null,
     seasonId: data.seasonId,
-    matchDate,
+    scheduledDate: schedule.scheduledDate,
     status: scheduledStatuses,
     OR: [
       { homeTeamId: { in: [data.homeTeamId, data.awayTeamId] } },
@@ -45,7 +63,7 @@ async function validateFixtureReferences(data: Record<string, any>, excludeFixtu
     ],
   };
   if (excludeFixtureId) conflictWhere.id = { not: excludeFixtureId };
-  if (data.kickoffTime) conflictWhere.kickoffTime = data.kickoffTime;
+  if (schedule.kickoffAt) conflictWhere.kickoffAt = schedule.kickoffAt;
   const conflict = await prisma.fixture.findFirst({ where: conflictWhere, select: { id: true, homeTeamId: true, awayTeamId: true } });
   if (conflict) throw new AppError("A participating team is already scheduled in this time slot", 409);
 }
@@ -61,7 +79,7 @@ export const getFixtures = async (req: Request, res: Response, next: NextFunctio
   try {
     const { page, limit, skip } = paginate(req.query);
     const { search } = req.query;
-    const where: any = {};
+    const where: any = { deletedAt: null };
     if (req.query.seasonId) where.seasonId = String(req.query.seasonId);
     if (req.query.friendly === "true") where.isFriendly = true;
     if (req.query.friendly === "false") where.isFriendly = false;
@@ -70,15 +88,58 @@ export const getFixtures = async (req: Request, res: Response, next: NextFunctio
       { awayTeam: { name: { contains: search as string, mode: "insensitive" } } },
       { status: { contains: search as string, mode: "insensitive" } },
     ];
-    const [data, total] = await Promise.all([
-      prisma.fixture.findMany({
-        where,
-        include: { homeTeam: { select: { name: true, slug: true, logoUrl: true } }, awayTeam: { select: { name: true, slug: true, logoUrl: true } }, season: { select: { name: true } } },
-        skip, take: limit,
-        orderBy: { matchDate: "desc" },
-      }),
-      prisma.fixture.count({ where }),
-    ]);
+    const timezone = "Asia/Kolkata";
+    const today = localNow(timezone).date;
+    const include = {
+      homeTeam: { select: { name: true, slug: true, logoUrl: true } },
+      awayTeam: { select: { name: true, slug: true, logoUrl: true } },
+      season: { select: { name: true } },
+      competition: { select: { timezone: true } },
+    } as const;
+    const buckets = [
+      {
+        where: { ...where, status: { in: ACTIVE_MATCH_STATUSES } },
+        orderBy: [{ scheduledDate: "asc" }, { kickoffAt: { sort: "asc", nulls: "last" } }, { id: "asc" }],
+      },
+      {
+        where: { ...where, status: "SCHEDULED", scheduledDate: today },
+        orderBy: [{ kickoffAt: { sort: "asc", nulls: "last" } }, { id: "asc" }],
+      },
+      {
+        where: { ...where, status: "SCHEDULED", scheduledDate: { gt: today } },
+        orderBy: [{ scheduledDate: "asc" }, { kickoffAt: { sort: "asc", nulls: "last" } }, { id: "asc" }],
+      },
+      {
+        where: { ...where, status: "COMPLETED" },
+        orderBy: [{ scheduledDate: "desc" }, { kickoffAt: { sort: "desc", nulls: "last" } }, { id: "asc" }],
+      },
+      {
+        where: { ...where, status: { notIn: [...ACTIVE_MATCH_STATUSES, "SCHEDULED", "COMPLETED"] } },
+        orderBy: [{ scheduledDate: "desc" }, { kickoffAt: { sort: "desc", nulls: "last" } }, { id: "asc" }],
+      },
+    ] as const;
+    const counts = await Promise.all(buckets.map((bucket) => prisma.fixture.count({ where: bucket.where })));
+    const total = counts.reduce((sum, count) => sum + count, 0);
+    let remainingSkip = skip;
+    let remainingTake = limit;
+    const data: any[] = [];
+    for (let index = 0; index < buckets.length && remainingTake > 0; index += 1) {
+      const count = counts[index];
+      if (remainingSkip >= count) {
+        remainingSkip -= count;
+        continue;
+      }
+      const rows = await prisma.fixture.findMany({
+        where: buckets[index].where,
+        include,
+        orderBy: buckets[index].orderBy as any,
+        skip: remainingSkip,
+        take: remainingTake,
+      });
+      data.push(...rows.map((fixture) => fixtureTimeDto(fixture, fixture.competition?.timezone || timezone)));
+      remainingTake -= rows.length;
+      remainingSkip = 0;
+    }
     res.json(paginatedResponse(data, total, page, limit));
   } catch (error) {
     next(error);
@@ -92,7 +153,9 @@ export const createFixture = async (req: Request, res: Response, next: NextFunct
       throw new AppError("seasonId, homeTeamId, awayTeamId, and matchDate are required", 400);
     }
     await validateFixtureReferences(data as Record<string, any>);
-    const fixture = await prisma.fixture.create({ data: { ...data, matchDate: new Date(data.matchDate) } as any });
+    const matchDate = new Date(data.matchDate);
+    const schedule = fixtureScheduleFields(matchDate, data.kickoffTime, await resolveFixtureTimezone(data.competitionId, data.venueId));
+    const fixture = await prisma.fixture.create({ data: { ...data, matchDate, ...schedule } as any });
     res.status(201).json(fixture);
   } catch (error) {
     next(error);
@@ -109,9 +172,11 @@ export const updateFixture = async (req: Request, res: Response, next: NextFunct
     });
     if (!existing) throw new AppError("Fixture not found", 404);
     await validateFixtureReferences({ ...existing, ...data }, existing.id);
+    const merged = { ...existing, ...data };
+    const schedule = fixtureScheduleFields(merged.matchDate, merged.kickoffTime, await resolveFixtureTimezone(merged.competitionId, merged.venueId));
     const fixture = await prisma.fixture.update({
       where: { id: req.params.id },
-      data,
+      data: { ...data, ...schedule },
     });
     // Toggling a completed match in/out of friendly must propagate to league
     // standings, player stats, and everything derived from them.
@@ -136,7 +201,9 @@ export const updateFixtureStatus = async (req: Request, res: Response, next: Nex
     if (!allowed.includes(status)) throw new AppError("Invalid fixture status", 400);
     const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id } });
     if (!fixture) throw new AppError("Fixture not found", 404);
-    if (status === "LIVE" && fixture.status === "COMPLETED") throw new AppError("Completed fixtures cannot return to live", 400);
+    if (!canTransitionMatch(fixture.status, status)) {
+      throw new AppError(`Cannot move a fixture from ${fixture.status} to ${status}`, 409, "ILLEGAL_MATCH_STATE");
+    }
     const now = new Date();
     if (status === "COMPLETED") {
       if (fixture.homeScore === null || fixture.awayScore === null) throw new AppError("Completed fixtures require scores", 400);
@@ -145,12 +212,24 @@ export const updateFixtureStatus = async (req: Request, res: Response, next: Nex
       const elapsed = fixture.status === "LIVE" && fixture.matchClockStartedAt
         ? fixture.matchClockSeconds + Math.max(0, Math.floor((now.getTime() - fixture.matchClockStartedAt.getTime()) / 1000))
         : fixture.matchClockSeconds;
-      await prisma.fixture.update({ where: { id: req.params.id }, data: {
-        status,
-        ...(status === "POSTPONED" ? { postponementReason: reason ? String(reason).trim() : null } : {}),
-        matchClockSeconds: elapsed,
-        matchClockStartedAt: status === "LIVE" ? now : null,
-      } });
+      await prisma.$transaction(async (tx) => {
+        const nextVersion = fixture.version + 1;
+        const changed = await tx.fixture.updateMany({ where: { id: req.params.id, version: fixture.version }, data: {
+          status,
+          version: nextVersion,
+          ...(status === "POSTPONED" ? { postponementReason: reason ? String(reason).trim() : null } : {}),
+          matchClockSeconds: elapsed,
+          matchClockStartedAt: status === "LIVE" ? now : null,
+        } });
+        if (changed.count !== 1) throw new AppError("Fixture was changed by another operator", 409, "VERSION_CONFLICT");
+        await appendMatchEvent(tx, {
+          fixtureId: fixture.id,
+          type: "STATE_CHANGE",
+          payload: { fromStatus: fixture.status, toStatus: status, elapsedSeconds: elapsed, reason: reason || null, sourceVersion: nextVersion },
+          idempotencyKey: req.header("Idempotency-Key") || `fixture-state:${fixture.id}:${nextVersion}`,
+          createdById: req.user?.userId,
+        });
+      }, { isolationLevel: "Serializable" });
     }
     res.json(await prisma.fixture.findUnique({ where: { id: req.params.id } }));
   } catch (error) {
@@ -199,6 +278,7 @@ export const rescheduleFixture = async (req: Request, res: Response, next: NextF
     const updated = await prisma.fixture.update({ where: { id: existing.id }, data: {
       matchDate: nextDate,
       kickoffTime: nextKickoff,
+      ...fixtureScheduleFields(nextDate, nextKickoff, await resolveFixtureTimezone(existing.competitionId, existing.venueId)),
       originalMatchDate: existing.originalMatchDate || existing.matchDate,
       rescheduleReason: reason ? String(reason).trim() : null,
       rescheduledAt: new Date(),
@@ -218,8 +298,13 @@ export const settleFixtureOutcome = async (req: Request, res: Response, next: Ne
     if (![fixture.homeTeamId, fixture.awayTeamId].includes(winnerTeamId)) throw new AppError("Winner must be one of the fixture teams", 400);
     const homeScore = winnerTeamId === fixture.homeTeamId ? 3 : 0;
     const awayScore = winnerTeamId === fixture.awayTeamId ? 3 : 0;
-    await leagueSystem.processMatchResult(fixture.id, homeScore, awayScore, winnerTeamId);
-    const updated = await prisma.fixture.update({ where: { id: fixture.id }, data: { outcome, winnerTeamId, matchReport: reason ? String(reason).trim() : fixture.matchReport } });
+    await leagueSystem.processMatchResult(fixture.id, homeScore, awayScore, winnerTeamId, {
+      changedById: req.user?.userId,
+      reason: reason ? String(reason).trim() : undefined,
+      idempotencyKey: req.header("Idempotency-Key") || undefined,
+      settlement: { outcome, winnerTeamId, matchReport: reason ? String(reason).trim() : fixture.matchReport },
+    });
+    const updated = await prisma.fixture.findUnique({ where: { id: fixture.id } });
     res.json(updated);
   } catch (error) { next(error); }
 };
@@ -241,10 +326,23 @@ export const getFixtureResultHistory = async (req: Request, res: Response, next:
 
 export const resetFixtureClock = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const fixture = await prisma.fixture.update({
-      where: { id: req.params.id },
-      data: { matchClockSeconds: 0, matchClockStartedAt: "LIVE" === (await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { status: true } }))?.status ? new Date() : null },
-    });
+    const fixture = await prisma.$transaction(async (tx) => {
+      const current = await tx.fixture.findFirst({ where: { id: req.params.id, deletedAt: null } });
+      if (!current) throw new AppError("Fixture not found", 404);
+      const nextVersion = current.version + 1;
+      const updated = await tx.fixture.update({
+        where: { id: current.id },
+        data: { version: nextVersion, matchClockSeconds: 0, matchClockStartedAt: current.status === "LIVE" ? new Date() : null },
+      });
+      await appendMatchEvent(tx, {
+        fixtureId: current.id,
+        type: "CLOCK",
+        payload: { action: "RESET", previousSeconds: current.matchClockSeconds, nextSeconds: 0, sourceVersion: nextVersion },
+        idempotencyKey: req.header("Idempotency-Key") || `fixture-clock-reset:${current.id}:${nextVersion}`,
+        createdById: req.user?.userId,
+      });
+      return updated;
+    }, { isolationLevel: "Serializable" });
     res.json({ matchClockSeconds: fixture.matchClockSeconds });
   } catch (error) { next(error); }
 };
@@ -255,33 +353,25 @@ export const updateFixtureScore = async (req: Request, res: Response, next: Next
     if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore) || homeScore < 0 || awayScore < 0) {
       throw new AppError("Scores must be non-negative integers", 400);
     }
-    const before = await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { homeScore: true, awayScore: true } });
-    if (!before) throw new AppError("Fixture not found", 404);
     const hasExtraTime = Number.isInteger(extraTimeHomeScore) || Number.isInteger(extraTimeAwayScore);
     const hasPenalties = Number.isInteger(penaltiesHomeScore) || Number.isInteger(penaltiesAwayScore);
     if ((hasExtraTime && (!Number.isInteger(extraTimeHomeScore) || !Number.isInteger(extraTimeAwayScore))) || (hasPenalties && (!Number.isInteger(penaltiesHomeScore) || !Number.isInteger(penaltiesAwayScore)))) {
       throw new AppError("Extra-time and penalty scores must be supplied as complete integer pairs", 400);
     }
-    await leagueSystem.processMatchResult(req.params.id, homeScore, awayScore, winnerTeamId);
-    if (hasExtraTime || hasPenalties) await prisma.fixture.update({ where: { id: req.params.id }, data: {
-      extraTimeHomeScore: hasExtraTime ? extraTimeHomeScore : null,
-      extraTimeAwayScore: hasExtraTime ? extraTimeAwayScore : null,
-      penaltiesHomeScore: hasPenalties ? penaltiesHomeScore : null,
-      penaltiesAwayScore: hasPenalties ? penaltiesAwayScore : null,
-      outcome: hasPenalties ? "PENALTIES" : "EXTRA_TIME",
-      winnerTeamId: winnerTeamId || null,
-    } });
-    if (before.homeScore !== homeScore || before.awayScore !== awayScore) {
-      await prisma.matchResultRevision.create({ data: {
-        fixtureId: req.params.id,
-        changedById: req.user?.userId,
-        previousHomeScore: before.homeScore,
-        previousAwayScore: before.awayScore,
-        nextHomeScore: homeScore,
-        nextAwayScore: awayScore,
-        reason: reason ? String(reason).trim() : null,
-      } });
-    }
+    await leagueSystem.processMatchResult(req.params.id, homeScore, awayScore, winnerTeamId, {
+      changedById: req.user?.userId,
+      reason: reason ? String(reason).trim() : undefined,
+      idempotencyKey: req.header("Idempotency-Key") || undefined,
+      expectedVersion: Number.isInteger(req.body.version) ? req.body.version : undefined,
+      settlement: hasExtraTime || hasPenalties ? {
+        extraTimeHomeScore: hasExtraTime ? extraTimeHomeScore : null,
+        extraTimeAwayScore: hasExtraTime ? extraTimeAwayScore : null,
+        penaltiesHomeScore: hasPenalties ? penaltiesHomeScore : null,
+        penaltiesAwayScore: hasPenalties ? penaltiesAwayScore : null,
+        outcome: hasPenalties ? "PENALTIES" : "EXTRA_TIME",
+        winnerTeamId: winnerTeamId || null,
+      } : undefined,
+    });
     const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id } });
     res.json(fixture);
   } catch (error) {
@@ -297,11 +387,10 @@ export const deleteFixture = async (req: Request, res: Response, next: NextFunct
     });
     if (!fixture) throw new AppError("Fixture not found", 404);
 
-    await prisma.fixture.delete({ where: { id: req.params.id } });
+    await archiveResource({ type: "fixture", id: req.params.id, actorId: req.user?.userId, reason: req.body?.reason });
 
-    // Deleting removes the fixture (and its goals/cards/subs via cascade), so
-    // recompute standings, player stats and awards for the season so the
-    // deleted result stops counting in the league table.
+    // Soft-deleted results stop counting immediately, but their events and
+    // audit history remain intact and can be restored from the recycle bin.
     await leagueSystem.recalculateStandings(fixture.seasonId);
     try {
       await leagueSystem.recalculatePlayerStats(fixture.seasonId);
@@ -311,6 +400,37 @@ export const deleteFixture = async (req: Request, res: Response, next: NextFunct
     }
 
     res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getDeletedFixtures = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const fixtures = await prisma.fixture.findMany({
+      where: { deletedAt: { not: null } },
+      include: {
+        homeTeam: { select: { name: true, slug: true, logoUrl: true } },
+        awayTeam: { select: { name: true, slug: true, logoUrl: true } },
+        season: { select: { name: true } },
+      },
+      orderBy: { deletedAt: "desc" },
+    });
+    res.json(fixtures);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const restoreFixture = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const archive = await prisma.archiveRecord.findFirst({ where: { resourceType: "fixture", resourceId: req.params.id, restoredAt: null }, orderBy: { deletedAt: "desc" } });
+    if (!archive) throw new AppError("Archived fixture not found", 404);
+    const { restored: fixture } = await restoreArchiveRecord(archive.id, req.user?.userId);
+    await leagueSystem.recalculateStandings(fixture.seasonId);
+    await leagueSystem.recalculatePlayerStats(fixture.seasonId);
+    await leagueSystem.autoDetectAwards(fixture.seasonId);
+    res.json(fixture);
   } catch (error) {
     next(error);
   }
@@ -446,8 +566,28 @@ export const updateFixtureLineups = async (req: Request, res: Response, next: Ne
 
 export const generateFixtures = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await leagueSystem.generateSeasonFixtures(req.params.id, req.body);
-    res.json(result);
+    const competition = await prisma.competition.findFirst({ where: { seasonId: req.params.id, type: "LEAGUE", isActive: true, deletedAt: null }, orderBy: { createdAt: "asc" } });
+    if (!competition) throw new AppError("Create an active league competition before scheduling fixtures", 409);
+    if (req.body?.preview !== true) throw new AppError("Direct fixture generation is disabled. Create a schedule preview and publish that preview instead.", 409);
+    const batch = await leagueSystem.createFixtureSchedulePreview(competition.id, req.body, req.user?.userId);
+    res.json(batch);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createSchedulePreview = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const batch = await leagueSystem.createFixtureSchedulePreview(req.params.id, req.body || {}, req.user?.userId);
+    res.status(201).json(batch);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const publishSchedulePreview = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.json(await leagueSystem.publishFixtureSchedulePreview(req.params.id));
   } catch (error) {
     next(error);
   }
@@ -466,20 +606,12 @@ export const adminProcessMatchResult = async (req: Request, res: Response, next:
   try {
     const { homeScore, awayScore, reason, winnerTeamId } = req.body;
     if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore) || homeScore < 0 || awayScore < 0) throw new AppError("Scores must be non-negative integers", 400);
-    const before = await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { homeScore: true, awayScore: true } });
-    if (!before) throw new AppError("Fixture not found", 404);
-    await leagueSystem.processMatchResult(req.params.id, homeScore, awayScore, winnerTeamId);
-    if (before.homeScore !== homeScore || before.awayScore !== awayScore) {
-      await prisma.matchResultRevision.create({ data: {
-        fixtureId: req.params.id,
-        changedById: req.user?.userId,
-        previousHomeScore: before.homeScore,
-        previousAwayScore: before.awayScore,
-        nextHomeScore: homeScore,
-        nextAwayScore: awayScore,
-        reason: reason ? String(reason).trim() : null,
-      } });
-    }
+    await leagueSystem.processMatchResult(req.params.id, homeScore, awayScore, winnerTeamId, {
+      changedById: req.user?.userId,
+      reason: reason ? String(reason).trim() : undefined,
+      idempotencyKey: req.header("Idempotency-Key") || undefined,
+      expectedVersion: Number.isInteger(req.body.version) ? req.body.version : undefined,
+    });
     res.json({ message: "Match result processed" });
   } catch (error) {
     next(error);
