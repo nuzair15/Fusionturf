@@ -17,7 +17,10 @@ export function fixtureDateOnly(fixture: FixtureForOrder): string {
 }
 
 export function fixtureKickoffAt(fixture: FixtureForOrder, timezone = "Asia/Kolkata"): Date | null {
-  if (fixture.kickoffAt) return fixture.kickoffAt;
+  if (fixture.kickoffAt) {
+    const parsed = fixture.kickoffAt instanceof Date ? fixture.kickoffAt : new Date(fixture.kickoffAt);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
   if (!fixture.kickoffTime) return null;
   try {
     return zonedDateTimeToUtc(fixtureDateOnly(fixture), fixture.kickoffTime, timezone);
