@@ -358,6 +358,11 @@ export const updateFixtureScore = async (req: Request, res: Response, next: Next
     if ((hasExtraTime && (!Number.isInteger(extraTimeHomeScore) || !Number.isInteger(extraTimeAwayScore))) || (hasPenalties && (!Number.isInteger(penaltiesHomeScore) || !Number.isInteger(penaltiesAwayScore)))) {
       throw new AppError("Extra-time and penalty scores must be supplied as complete integer pairs", 400);
     }
+    const existing = await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { status: true } });
+    if (!existing) throw new AppError("Fixture not found", 404);
+    if (existing.status === "COMPLETED" && (typeof reason !== "string" || !reason.trim())) {
+      throw new AppError("Completed result corrections require a reason", 400);
+    }
     await leagueSystem.processMatchResult(req.params.id, homeScore, awayScore, winnerTeamId, {
       changedById: req.user?.userId,
       reason: reason ? String(reason).trim() : undefined,

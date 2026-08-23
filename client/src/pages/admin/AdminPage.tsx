@@ -952,6 +952,24 @@ export function AdminPage() {
                     <Button size="sm" variant={f.status === "LIVE" ? "default" : "outline"} onClick={() => setLiveStatsFixtureId(f.id)}>
                       <Activity className="h-3.5 w-3.5" /> Live
                     </Button>
+                    <Button size="sm" variant="outline" onClick={() => {
+                      setEditingItem(f);
+                      openForm("score", {
+                        fixtureId: f.id,
+                        homeScore: f.homeScore ?? 0,
+                        awayScore: f.awayScore ?? 0,
+                        homeTeamId: f.homeTeamId,
+                        awayTeamId: f.awayTeamId,
+                        homeTeamName: f.homeTeam?.name || "Home team",
+                        awayTeamName: f.awayTeam?.name || "Away team",
+                        winnerTeamId: f.winnerTeamId || "",
+                        version: f.version,
+                        isCompleted: f.status === "COMPLETED",
+                        correctionReason: "",
+                      });
+                    }}>
+                      <Edit2 className="h-3.5 w-3.5" /> {f.status === "COMPLETED" ? "Edit result" : "Set result"}
+                    </Button>
                   </div>
                 ) },
               ]}
@@ -1036,7 +1054,7 @@ export function AdminPage() {
                   disabled={!formData.homeTeamId || !formData.awayTeamId || !formData.matchDate}>Create Fixture</Button>
               </div>
             </Dialog>
-            <Dialog open={showForm === "score"} onClose={() => { setShowForm(null); setEditingItem(null); }} title="Update Score">
+            <Dialog open={showForm === "score"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={formData.isCompleted ? "Correct Completed Result" : "Set Match Result"}>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
@@ -1056,29 +1074,32 @@ export function AdminPage() {
                     {formData.awayTeamId && <option value={formData.awayTeamId}>{formData.awayTeamName || "Away team"}</option>}
                   </Select>
                 </div>
-                <div className="flex gap-2">
-                  <Button className="flex-1" variant="outline" onClick={async () => {
-                    try {
-                      await api.patch(`/admin/fixtures/${formData.fixtureId}/score`, { homeScore: formData.homeScore, awayScore: formData.awayScore, winnerTeamId: formData.winnerTeamId || undefined });
-                      setEditingItem(null);
-                      setShowForm(null);
-                      queryClient.invalidateQueries({ queryKey: ["admin-fixtures"] });
-                    } catch (err: any) {
-                      setFormErrors(err.message);
-                    }
-                  }}>Update Score Only</Button>
-                  <Button className="flex-1" onClick={async () => {
-                    try {
-                      await api.post(`/admin/process-match-result/${formData.fixtureId}`, { homeScore: formData.homeScore, awayScore: formData.awayScore, winnerTeamId: formData.winnerTeamId || undefined });
-                      setEditingItem(null);
-                      setShowForm(null);
-                      queryClient.invalidateQueries({ queryKey: ["admin-fixtures"] });
-                      queryClient.invalidateQueries({ queryKey: ["admin-standings"] });
-                    } catch (err: any) {
-                      setFormErrors(err.message);
-                    }
-                  }}>Process Full Result</Button>
-                </div>
+                {formData.isCompleted && <div className="space-y-1.5">
+                  <Label>Correction reason *</Label>
+                  <textarea className="flex min-h-[72px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" value={formData.correctionReason || ""} onChange={(e) => handleFormChange("correctionReason", e.target.value)} placeholder="Explain why this completed result is being changed" />
+                  <p className="text-xs text-muted-foreground">The change is recorded and league standings and player statistics are recalculated.</p>
+                </div>}
+                {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
+                <Button className="w-full" disabled={formData.isCompleted && !formData.correctionReason?.trim()} onClick={async () => {
+                  try {
+                    setFormErrors("");
+                    await api.patch(`/admin/fixtures/${formData.fixtureId}/score`, {
+                      homeScore: formData.homeScore,
+                      awayScore: formData.awayScore,
+                      winnerTeamId: formData.winnerTeamId || undefined,
+                      reason: formData.correctionReason || undefined,
+                      version: formData.version,
+                    });
+                    setEditingItem(null);
+                    setShowForm(null);
+                    queryClient.invalidateQueries({ queryKey: ["admin-fixtures"] });
+                    queryClient.invalidateQueries({ queryKey: ["fixtures"] });
+                    queryClient.invalidateQueries({ queryKey: ["standings"] });
+                    queryClient.invalidateQueries({ queryKey: ["admin-standings"] });
+                  } catch (err: any) {
+                    setFormErrors(err.message);
+                  }
+                }}>{formData.isCompleted ? "Save Corrected Result" : "Complete Match"}</Button>
               </div>
             </Dialog>
             <Dialog open={showForm === "squad"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={`Squad Selection: ${formData.homeTeamName || "?"} vs ${formData.awayTeamName || "?"}`}>
