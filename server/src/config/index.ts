@@ -27,6 +27,7 @@ export const config = {
   },
 
   mfaEncryptionKey: process.env.MFA_ENCRYPTION_KEY || process.env.JWT_SECRET || "dev-only-mfa-key",
+  requirePrivilegedMfa: process.env.REQUIRE_PRIVILEGED_MFA !== "false",
 
   cloudinary: {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME || "",

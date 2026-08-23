@@ -8,7 +8,7 @@ import { formatDate, formatTime } from "@/lib/utils";
 import type { Fixture, Standing, Venue, News, PaginatedResponse, Sponsor, Season } from "@/types";
 import { Calendar, Trophy, MapPin, Star, ArrowUpRight, Flame, Target } from "lucide-react";
 import { LeagueHero, LeagueCard, LeagueEmptyState, SectionLink } from "@/components/league/LeagueUI";
-import { fixtureDateKey, fixtureScoreLabel } from "@/lib/fixtures";
+import { ACTIVE_MATCH_STATUSES, fixtureDateKey, fixtureScoreLabel } from "@/lib/fixtures";
 
 export function HomePage() {
   const navigate = useNavigate();
@@ -24,7 +24,8 @@ export function HomePage() {
     queryKey: ["featured-fixtures-recent"],
     queryFn: () => api.get<PaginatedResponse<Fixture>>("/v2/fixtures", { limit: 6, scope: "recent" }),
     staleTime: 0,
-    enabled: (fixtures?.data?.length ?? 0) === 0,
+    refetchOnWindowFocus: true,
+    refetchInterval: 15000,
   });
   const { data: standings } = useQuery({ queryKey: ["standings"], queryFn: () => api.get<Standing[]>("/league/standings"), staleTime: 60_000, refetchOnWindowFocus: false });
   const { data: venues } = useQuery({ queryKey: ["venues", { limit: 4 }], queryFn: () => api.get<PaginatedResponse<Venue>>("/bookings/venues", { limit: 4 }), refetchOnWindowFocus: true, refetchInterval: 60000 });
@@ -33,7 +34,15 @@ export function HomePage() {
   const { data: currentSeason } = useQuery({ queryKey: ["current-season"], queryFn: () => api.get<Season>("/league/seasons/current"), retry: false, refetchOnWindowFocus: true, refetchInterval: 60000 });
 
   const heroImage = settings?.site_hero_url || "/hero-1440.webp";
-  const itemList = (fixtures?.data?.length ? fixtures.data : recentFixtures?.data) || [];
+  const upcomingList = fixtures?.data || [];
+  const recentList = recentFixtures?.data || [];
+  // Keep a match visible when it moves from live to completed: live matches
+  // come first, followed by recent results and then future fixtures.
+  const itemList = [
+    ...upcomingList.filter((fixture) => ACTIVE_MATCH_STATUSES.includes(fixture.status)),
+    ...recentList,
+    ...upcomingList.filter((fixture) => fixture.status === "SCHEDULED"),
+  ];
   const standingsList = standings || [];
   const venueList = venues?.data || [];
   const newsList = news?.data || [];

@@ -16,7 +16,8 @@ import { randomUUID } from "crypto";
 import { csrfProtection } from "./middleware/csrf.js";
 
 if (config.nodeEnv === "production") {
-  const required = ["DATABASE_URL", "JWT_SECRET", "MFA_ENCRYPTION_KEY"];
+  const required = ["DATABASE_URL", "JWT_SECRET"];
+  if (config.requirePrivilegedMfa) required.push("MFA_ENCRYPTION_KEY");
   const missing = required.filter((key) => !process.env[key]);
   if (missing.length > 0) throw new Error(`Missing required production environment variables: ${missing.join(", ")}`);
 }

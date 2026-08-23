@@ -201,9 +201,9 @@ export function LeaguePage() {
 
       {mode === "fixtures" && (
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <LeagueCard title="Upcoming fixtures" action={<SectionLink onClick={() => navigate("/league/fixtures")}>Calendar view</SectionLink>}>
+          <LeagueCard title="Fixtures and results" action={<SectionLink onClick={() => navigate("/league/fixtures")}>Calendar view</SectionLink>}>
             <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
-              {upcomingFixtures.length > 0 ? upcomingFixtures.map((fixture) => (
+              {[...liveFixtures, ...recentFixtures, ...upcomingFixtures].length > 0 ? [...liveFixtures, ...recentFixtures, ...upcomingFixtures].map((fixture) => (
                 <button key={fixture.id} onClick={() => navigate(`/league/fixtures/${fixture.id}`)} className="rounded-2xl border p-4 text-left transition hover:bg-secondary/50">
                   <TrendBadge>{fixture.status}</TrendBadge>
                   <div className="mt-4 flex items-center justify-between">
@@ -211,13 +211,13 @@ export function LeaguePage() {
                       <p className="text-sm font-semibold">{fixture.homeTeam.shortName || fixture.homeTeam.name}</p>
                       <p className="text-xs text-muted-foreground">{fixture.awayTeam.shortName || fixture.awayTeam.name}</p>
                     </div>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-lg font-bold tabular-nums">{fixtureScoreLabel(fixture)}</span>
                   </div>
                   <p className="mt-3 text-xs text-muted-foreground">{formatDate(fixtureDateKey(fixture))} · {fixture.kickoffTime || "TBD"}</p>
                 </button>
               )) : (
                 <div className="md:col-span-2 xl:col-span-4">
-                  <LeagueEmptyState title="No upcoming matches" description="When fixtures are scheduled, they will appear here." />
+                  <LeagueEmptyState title="No fixtures yet" description="Scheduled matches and completed results will appear here." />
                 </div>
               )}
             </div>

@@ -67,7 +67,7 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
       throw new AppError("Account is deactivated", 403);
     }
 
-    if (user.role !== "CUSTOMER") {
+    if (config.requirePrivilegedMfa && user.role !== "CUSTOMER") {
       if (!user.mfaEnabled || !user.mfaSecret) {
         const setupToken = jwt.sign({ userId: user.id, purpose: "mfa_setup" }, config.jwt.secret, { expiresIn: "10m" });
         res.json({ mfaSetupRequired: true, setupToken });

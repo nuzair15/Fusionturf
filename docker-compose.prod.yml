@@ -67,7 +67,8 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-fusion_league}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
-      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?MFA_ENCRYPTION_KEY must be set}
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:-}
+      REQUIRE_PRIVILEGED_MFA: ${REQUIRE_PRIVILEGED_MFA:-true}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       NODE_ENV: production
       CORS_ORIGIN: ${CORS_ORIGIN:?CORS_ORIGIN must be set}
