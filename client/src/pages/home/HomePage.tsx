@@ -8,6 +8,7 @@ import { formatDate, formatTime } from "@/lib/utils";
 import type { Fixture, Standing, Venue, News, PaginatedResponse, Sponsor, Season } from "@/types";
 import { Calendar, Trophy, MapPin, Star, ArrowUpRight, Flame, Target } from "lucide-react";
 import { LeagueHero, LeagueCard, LeagueEmptyState, SectionLink } from "@/components/league/LeagueUI";
+import { LeagueStandingsTable } from "@/components/league/LeagueStandingsTable";
 import { ACTIVE_MATCH_STATUSES, fixtureDateKey, fixtureScoreLabel } from "@/lib/fixtures";
 
 export function HomePage() {
@@ -145,34 +146,7 @@ export function HomePage() {
           title="League Table"
           action={<SectionLink onClick={() => navigate("/league/standings")}>Full table</SectionLink>}
         >
-          <div className="p-4">
-            {standingsList.slice(0, 5).length > 0 ? (
-              <div className="space-y-2">
-                {standingsList.slice(0, 5).map((row) => (
-                  <button
-                    key={row.id}
-                    onClick={() => navigate(`/league/teams/${row.team.slug}`)}
-                    className="flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition hover:bg-secondary/60"
-                  >
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">#{row.position}</span>
-                    <img src={row.team.logoUrl || "/placeholder.svg"} alt="" className="h-8 w-8 rounded-full bg-muted object-cover" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold">{row.team.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {row.played} played • {row.goalDifference >= 0 ? `+${row.goalDifference}` : row.goalDifference} GD
-                      </p>
-                    </div>
-                    <Badge variant="secondary" className="rounded-full">{row.points} pts</Badge>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <LeagueEmptyState
-                title="No standings yet"
-                description="The table will populate once league results are available."
-              />
-            )}
-          </div>
+          {standingsList.length > 0 ? <LeagueStandingsTable standings={standingsList.slice(0, 5)} onTeamClick={(row) => navigate(`/league/teams/${row.team.slug}`)} /> : <div className="p-4"><LeagueEmptyState title="No standings yet" description="The table will populate once league results are available." /></div>}
         </LeagueCard>
       </div>
 
