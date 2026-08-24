@@ -58,8 +58,6 @@ export const PlayerCard = memo(function PlayerCard({ player, isCaptain, isGoalke
           <span>{player.position || "—"}</span>
           <span className="flex items-center gap-1"><span className="font-bold text-emerald-600">{stats.goals}</span>G</span>
           <span className="flex items-center gap-1"><span className="font-bold text-blue-500">{stats.assists}</span>A</span>
-          <span className="flex items-center gap-1"><span className="font-bold text-violet-600">{stats.shots}</span>S</span>
-          <span className="flex items-center gap-1"><span className="font-bold text-cyan-600">{stats.shotsOnTarget}</span>OT</span>
           <span className="flex items-center gap-0.5">
             <span className={cn("h-2.5 w-1.5 rounded-[1px]", stats.yellowCards > 0 ? "bg-amber-400" : "bg-muted")} />
             {stats.yellowCards}

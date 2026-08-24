@@ -18,8 +18,6 @@ export interface LivePlayer {
     assists: number;
     yellowCards: number;
     redCards: number;
-    shots: number;
-    shotsOnTarget: number;
   };
   appearance?: { isStarter: boolean; enteredAt?: number | null } | null;
 }

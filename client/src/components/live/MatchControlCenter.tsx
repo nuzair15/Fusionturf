@@ -247,25 +247,40 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
     );
   }, [fixtureId, runAction]);
 
+  const pendingTeamStats = useRef<Record<string, number>>({});
+  const teamStatsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleTeamStat = useCallback((field: string, delta: number) => {
-    const isHome = field.startsWith("home");
-    const opposite = isHome ? field.replace("home", "away") : field.replace("away", "home");
-    const value = Math.max(0, Number(data?.fixture[field as keyof LiveMatchData["fixture"]] || 0) + delta);
-    const body: Record<string, number> = { [field]: value };
+    setData((current) => {
+      if (!current) return current;
+      const nextValue = Math.max(0, Number(current.fixture[field as keyof LiveMatchData["fixture"]] || 0) + delta);
+      const nextFixture = { ...current.fixture, [field]: nextValue };
+      if (field.toLowerCase().includes("possession")) {
+        const opposite = field.startsWith("home") ? field.replace("home", "away") : field.replace("away", "home");
+        nextFixture[opposite as keyof typeof nextFixture] = Math.max(0, 100 - nextValue) as never;
+      }
+      return { ...current, fixture: nextFixture };
+    });
+    const previousPending = pendingTeamStats.current[field];
+    const baseValue = previousPending ?? Number(data?.fixture[field as keyof LiveMatchData["fixture"]] || 0);
+    pendingTeamStats.current[field] = Math.max(0, baseValue + delta);
     if (field.toLowerCase().includes("possession")) {
-      const oppValue = Math.max(0, 100 - value);
-      body[opposite] = oppValue;
+      const opposite = field.startsWith("home") ? field.replace("home", "away") : field.replace("away", "home");
+      pendingTeamStats.current[opposite] = Math.max(0, 100 - pendingTeamStats.current[field]);
     }
-    return runAction(() => liveMatchApi.updateTeamStats(fixtureId, { ...body, correctionReason: correction() || "" }), `${field} updated`);
-  }, [data, fixtureId, runAction, correction]);
-
-  const handleShot = useCallback((player: LiveMatchData["homeTeam"]["players"][number], teamId: string, outcome: "ON_TARGET" | "OFF_TARGET") => {
-    return runAction(
-      () => liveMatchApi.recordShot(fixtureId, { playerId: player.id, teamId, outcome, minute, correctionReason: correction() }),
-      `${outcome === "ON_TARGET" ? "On-target" : "Off-target"} shot recorded`,
-      undefined,
-    );
-  }, [correction, fixtureId, minute, runAction]);
+    if (teamStatsTimer.current) clearTimeout(teamStatsTimer.current);
+    teamStatsTimer.current = setTimeout(async () => {
+      const body = { ...pendingTeamStats.current, correctionReason: correction() || "" };
+      pendingTeamStats.current = {};
+      try {
+        await liveMatchApi.updateTeamStats(fixtureId, body);
+        await fetchStats(true);
+        toast("Team stats saved", undefined, "success");
+      } catch (error: any) {
+        toast("Team stats save failed", error.message, "error");
+        await fetchStats(true);
+      }
+    }, 350);
+  }, [correction, data, fetchStats, fixtureId]);
 
   const handleAppearance = useCallback((teamId: string, player: LiveMatchData["homeTeam"]["players"][number]) => {
     return runAction(
@@ -446,7 +461,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
             />
           </div>
           <div className="order-3 space-y-3">
-            <StatisticsPanel fixture={data.fixture} homeTeam={homeTeam} awayTeam={awayTeam} onUpdate={handleTeamStat} onShot={handleShot} />
+            <StatisticsPanel fixture={data.fixture} onUpdate={handleTeamStat} />
             <ActivityFeed items={activity} />
           </div>
         </div>
