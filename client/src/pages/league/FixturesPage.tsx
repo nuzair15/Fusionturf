@@ -165,7 +165,7 @@ export function FixturesPage() {
                           <button
                             key={fixture.id}
                             onClick={() => navigate(`/league/fixtures/${fixture.id}`)}
-                            className="flex w-full items-center gap-1 rounded-lg bg-primary/10 px-1.5 py-1 text-[10px] font-medium text-primary transition hover:bg-primary/20"
+                            className={`flex w-full items-center gap-1 rounded-lg px-1.5 py-1 text-[10px] font-medium transition hover:bg-emerald-500/20 ${fixture.status === "COMPLETED" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-primary/10 text-primary"}`}
                           >
                             <img src={fixture.homeTeam.logoUrl || "/placeholder.svg"} alt="" className="h-4 w-4 shrink-0 rounded-full bg-muted object-cover" />
                             <span className="truncate">{fixture.homeTeam.shortName || fixture.homeTeam.name}</span>
@@ -198,7 +198,7 @@ export function FixturesPage() {
                       <button
                         key={fixture.id}
                         onClick={() => navigate(`/league/fixtures/${fixture.id}`)}
-                        className="grid gap-3 rounded-2xl border px-4 py-4 text-left transition hover:bg-secondary/50 sm:grid-cols-[1fr_auto_1fr] sm:items-center"
+                        className={`grid gap-3 rounded-2xl border px-4 py-4 text-left transition sm:grid-cols-[1fr_auto_1fr] sm:items-center ${fixture.status === "COMPLETED" ? "border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/15" : fixture.status === "LIVE" ? "border-rose-500/40 bg-rose-500/5 hover:bg-rose-500/10" : "bg-card hover:bg-secondary/50"}`}
                       >
                         <div className="flex items-center gap-3">
                           <img src={fixture.homeTeam.logoUrl || "/placeholder.svg"} alt="" className="h-10 w-10 rounded-full bg-muted object-cover" />
@@ -208,7 +208,7 @@ export function FixturesPage() {
                           </div>
                         </div>
                         <div className="text-center">
-                          <TrendBadge>{fixture.status}</TrendBadge>
+                          <TrendBadge><span className={`inline-block h-2 w-2 rounded-full ${fixture.status === "COMPLETED" ? "bg-emerald-500" : fixture.status === "LIVE" ? "bg-rose-500" : "bg-slate-400"}`} />{fixture.status === "COMPLETED" ? "Full time" : fixture.status}</TrendBadge>
                           <p className="mt-2 text-xl font-bold tabular-nums">
                             {fixtureScoreLabel(fixture)}
                           </p>
