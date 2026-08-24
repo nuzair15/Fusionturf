@@ -20,6 +20,7 @@ function formatAmPm(time: string): string {
   return `${hour}:${String(m).padStart(2, "0")} ${period}`;
 }
 interface AvailableSlot { startTime: string; endTime: string; startAt: string; endAt: string; }
+interface BookedSlot { startTime: string; endTime: string; }
 interface BookingQuote { baseAmount: number; servicesTotal: number; discountAmount: number; totalAmount: number; currency: string; duration: number; priceOverride?: { price: number; reason?: string } | null; }
 interface BookingResult { booking: Booking; guestManagementToken?: string | null; idempotencyKey?: string; }
 
@@ -64,6 +65,13 @@ export function VenueDetailPage() {
   const availability = useQuery({
     queryKey: ["booking-availability", selectedTurfId, date],
     queryFn: () => api.get<AvailableSlot[]>("/bookings/slots", { turfId: selectedTurfId, date }),
+    enabled: !!selectedTurfId && !!date,
+    retry: 1,
+  });
+
+  const bookedSlots = useQuery({
+    queryKey: ["booked-slots", selectedTurfId, date],
+    queryFn: () => api.get<BookedSlot[]>(`/bookings/booked-slots/${selectedTurfId}`, { date }),
     enabled: !!selectedTurfId && !!date,
     retry: 1,
   });
@@ -248,6 +256,12 @@ export function VenueDetailPage() {
                       })}
                       {availability.data?.length === 0 && <p className="col-span-full py-4 text-sm text-muted-foreground">No bookable times remain for this date.</p>}
                     </div>}
+                  </div>
+
+                  <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-3">
+                    <p className="flex items-center gap-1.5 text-xs font-bold text-foreground"><Clock className="h-3.5 w-3.5 text-rose-500" /> Already booked</p>
+                    {bookedSlots.isLoading ? <p className="mt-1 text-xs text-muted-foreground">Loading booked times...</p> : bookedSlots.isError ? <p className="mt-1 text-xs text-muted-foreground">Booked timings are temporarily unavailable.</p> : bookedSlots.data?.length ? <div className="mt-2 flex flex-wrap gap-1.5">{bookedSlots.data.map((slot) => <span key={`${slot.startTime}-${slot.endTime}`} className="rounded-md border border-rose-500/20 bg-background px-2 py-1 text-xs font-semibold text-rose-600">{formatAmPm(slot.startTime)} - {formatAmPm(slot.endTime)}</span>)}</div> : <p className="mt-1 text-xs text-muted-foreground">No booked timings on this date.</p>}
+                    <p className="mt-2 text-[11px] text-muted-foreground">Customer details are kept private.</p>
                   </div>
 
                   {startSlot && (
