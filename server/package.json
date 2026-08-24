@@ -18,6 +18,7 @@
     "admin:provision": "tsx prisma/provision-admin.ts",
     "db:reset-demo": "tsx prisma/seed.ts",
     "stats:recalculate": "tsx src/scripts/recalculate-all-player-stats.ts",
+    "fixtures:sync-bookings": "tsx src/scripts/sync-fixture-bookings.ts",
     "db:studio": "prisma studio"
   },
   "prisma": {

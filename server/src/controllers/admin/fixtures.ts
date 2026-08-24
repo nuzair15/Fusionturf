@@ -7,6 +7,7 @@ import { AppError } from "../../middleware/errorHandler.js";
 import { paginate, paginatedResponse, searchPlayerIds } from "../../utils/helpers.js";
 import { pick } from "../../utils/pick.js";
 import * as leagueSystem from "../../services/league-system.js";
+import { syncFixtureBooking } from "../../services/fixture-bookings.js";
 import { archiveResource, restoreArchiveRecord } from "../../services/archive.js";
 import { ACTIVE_MATCH_STATUSES, fixtureScheduleFields, fixtureTimeDto } from "../../utils/fixtures.js";
 import { canTransitionMatch } from "../../utils/match-state.js";
@@ -168,6 +169,7 @@ export const createFixture = async (req: Request, res: Response, next: NextFunct
     const matchDate = new Date(data.matchDate);
     const schedule = fixtureScheduleFields(matchDate, data.kickoffTime, await resolveFixtureTimezone(data.competitionId, data.venueId));
     const fixture = await prisma.fixture.create({ data: { ...data, matchDate, ...schedule } as any });
+    await syncFixtureBooking(fixture.id);
     res.status(201).json(fixture);
   } catch (error) {
     next(error);
@@ -190,6 +192,7 @@ export const updateFixture = async (req: Request, res: Response, next: NextFunct
       where: { id: req.params.id },
       data: { ...data, ...schedule },
     });
+    await syncFixtureBooking(fixture.id);
     // Toggling a completed match in/out of friendly must propagate to league
     // standings, player stats, and everything derived from them.
     if (existing.status === "COMPLETED" && ("isFriendly" in req.body || "competitionId" in req.body || "seasonId" in req.body || "homeTeamId" in req.body || "awayTeamId" in req.body)) {
@@ -243,6 +246,7 @@ export const updateFixtureStatus = async (req: Request, res: Response, next: Nex
         });
       }, { isolationLevel: "Serializable" });
     }
+    await syncFixtureBooking(fixture.id);
     res.json(await prisma.fixture.findUnique({ where: { id: req.params.id } }));
   } catch (error) {
     next(error);
@@ -296,6 +300,7 @@ export const rescheduleFixture = async (req: Request, res: Response, next: NextF
       rescheduledAt: new Date(),
       status: "SCHEDULED",
     } });
+    await syncFixtureBooking(updated.id);
     res.json(updated);
   } catch (error) { next(error); }
 };
@@ -607,7 +612,10 @@ export const createSchedulePreview = async (req: Request, res: Response, next: N
 
 export const publishSchedulePreview = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    res.json(await leagueSystem.publishFixtureSchedulePreview(req.params.id));
+    const result = await leagueSystem.publishFixtureSchedulePreview(req.params.id);
+    const fixtures = await prisma.fixture.findMany({ where: { generationBatchId: req.params.id, deletedAt: null }, select: { id: true } });
+    await Promise.all(fixtures.map((fixture) => syncFixtureBooking(fixture.id)));
+    res.json(result);
   } catch (error) {
     next(error);
   }
