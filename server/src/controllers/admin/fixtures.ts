@@ -116,6 +116,12 @@ export const getFixtures = async (req: Request, res: Response, next: NextFunctio
         orderBy: [{ scheduledDate: "asc" }, { kickoffAt: { sort: "asc", nulls: "last" } }, { id: "asc" }],
       },
       {
+        // Keep overdue scheduled fixtures visible so an admin can recover
+        // matches that were played without first using the live console.
+        where: { ...where, status: "SCHEDULED", scheduledDate: { lt: today } },
+        orderBy: [{ scheduledDate: "desc" }, { kickoffAt: { sort: "desc", nulls: "last" } }, { id: "asc" }],
+      },
+      {
         where: { ...where, status: "COMPLETED" },
         orderBy: [{ scheduledDate: "desc" }, { kickoffAt: { sort: "desc", nulls: "last" } }, { id: "asc" }],
       },
