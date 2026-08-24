@@ -480,7 +480,7 @@ export const updateFixtureLineups = async (req: Request, res: Response, next: Ne
   try {
     const fixture = await prisma.fixture.findUnique({
       where: { id: req.params.id },
-      select: { id: true, homeTeamId: true, awayTeamId: true, status: true },
+      select: { id: true, homeTeamId: true, awayTeamId: true, status: true, seasonId: true },
     });
     if (!fixture) throw new AppError("Fixture not found", 404);
     const isCompletedCorrection = fixture.status === "COMPLETED";
@@ -539,48 +539,26 @@ export const updateFixtureLineups = async (req: Request, res: Response, next: Ne
     const homeEntries = await buildEntries(fixture.homeTeamId, home);
     const awayEntries = await buildEntries(fixture.awayTeamId, away);
 
-    await prisma.$transaction([
-      prisma.lineup.deleteMany({ where: { fixtureId: fixture.id } }),
-      prisma.lineup.createMany({
-        data: [
-          ...homeEntries.map((e) => ({
-            fixtureId: fixture.id,
-            teamId: fixture.homeTeamId,
-            playerId: e.playerId,
-            isStarter: e.isStarter ?? true,
-            isCaptain: e.isCaptain ?? false,
-            isGoalkeeper: e.isGoalkeeper ?? false,
-            role: e.role ?? null,
-            position: e.role ?? null,
-            xPosition: e.xPosition ?? 50,
-            yPosition: e.yPosition ?? 50,
-          })),
-          ...awayEntries.map((e) => ({
-            fixtureId: fixture.id,
-            teamId: fixture.awayTeamId,
-            playerId: e.playerId,
-            isStarter: e.isStarter ?? true,
-            isCaptain: e.isCaptain ?? false,
-            isGoalkeeper: e.isGoalkeeper ?? false,
-            role: e.role ?? null,
-            position: e.role ?? null,
-            xPosition: e.xPosition ?? 50,
-            yPosition: e.yPosition ?? 50,
-          })),
-        ],
-      }),
-    ]);
+    await prisma.$transaction(async (tx) => {
+      const lineupData = [
+        ...homeEntries.map((e) => ({ fixtureId: fixture.id, teamId: fixture.homeTeamId, playerId: e.playerId, isStarter: e.isStarter ?? true, isCaptain: e.isCaptain ?? false, isGoalkeeper: e.isGoalkeeper ?? false, role: e.role ?? null, position: e.role ?? null, xPosition: e.xPosition ?? 50, yPosition: e.yPosition ?? 50 })),
+        ...awayEntries.map((e) => ({ fixtureId: fixture.id, teamId: fixture.awayTeamId, playerId: e.playerId, isStarter: e.isStarter ?? true, isCaptain: e.isCaptain ?? false, isGoalkeeper: e.isGoalkeeper ?? false, role: e.role ?? null, position: e.role ?? null, xPosition: e.xPosition ?? 50, yPosition: e.yPosition ?? 50 })),
+      ];
+      await tx.lineup.deleteMany({ where: { fixtureId: fixture.id } });
+      await tx.lineup.createMany({ data: lineupData });
 
-    // A saved lineup is an appearance under the agreed competition rule;
-    // unused matchday-squad entries are intentionally not inserted here.
-    await prisma.matchAppearance.deleteMany({ where: { fixtureId: fixture.id, isStarter: true } });
-    await prisma.matchAppearance.createMany({
-      data: [...homeEntries.map((entry) => ({ fixtureId: fixture.id, playerId: entry.playerId, teamId: fixture.homeTeamId, isStarter: entry.isStarter !== false })), ...awayEntries.map((entry) => ({ fixtureId: fixture.id, playerId: entry.playerId, teamId: fixture.awayTeamId, isStarter: entry.isStarter !== false }))],
-      skipDuplicates: true,
-    });
+      // Only starters become appearances here. Existing rolling-sub appearances
+      // are preserved and upgraded if that player is corrected to a starter.
+      await tx.matchAppearance.deleteMany({ where: { fixtureId: fixture.id, isStarter: true } });
+      for (const entry of lineupData.filter((item) => item.isStarter)) {
+        await tx.matchAppearance.upsert({
+          where: { fixtureId_playerId: { fixtureId: fixture.id, playerId: entry.playerId } },
+          create: { fixtureId: fixture.id, playerId: entry.playerId, teamId: entry.teamId, isStarter: true },
+          update: { teamId: entry.teamId, isStarter: true },
+        });
+      }
 
-    if (isCompletedCorrection) {
-      await prisma.$transaction(async (tx) => {
+      if (isCompletedCorrection) {
         await appendMatchEvent(tx, {
           fixtureId: fixture.id,
           type: "CORRECTION",
@@ -588,14 +566,16 @@ export const updateFixtureLineups = async (req: Request, res: Response, next: Ne
           idempotencyKey: `lineup-correction:${fixture.id}:${Date.now()}`,
           createdById: req.user?.userId,
         });
-      });
-      const season = await prisma.fixture.findUnique({ where: { id: fixture.id }, select: { seasonId: true } });
-      if (season) {
-        await Promise.all([
-          leagueSystem.recalculatePlayerStats(season.seasonId),
-          leagueSystem.recalculateFriendlyPlayerStats(season.seasonId),
-        ]);
       }
+    });
+
+    if (isCompletedCorrection) {
+      await Promise.all([
+        leagueSystem.recalculateStandings(fixture.seasonId),
+        leagueSystem.recalculatePlayerStats(fixture.seasonId),
+        leagueSystem.recalculateFriendlyPlayerStats(fixture.seasonId),
+        leagueSystem.recalculateTeamStats(fixture.seasonId),
+      ]);
     }
 
     res.json({ success: true });
