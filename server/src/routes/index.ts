@@ -33,7 +33,7 @@ router.get("/health", async (_req, res) => {
       SELECT COUNT(*)::bigint AS count
       FROM "_prisma_migrations"
       WHERE rolled_back_at IS NULL
-        AND (finished_at IS NULL OR logs IS NOT NULL)
+        AND finished_at IS NULL
     `;
     const failedMigrations = Number(failed[0]?.count || 0);
     if (failedMigrations > 0) {

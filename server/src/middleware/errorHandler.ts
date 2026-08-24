@@ -22,7 +22,7 @@ export const sendError = (req: Request, res: Response, status: number, code: str
   const v2 = (req.originalUrl || req.url || "").startsWith("/api/v2/");
   return res.status(status).json(v2
     ? { code, message, ...(details !== undefined ? { details } : {}), requestId: res.locals.requestId }
-    : { error: message, ...(details !== undefined ? { details } : {}) });
+    : { error: message, ...(details !== undefined ? { details } : {}), requestId: res.locals.requestId });
 };
 
 export const errorHandler = (err: Error, req: Request, res: Response, _next: NextFunction) => {
@@ -50,7 +50,7 @@ export const errorHandler = (err: Error, req: Request, res: Response, _next: Nex
     }
   }
 
-  console.error("Unhandled error:", err);
+  console.error(`Unhandled error [${res.locals.requestId || "unknown"}] ${req.method} ${req.originalUrl}:`, err);
 
   return respond(500, "INTERNAL_ERROR", "Internal server error");
 };
