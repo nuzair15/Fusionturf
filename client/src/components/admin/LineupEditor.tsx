@@ -19,8 +19,7 @@ interface TeamPanelProps {
   color: string;
   players: Player[];
   entries: LineupEntryInput[];
-  addValue: string;
-  onAdd: (playerId: string) => void;
+  onSetStatus: (playerId: string, status: "starter" | "sub") => void;
   onUpdate: (playerId: string, patch: Partial<LineupEntryInput>) => void;
   onRemove: (playerId: string) => void;
   onToggleCaptain: (playerId: string, value: boolean) => void;
@@ -34,15 +33,12 @@ function TeamPanel({
   color,
   players,
   entries,
-  addValue,
-  onAdd,
+  onSetStatus,
   onUpdate,
   onRemove,
   onToggleCaptain,
   onToggleGK,
 }: TeamPanelProps) {
-  const usedIds = new Set(entries.map((e) => e.playerId));
-  const available = players.filter((p) => !usedIds.has(p.id));
   const starters = entries.filter((e) => e.isStarter).length;
 
   return (
@@ -55,55 +51,26 @@ function TeamPanel({
         </span>
       </div>
 
-      <div className="mb-2">
-        <Select value={addValue} onChange={(e) => onAdd(e.target.value)} aria-label={`Add player to ${teamName}`}>
-          <option value="">Add player…</option>
-          {available.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.firstName} {p.lastName} {p.jerseyNumber ? `#${p.jerseyNumber}` : ""}
-            </option>
-          ))}
-        </Select>
-      </div>
-
       <div className="space-y-2">
-        {entries.length === 0 && (
+        {players.length === 0 && (
           <p className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">
-            No players added yet
+            No players found for this team
           </p>
         )}
-        {entries.map((entry) => {
-          const player = players.find((p) => p.id === entry.playerId);
-          const name = player ? `${player.firstName} ${player.lastName}` : "Unknown player";
+        {players.map((player) => {
+          const entry = entries.find((item) => item.playerId === player.id);
+          const name = `${player.firstName} ${player.lastName}`.trim();
           return (
-            <div key={entry.playerId} className="rounded-lg border p-2">
-              <div className="flex items-center gap-1.5">
-                <Select
-                  className="h-8 flex-1 text-xs"
-                  value={entry.playerId}
-                  onChange={(e) => onUpdate(entry.playerId, { playerId: e.target.value })}
-                  aria-label={`Player in ${teamName} lineup`}
-                >
-                  <option value={entry.playerId}>{name}</option>
-                  {available.filter((p) => p.id !== entry.playerId).map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.firstName} {p.lastName} {p.jerseyNumber ? `#${p.jerseyNumber}` : ""}
-                    </option>
-                  ))}
-                </Select>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 shrink-0 p-0 text-destructive"
-                  onClick={() => onRemove(entry.playerId)}
-                  aria-label={`Remove ${name} from lineup`}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
+            <div key={player.id} className="rounded-lg border p-2">
+              <div className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                  {player.jerseyNumber ? <span className="mr-1 text-muted-foreground">#{player.jerseyNumber}</span> : null}{name}
+                </span>
+                <Button type="button" size="sm" variant={entry?.isStarter ? "default" : "outline"} className="h-8 px-2 text-xs" onClick={() => onSetStatus(player.id, "starter")}>Starter</Button>
+                <Button type="button" size="sm" variant={entry && !entry.isStarter ? "secondary" : "outline"} className="h-8 px-2 text-xs" onClick={() => onSetStatus(player.id, "sub")}>Sub</Button>
               </div>
 
-              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
+              {entry && <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
                 <label className="flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 has-[:checked]:border-primary">
                   <input
                     type="checkbox"
@@ -134,7 +101,8 @@ function TeamPanel({
                 <span className="ml-auto text-[10px] text-muted-foreground">
                   {entry.isStarter ? `x ${Math.round(entry.xPosition ?? 50)} · y ${Math.round(entry.yPosition ?? 50)}` : "Bench"}
                 </span>
-              </div>
+                <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive" onClick={() => onRemove(entry.playerId)} aria-label={`Remove ${name} from lineup`}><Trash2 className="h-3.5 w-3.5" /></Button>
+              </div>}
             </div>
           );
         })}
@@ -183,8 +151,6 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
 
   const [homeEntries, setHomeEntries] = useState<LineupEntryInput[]>([]);
   const [awayEntries, setAwayEntries] = useState<LineupEntryInput[]>([]);
-  const [homeAddId, setHomeAddId] = useState("");
-  const [awayAddId, setAwayAddId] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
@@ -251,15 +217,13 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
     updateEntry(side, player.playerId, { xPosition: x, yPosition: y });
   };
 
-  const addPlayer = (side: "home" | "away", playerId: string) => {
-    if (!playerId) return;
+  const setPlayerStatus = (side: "home" | "away", playerId: string, status: "starter" | "sub") => {
     const setter = side === "home" ? setHomeEntries : setAwayEntries;
-    const clear = side === "home" ? () => setHomeAddId("") : () => setAwayAddId("");
     setter((prev) => {
-      if (prev.some((e) => e.playerId === playerId)) return prev;
-      return [...prev, { playerId, isStarter: true, isCaptain: false, isGoalkeeper: false, role: null, xPosition: 50, yPosition: 50 }];
+      const existing = prev.find((entry) => entry.playerId === playerId);
+      if (existing) return prev.map((entry) => entry.playerId === playerId ? { ...entry, isStarter: status === "starter" } : entry);
+      return [...prev, { playerId, isStarter: status === "starter", isCaptain: false, isGoalkeeper: false, role: null, xPosition: 50, yPosition: 50 }];
     });
-    clear();
   };
 
   const removePlayer = (side: "home" | "away", playerId: string) => {
@@ -413,16 +377,6 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
               </div>
             </div>
 
-            <FootballPitch
-              homePlayers={homeStarters}
-              awayPlayers={awayStarters}
-              editable
-              onPlayerMove={handlePlayerMove}
-              homeColor={homeColor}
-              awayColor={awayColor}
-              className="mx-auto max-w-sm"
-            />
-
             <div className="mt-4 grid gap-2 rounded-xl border bg-muted/20 p-3 sm:grid-cols-2">
               {(["home", "away"] as const).map((side) => {
                 const choice = side === "home" ? homeFormationChoice : awayFormationChoice;
@@ -439,6 +393,16 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
               <p className="text-[11px] text-muted-foreground sm:col-span-2">Choose a 6-a-side shape to place six players automatically, then drag any player to fine-tune.</p>
             </div>
 
+            <FootballPitch
+              homePlayers={homeStarters}
+              awayPlayers={awayStarters}
+              editable
+              onPlayerMove={handlePlayerMove}
+              homeColor={homeColor}
+              awayColor={awayColor}
+              className="mx-auto mt-4 max-w-sm"
+            />
+
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <TeamPanel
                 side="home"
@@ -447,8 +411,7 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
                 color={homeColor}
                 players={homePlayers}
                 entries={homeEntries}
-                addValue={homeAddId}
-                onAdd={(id) => addPlayer("home", id)}
+                onSetStatus={(id, status) => setPlayerStatus("home", id, status)}
                 onUpdate={(id, patch) => updateEntry("home", id, patch)}
                 onRemove={(id) => removePlayer("home", id)}
                 onToggleCaptain={(id, v) => toggleCaptain("home", id, v)}
@@ -461,8 +424,7 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
                 color={awayColor}
                 players={awayPlayers}
                 entries={awayEntries}
-                addValue={awayAddId}
-                onAdd={(id) => addPlayer("away", id)}
+                onSetStatus={(id, status) => setPlayerStatus("away", id, status)}
                 onUpdate={(id, patch) => updateEntry("away", id, patch)}
                 onRemove={(id) => removePlayer("away", id)}
                 onToggleCaptain={(id, v) => toggleCaptain("away", id, v)}
