@@ -752,7 +752,7 @@ model CompetitionRuleSet {
   starterLimit            Int         @default(6)
   substituteLimit         Int         @default(2)
   substitutionLimit       Int         @default(2)
-  matchDurationMinutes    Int         @default(90)
+  matchDurationMinutes    Int         @default(60)
   extraTimeEnabled        Boolean     @default(false)
   extraTimeMinutes        Int         @default(30)
   penaltiesEnabled        Boolean     @default(true)

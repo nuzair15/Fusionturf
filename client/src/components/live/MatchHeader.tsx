@@ -64,7 +64,7 @@ export function MatchHeader({ data, minute, onMinuteChange, onClose, onTogglePau
             <span className="min-w-10 text-center text-lg font-black tabular-nums text-white">
               {minute}<span className="text-xs text-emerald-200">'</span>
             </span>
-            <button aria-label="Increase minute" onClick={() => onMinuteChange(Math.min(130, minute + 1))} className="flex h-6 w-6 items-center justify-center rounded-full text-white transition hover:bg-white/20 active:scale-90">
+            <button aria-label="Increase minute" onClick={() => onMinuteChange(Math.min(60, minute + 1))} className="flex h-6 w-6 items-center justify-center rounded-full text-white transition hover:bg-white/20 active:scale-90">
               <Plus className="h-3.5 w-3.5" />
             </button>
           </div>

@@ -1231,11 +1231,11 @@ const [goals, assists, cards, shots, fixtures, appearances, substitutions, goalk
     playerAppearances.set(row.playerId, matches);
   }
 
-  const fixtureDuration = new Map(fixtures.map((fixture) => [fixture.id, Math.max(1, Math.round((fixture.matchClockSeconds || 90 * 60) / 60))]));
+  const fixtureDuration = new Map(fixtures.map((fixture) => [fixture.id, Math.max(1, Math.round((fixture.matchClockSeconds || 60 * 60) / 60))]));
   const subOn = new Map(substitutions.map((sub) => [`${sub.fixtureId}:${sub.playerOnId}`, sub.minute]));
   const subOff = new Map(substitutions.map((sub) => [`${sub.fixtureId}:${sub.playerOffId}`, sub.minute]));
   for (const [playerId, fixtureIds] of playerAppearances) for (const fixtureId of fixtureIds) {
-    const duration = fixtureDuration.get(fixtureId) || 90;
+    const duration = fixtureDuration.get(fixtureId) || 60;
     const entered = subOn.get(`${fixtureId}:${playerId}`);
     const left = subOff.get(`${fixtureId}:${playerId}`);
     const played = entered === undefined ? Math.min(left ?? duration, duration) : Math.max(0, Math.min(left ?? duration, duration) - entered);
@@ -1317,10 +1317,10 @@ export async function recalculateFriendlyPlayerStats(seasonId: string): Promise<
   for (const card of cards) { const entry = cardsByPlayer.get(card.playerId) || { yellowCards: 0, redCards: 0 }; if (card.type === "YELLOW") entry.yellowCards += card._count._all; else entry.redCards += card._count._all; cardsByPlayer.set(card.playerId, entry); }
   const grouped = new Map<string, { playerId: string; teamId: string; fixtures: Set<string> }>();
   for (const row of rows) { const key = `${row.playerId}:${row.teamId}`; const entry = grouped.get(key) || { playerId: row.playerId, teamId: row.teamId, fixtures: new Set<string>() }; entry.fixtures.add(row.fixtureId); grouped.set(key, entry); }
-  const duration = new Map(fixtures.map((fixture) => [fixture.id, Math.max(1, Math.round((fixture.matchClockSeconds || 90 * 60) / 60))]));
+  const duration = new Map(fixtures.map((fixture) => [fixture.id, Math.max(1, Math.round((fixture.matchClockSeconds || 60 * 60) / 60))]));
   const on = new Map(substitutions.map((sub) => [`${sub.fixtureId}:${sub.playerOnId}`, sub.minute]));
   const off = new Map(substitutions.map((sub) => [`${sub.fixtureId}:${sub.playerOffId}`, sub.minute]));
-  const minutes = (entry: { playerId: string; fixtures: Set<string> }) => [...entry.fixtures].reduce((total, fixtureId) => { const length = duration.get(fixtureId) || 90; const entered = on.get(`${fixtureId}:${entry.playerId}`); return total + (entered === undefined ? Math.min(off.get(`${fixtureId}:${entry.playerId}`) ?? length, length) : Math.max(0, Math.min(off.get(`${fixtureId}:${entry.playerId}`) ?? length, length) - entered)); }, 0);
+  const minutes = (entry: { playerId: string; fixtures: Set<string> }) => [...entry.fixtures].reduce((total, fixtureId) => { const length = duration.get(fixtureId) || 60; const entered = on.get(`${fixtureId}:${entry.playerId}`); return total + (entered === undefined ? Math.min(off.get(`${fixtureId}:${entry.playerId}`) ?? length, length) : Math.max(0, Math.min(off.get(`${fixtureId}:${entry.playerId}`) ?? length, length) - entered)); }, 0);
   await prisma.$transaction([prisma.friendlyPlayerStat.deleteMany({ where: { seasonId } }), ...[...grouped.values()].map((entry) => prisma.friendlyPlayerStat.upsert({ where: { seasonId_playerId_teamId: { seasonId, playerId: entry.playerId, teamId: entry.teamId } }, create: { seasonId, playerId: entry.playerId, teamId: entry.teamId, appearances: entry.fixtures.size, minutesPlayed: minutes(entry), goals: goalMap.get(entry.playerId) || 0, assists: assistMap.get(entry.playerId) || 0, shots: shotMap.get(entry.playerId)?.shots || 0, shotsOnTarget: shotMap.get(entry.playerId)?.shotsOnTarget || 0, ...(cardsByPlayer.get(entry.playerId) || {}) }, update: { appearances: entry.fixtures.size, minutesPlayed: minutes(entry), goals: goalMap.get(entry.playerId) || 0, assists: assistMap.get(entry.playerId) || 0, shots: shotMap.get(entry.playerId)?.shots || 0, shotsOnTarget: shotMap.get(entry.playerId)?.shotsOnTarget || 0, ...(cardsByPlayer.get(entry.playerId) || {}) } }))]);
 }
 
