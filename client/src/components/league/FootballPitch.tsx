@@ -12,6 +12,8 @@ export interface FootballPitchProps {
   editable?: boolean;
   /** Called while dragging (only when editable). */
   onPlayerMove?: (player: FixtureLineupPlayer, x: number, y: number) => void;
+  onPlayerTap?: (player: FixtureLineupPlayer) => void;
+  selectedPlayerId?: string | null;
   homeColor?: string;
   awayColor?: string;
   className?: string;
@@ -27,6 +29,8 @@ export const FootballPitch = memo(function FootballPitch({
   readonly = true,
   editable = false,
   onPlayerMove,
+  onPlayerTap,
+  selectedPlayerId,
   homeColor = "#22c55e",
   awayColor = "#38bdf8",
   className,
@@ -115,12 +119,13 @@ export const FootballPitch = memo(function FootballPitch({
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
       onKeyDown={handleKeyDown(player)}
+      onClick={() => onPlayerTap?.(player)}
     >
       <LineupPlayer
         player={player}
         color={color}
         size={showLabels ? "md" : "sm"}
-        active={draggingId === player.id}
+        active={draggingId === player.id || selectedPlayerId === player.id}
         ariaLabel={`${player.name}${editable ? ", drag to reposition" : ""}`}
       />
     </div>

@@ -117,7 +117,7 @@ type SixASideFormation = (typeof SIX_A_SIDE_FORMATIONS)[number];
 function sixASidePositions(side: "home" | "away", formation: SixASideFormation) {
   const home = side === "home";
   const rowCounts: Record<SixASideFormation, number[]> = { "2-2-1": [2, 2, 1], "1-3-1": [1, 3, 1], "2-1-2": [2, 1, 2] };
-  const rowY: Record<SixASideFormation, number[]> = { "2-2-1": [78, 62, 46], "1-3-1": [78, 62, 46], "2-1-2": [78, 61, 44] };
+  const rowY: Record<SixASideFormation, number[]> = { "2-2-1": [84, 72, 60], "1-3-1": [84, 72, 60], "2-1-2": [84, 71, 59] };
   const positions: Array<{ x: number; y: number; goalkeeper?: boolean }> = [{ x: 50, y: home ? 91 : 9, goalkeeper: true }];
   rowCounts[formation].forEach((count, rowIndex) => {
     const y = home ? rowY[formation][rowIndex] : 100 - rowY[formation][rowIndex];
@@ -157,6 +157,7 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
   const [correctionReason, setCorrectionReason] = useState("");
   const [homeFormationChoice, setHomeFormationChoice] = useState<SixASideFormation>("2-2-1");
   const [awayFormationChoice, setAwayFormationChoice] = useState<SixASideFormation>("2-2-1");
+  const [selectedSwapPlayer, setSelectedSwapPlayer] = useState<string | null>(null);
   const initialized = useRef(false);
 
   useEffect(() => {
@@ -206,6 +207,36 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
   );
   const homeFormation = useMemo(() => calculateFormation(homeStarters, true), [homeStarters]);
   const awayFormation = useMemo(() => calculateFormation(awayStarters, false), [awayStarters]);
+
+  const handlePitchTap = (player: FixtureLineupPlayer) => {
+    if (!selectedSwapPlayer) {
+      setSelectedSwapPlayer(player.id);
+      return;
+    }
+    if (selectedSwapPlayer === player.id) {
+      setSelectedSwapPlayer(null);
+      return;
+    }
+    const firstSide = selectedSwapPlayer.startsWith("home-") ? "home" : "away";
+    const secondSide = homePlayerMap.has(player.playerId) ? "home" : "away";
+    if (firstSide !== secondSide) {
+      setSelectedSwapPlayer(player.id);
+      return;
+    }
+    const firstId = selectedSwapPlayer.slice(firstSide.length + 1);
+    const setter = firstSide === "home" ? setHomeEntries : setAwayEntries;
+    setter((prev) => {
+      const first = prev.find((entry) => entry.playerId === firstId);
+      const second = prev.find((entry) => entry.playerId === player.playerId);
+      if (!first || !second) return prev;
+      return prev.map((entry) => {
+        if (entry.playerId === firstId) return { ...entry, xPosition: second.xPosition, yPosition: second.yPosition };
+        if (entry.playerId === player.playerId) return { ...entry, xPosition: first.xPosition, yPosition: first.yPosition };
+        return entry;
+      });
+    });
+    setSelectedSwapPlayer(null);
+  };
 
   const updateEntry = (side: "home" | "away", playerId: string, patch: Partial<LineupEntryInput>) => {
     const setter = side === "home" ? setHomeEntries : setAwayEntries;
@@ -261,9 +292,10 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
     const players = side === "home" ? homePlayers : awayPlayers;
     const setter = side === "home" ? setHomeEntries : setAwayEntries;
     const positions = sixASidePositions(side, formation);
-    const selected = entries.slice(0, 6);
+    const selected = entries.filter((entry) => entry.isStarter).slice(0, 6);
     const selectedIds = new Set(selected.map((entry) => entry.playerId));
-    const added: LineupEntryInput[] = players.filter((player) => !selectedIds.has(player.id)).slice(0, Math.max(0, 6 - selected.length)).map((player) => ({
+    const benchEntries = entries.filter((entry) => !entry.isStarter && !selectedIds.has(entry.playerId));
+    const added: LineupEntryInput[] = [...benchEntries, ...players.filter((player) => !selectedIds.has(player.id) && !benchEntries.some((entry) => entry.playerId === player.id)).map((player) => ({
       playerId: player.id,
       isStarter: true,
       isCaptain: false,
@@ -271,18 +303,19 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
       role: null,
       xPosition: 50,
       yPosition: 50,
-    }));
+    }))].slice(0, Math.max(0, 6 - selected.length));
     const starters: LineupEntryInput[] = [...selected, ...added].slice(0, 6);
     if (starters.length < 6) {
       setError(`${side === "home" ? "Home" : "Away"} needs six players for a 6-a-side formation.`);
       return;
     }
     const keeperIndex = Math.max(0, starters.findIndex((entry) => entry.isGoalkeeper));
-    const next = starters.map((entry, index) => ({
+    const orderedStarters = keeperIndex > 0 ? [starters[keeperIndex], ...starters.filter((_, index) => index !== keeperIndex)] : starters;
+    const next = orderedStarters.map((entry, index) => ({
       ...entry,
       isStarter: true,
-      isGoalkeeper: index === keeperIndex,
-      role: index === keeperIndex ? "GK" : entry.role ?? null,
+      isGoalkeeper: index === 0,
+      role: index === 0 ? "GK" : entry.role ?? null,
       xPosition: positions[index].x,
       yPosition: positions[index].y,
     }));
@@ -390,7 +423,7 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
                   </div>
                 );
               })}
-              <p className="text-[11px] text-muted-foreground sm:col-span-2">Choose a 6-a-side shape to place six players automatically, then drag any player to fine-tune.</p>
+              <p className="text-[11px] text-muted-foreground sm:col-span-2">Choose a shape, then drag players or tap two players to swap their positions.</p>
             </div>
 
             <FootballPitch
@@ -398,6 +431,8 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
               awayPlayers={awayStarters}
               editable
               onPlayerMove={handlePlayerMove}
+              onPlayerTap={handlePitchTap}
+              selectedPlayerId={selectedSwapPlayer}
               homeColor={homeColor}
               awayColor={awayColor}
               className="mx-auto mt-4 max-w-sm"
