@@ -19,6 +19,8 @@ import { ConfirmationModal } from "./ConfirmationModal";
 import { EventDetailsDialog } from "./EventDetailsDialog";
 import { PlayerStatsDialog, type PlayerStatType } from "./PlayerStatsDialog";
 import { ManOfTheMatchDialog } from "./ManOfTheMatchDialog";
+import { AwardedGoalDialog } from "./AwardedGoalDialog";
+import { EditGoalDialog } from "./EditGoalDialog";
 import type { MatchStatus } from "@/types";
 
 interface UndoEntry {
@@ -34,7 +36,7 @@ interface ConfirmState {
   onConfirm: () => Promise<void> | void;
 }
 
-type DialogKind = "goal" | "own-goal" | "penalty" | "yellow" | "red" | "missed-penalty" | "motm" | null;
+type DialogKind = "goal" | "own-goal" | "penalty" | "awarded-goal" | "yellow" | "red" | "missed-penalty" | "motm" | null;
 
 let activityId = 1;
 
@@ -49,6 +51,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [viewingEvent, setViewingEvent] = useState<TimelineEvent | null>(null);
   const [editingPlayer, setEditingPlayer] = useState<{ playerId: string; teamId: string } | null>(null);
+  const [editingGoal, setEditingGoal] = useState<TimelineEvent | null>(null);
   const [timerRunning, setTimerRunning] = useState(false);
   const [clockSeconds, setClockSeconds] = useState(0);
   const [correctionReason, setCorrectionReason] = useState("");
@@ -188,6 +191,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
   const onQuickAction = useCallback((action: QuickAction) => {
     switch (action) {
       case "goal": setDialog("goal"); break;
+      case "awarded-goal": setDialog("awarded-goal"); break;
       case "own-goal": setDialog("own-goal"); break;
       case "penalty": setDialog("penalty"); break;
       case "yellow": setDialog("yellow"); break;
@@ -211,6 +215,23 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
       () => liveMatchApi.addGoal(fixtureId, { ...payload, correctionReason: correction() }),
       "Goal Added Successfully",
       { type: "goal", label }
+    );
+    return Boolean(result);
+  }, [correction, fixtureId, runAction]);
+
+  const handleAwardedGoal = useCallback(async (teamId: string) => {
+    const result = await runAction(
+      () => liveMatchApi.addAwardedGoal(fixtureId, { teamId, minute, correctionReason: correction() }),
+      "Awarded team goal added",
+      { type: "note", label: "Awarded team goal" },
+    );
+    return Boolean(result);
+  }, [correction, fixtureId, minute, runAction]);
+
+  const handleUpdateGoal = useCallback(async (goalId: string, scorerId: string, goalMinute: number) => {
+    const result = await runAction(
+      () => liveMatchApi.updateGoal(fixtureId, goalId, { scorerId, minute: goalMinute, correctionReason: correction() }),
+      "Goal updated",
     );
     return Boolean(result);
   }, [correction, fixtureId, runAction]);
@@ -295,7 +316,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
 
   const handleDeleteEvent = useCallback((event: TimelineEvent) => {
     const typeMap: Record<string, "goal" | "assist" | "card" | "substitution" | "note"> = {
-      "goal": "goal", "own-goal": "goal", "penalty": "goal",
+      "goal": "goal", "own-goal": "goal", "penalty": "goal", "awarded-goal": "note",
       "yellow": "card", "red": "card",
       "substitution": "substitution",
       "var": "note", "missed-penalty": "note",
@@ -311,7 +332,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
 
   const handleUndoEvent = useCallback((event: TimelineEvent) => {
     const typeMap: Record<string, "goal" | "assist" | "card" | "substitution" | "note"> = {
-      "goal": "goal", "own-goal": "goal", "penalty": "goal",
+      "goal": "goal", "own-goal": "goal", "penalty": "goal", "awarded-goal": "note",
       "yellow": "card", "red": "card",
       "substitution": "substitution",
       "var": "note", "missed-penalty": "note",
@@ -441,6 +462,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
               onCopy={handleCopyEvent}
               onView={setViewingEvent}
               onEditStats={(e) => e.player && e.teamId && setEditingPlayer({ playerId: e.player.id, teamId: e.teamId })}
+              onEditGoal={setEditingGoal}
             />
           </div>
           <div className="order-3 space-y-3">
@@ -482,6 +504,14 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
         onClose={() => setDialog(null)}
         onConfirm={handleNote}
       />
+      <AwardedGoalDialog
+        open={dialog === "awarded-goal"}
+        home={homeTeam}
+        away={awayTeam}
+        minute={minute}
+        onClose={() => setDialog(null)}
+        onConfirm={handleAwardedGoal}
+      />
       <ManOfTheMatchDialog
         open={dialog === "motm"}
         home={homeTeam}
@@ -518,6 +548,13 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
         onUpdateStat={handleEventStatChange}
         onSetRating={handleSetRating}
         onSetMotm={handleSetMotm}
+      />
+      <EditGoalDialog
+        event={editingGoal}
+        home={homeTeam}
+        away={awayTeam}
+        onClose={() => setEditingGoal(null)}
+        onConfirm={handleUpdateGoal}
       />
     </div>
   );

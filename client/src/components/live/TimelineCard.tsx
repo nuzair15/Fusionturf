@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import type { TimelineEvent } from "@/types/live";
 import { eventKindLabel } from "@/lib/liveTimeline";
 
-export const TimelineCard = memo(function TimelineCard({ event, stripColor, teamName, onDelete, onUndo, onCopy, onView, onEditStats }: {
+export const TimelineCard = memo(function TimelineCard({ event, stripColor, teamName, onDelete, onUndo, onCopy, onView, onEditStats, onEditGoal }: {
   event: TimelineEvent;
   stripColor?: string;
   teamName?: string;
@@ -14,10 +14,11 @@ export const TimelineCard = memo(function TimelineCard({ event, stripColor, team
   onCopy: (event: TimelineEvent) => void;
   onView: (event: TimelineEvent) => void;
   onEditStats?: (event: TimelineEvent) => void;
+  onEditGoal?: (event: TimelineEvent) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const isGoal = event.kind === "goal" || event.kind === "own-goal" || event.kind === "penalty";
+  const isGoal = event.kind === "goal" || event.kind === "awarded-goal" || event.kind === "own-goal" || event.kind === "penalty";
   const isCard = event.kind === "yellow" || event.kind === "red";
 
   const icon = (() => {
@@ -48,7 +49,8 @@ export const TimelineCard = memo(function TimelineCard({ event, stripColor, team
 
   const menuItems = [
     { label: "View Details", icon: <Eye className="h-3.5 w-3.5" />, onClick: () => onView(event) },
-    ...(onEditStats && event.player ? [{ label: "Edit Player Stats", icon: <Pencil className="h-3.5 w-3.5" />, onClick: () => { setMenuOpen(false); onEditStats(event); } }] : []),
+    ...(onEditGoal && event.player && isGoal ? [{ label: "Edit Goal", icon: <Pencil className="h-3.5 w-3.5" />, onClick: () => { setMenuOpen(false); onEditGoal(event); } }] : []),
+    ...(onEditStats && event.player && !isGoal ? [{ label: "Edit Player Stats", icon: <Pencil className="h-3.5 w-3.5" />, onClick: () => { setMenuOpen(false); onEditStats(event); } }] : []),
     { label: "Undo", icon: <Undo2 className="h-3.5 w-3.5" />, onClick: () => { setMenuOpen(false); onUndo(event); } },
     { label: "Delete", icon: <Trash2 className="h-3.5 w-3.5" />, onClick: () => { setMenuOpen(false); onDelete(event); } },
     { label: "Copy", icon: <Copy className="h-3.5 w-3.5" />, onClick: () => { setMenuOpen(false); onCopy(event); } },
@@ -61,7 +63,7 @@ export const TimelineCard = memo(function TimelineCard({ event, stripColor, team
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, x: -20 }}
       transition={{ duration: 0.18 }}
-      className="relative overflow-hidden rounded-xl border bg-card shadow-sm"
+      className={cn("relative rounded-xl border bg-card shadow-sm", menuOpen && "z-30")}
     >
       {stripColor && <span className="absolute left-0 top-0 h-full w-1" style={{ backgroundColor: stripColor }} />}
       <div className="flex items-center gap-3 p-3 pl-4">
@@ -71,7 +73,8 @@ export const TimelineCard = memo(function TimelineCard({ event, stripColor, team
           <p className="truncate text-sm font-semibold leading-tight">{eventKindLabel[event.kind]}</p>
           <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 truncate text-xs text-muted-foreground">
             {teamBadge}
-            {isGoal && <span>{event.player ? `${event.player.firstName} ${event.player.lastName}` : "Unknown"}</span>}
+            {event.kind === "awarded-goal" && <span>Administrative team goal</span>}
+            {isGoal && event.kind !== "awarded-goal" && <span>{event.player ? `${event.player.firstName} ${event.player.lastName}` : "Unknown"}</span>}
             {isCard && <span>{event.player ? `${event.player.firstName} ${event.player.lastName}` : "Unknown"}</span>}
             {event.kind === "substitution" && (
               <span className="flex items-center gap-1">

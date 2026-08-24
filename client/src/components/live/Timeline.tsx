@@ -8,7 +8,7 @@ import { TimelineCard } from "./TimelineCard";
 export const HOME_COLOR = "#22c55e";
 export const AWAY_COLOR = "#3b82f6";
 
-export function Timeline({ events, homeTeamId, awayTeamId, homeName, awayName, onDelete, onUndo, onCopy, onView, onEditStats }: {
+export function Timeline({ events, homeTeamId, awayTeamId, homeName, awayName, onDelete, onUndo, onCopy, onView, onEditStats, onEditGoal }: {
   events: TimelineEvent[];
   homeTeamId: string;
   awayTeamId: string;
@@ -19,13 +19,14 @@ export function Timeline({ events, homeTeamId, awayTeamId, homeName, awayName, o
   onCopy: (event: TimelineEvent) => void;
   onView: (event: TimelineEvent) => void;
   onEditStats?: (event: TimelineEvent) => void;
+  onEditGoal?: (event: TimelineEvent) => void;
 }) {
   const [filter, setFilter] = useState<TimelineFilter>("all");
 
   const counts = useMemo(() => {
     return {
       all: events.length,
-      goals: events.filter((e) => ["goal", "own-goal", "penalty"].includes(e.kind)).length,
+      goals: events.filter((e) => ["goal", "awarded-goal", "own-goal", "penalty"].includes(e.kind)).length,
       cards: events.filter((e) => ["yellow", "red"].includes(e.kind)).length,
       subs: events.filter((e) => e.kind === "substitution").length,
       var: events.filter((e) => ["var", "missed-penalty"].includes(e.kind)).length,
@@ -34,7 +35,7 @@ export function Timeline({ events, homeTeamId, awayTeamId, homeName, awayName, o
 
   const filtered = useMemo(() => {
     if (filter === "all") return events;
-    if (filter === "goals") return events.filter((e) => ["goal", "own-goal", "penalty"].includes(e.kind));
+    if (filter === "goals") return events.filter((e) => ["goal", "awarded-goal", "own-goal", "penalty"].includes(e.kind));
     if (filter === "cards") return events.filter((e) => ["yellow", "red"].includes(e.kind));
     if (filter === "subs") return events.filter((e) => e.kind === "substitution");
     return events.filter((e) => ["var", "missed-penalty"].includes(e.kind));
@@ -64,6 +65,7 @@ export function Timeline({ events, homeTeamId, awayTeamId, homeName, awayName, o
               onCopy={onCopy}
               onView={onView}
               onEditStats={onEditStats}
+              onEditGoal={onEditGoal}
             />
           ))}
         </AnimatePresence>

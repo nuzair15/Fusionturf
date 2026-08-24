@@ -21,6 +21,12 @@ export const liveMatchApi = {
   addGoal: (fixtureId: string, body: { teamId: string; scorerId: string; assistId?: string; minute: number; isOwnGoal?: boolean; isPenalty?: boolean } & Correction) =>
     api.post(`/admin/fixtures/${fixtureId}/goal`, body),
 
+  addAwardedGoal: (fixtureId: string, body: { teamId: string; minute: number } & Correction) =>
+    api.post(`/admin/fixtures/${fixtureId}/awarded-goal`, body),
+
+  updateGoal: (fixtureId: string, goalId: string, body: { scorerId: string; minute: number } & Correction) =>
+    api.patch(`/admin/fixtures/${fixtureId}/goal/${goalId}`, body),
+
   addSubstitution: (fixtureId: string, body: { teamId: string; playerOffId: string; playerOnId: string; minute: number } & Correction) =>
     api.post(`/admin/fixtures/${fixtureId}/substitution`, body),
 

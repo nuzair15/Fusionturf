@@ -39,18 +39,18 @@ export function MatchTimer({ running, seconds, onTogglePause, onReset }: {
           {isHalfTime ? "00" : secs.toString().padStart(2, "0")}
         </motion.span>
       </div>
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-2">
         <button
           onClick={onTogglePause}
           aria-label={running ? "Pause timer" : "Start timer"}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary transition hover:bg-primary/20 active:scale-95"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/15 text-primary shadow-sm transition hover:bg-primary/25 active:scale-95"
         >
-          {running ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+          {running ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
         </button>
         <button
           onClick={onReset}
           aria-label="Reset timer"
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-muted-foreground transition hover:bg-accent active:scale-95"
+          className="flex h-10 w-11 items-center justify-center rounded-full bg-muted text-muted-foreground transition hover:bg-accent active:scale-95"
         >
           <RotateCcw className="h-3.5 w-3.5" />
         </button>

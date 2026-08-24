@@ -4,6 +4,7 @@ import type { MatchStatus } from "@/types";
 
 export type QuickAction =
   | "goal"
+  | "awarded-goal"
   | "yellow"
   | "red"
   | "own-goal"
@@ -26,6 +27,7 @@ export function QuickActions({ status, onAction, disabled }: {
 
   const eventCards: { action: QuickAction; icon: React.ReactNode; label: string; desc: string; shortcut: string; tone: string }[] = [
     { action: "goal", icon: <GoalIcon className="h-5 w-5" />, label: "Goal", desc: "Scorer + assist", shortcut: "G", tone: "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20" },
+    { action: "awarded-goal", icon: <GoalIcon className="h-5 w-5" />, label: "Awarded Goal", desc: "Late-team penalty", shortcut: "A", tone: "bg-rose-500/10 text-rose-600 hover:bg-rose-500/20" },
     { action: "own-goal", icon: <GoalIcon className="h-5 w-5" />, label: "Own Goal", desc: "Opposition scorer", shortcut: "O", tone: "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20" },
     { action: "penalty", icon: <GoalIcon className="h-5 w-5" />, label: "Penalty Goal", desc: "Spot kick scored", shortcut: "P", tone: "bg-teal-500/10 text-teal-600 hover:bg-teal-500/20" },
     { action: "missed-penalty", icon: <Ban className="h-5 w-5" />, label: "Missed Penalty", desc: "Saved or off target", shortcut: "M", tone: "bg-orange-500/10 text-orange-600 hover:bg-orange-500/20" },
@@ -44,7 +46,7 @@ export function QuickActions({ status, onAction, disabled }: {
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
         {eventCards.map((c) => (
           <button
             key={c.action}
@@ -72,7 +74,7 @@ export function QuickActions({ status, onAction, disabled }: {
             disabled={disabled}
             title={c.label}
             className={cn(
-              "flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.97] disabled:opacity-40",
+              "flex min-h-12 items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-bold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.97] disabled:opacity-40",
               c.tone
             )}
           >

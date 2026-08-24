@@ -121,7 +121,7 @@ export interface LiveMatchData {
   };
 }
 
-export type TimelineEventKind = "goal" | "own-goal" | "penalty" | "yellow" | "red" | "substitution" | "var" | "missed-penalty";
+export type TimelineEventKind = "goal" | "awarded-goal" | "own-goal" | "penalty" | "yellow" | "red" | "substitution" | "var" | "missed-penalty";
 
 export interface TimelineEvent {
   key: string;

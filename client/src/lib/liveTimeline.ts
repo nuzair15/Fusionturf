@@ -47,10 +47,11 @@ export function buildTimeline(data: LiveMatchData): TimelineEvent[] {
   }
 
   for (const n of notes) {
+    const isAwardedGoal = n.type === "INFO" && n.note === "[AWARDED_GOAL]";
     events.push({
       key: `note-${n.id}`,
       id: n.id,
-      kind: n.type === "MISSED_PENALTY" ? "missed-penalty" : "var",
+      kind: isAwardedGoal ? "awarded-goal" : n.type === "MISSED_PENALTY" ? "missed-penalty" : "var",
       minute: n.minute,
       teamId: n.teamId,
       player: n.player,
@@ -64,6 +65,7 @@ export function buildTimeline(data: LiveMatchData): TimelineEvent[] {
 
 export const eventKindLabel: Record<TimelineEventKind, string> = {
   goal: "GOAL",
+  "awarded-goal": "AWARDED GOAL",
   "own-goal": "OWN GOAL",
   penalty: "PENALTY GOAL",
   yellow: "YELLOW CARD",

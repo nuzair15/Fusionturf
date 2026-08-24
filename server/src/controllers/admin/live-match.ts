@@ -20,6 +20,7 @@ const assertMutableFixture = (status: string, correctionReason?: unknown) => {
 };
 
 const ACTIVE_EVENT_STATES = ["LIVE", "PAUSED", "HALF_TIME", "EXTRA_TIME", "PENALTIES"];
+const AWARDED_GOAL_NOTE = "[AWARDED_GOAL]";
 const assertEventMutable = (status: string, correctionReason?: unknown) => {
   if (ACTIVE_EVENT_STATES.includes(status)) return false;
   if (status === "COMPLETED") return assertMutableFixture(status, correctionReason);
@@ -384,6 +385,45 @@ export const addGoal = async (req: Request, res: Response, next: NextFunction) =
   }
 };
 
+// Administrative goals are not credited to a player, keeping player statistics accurate.
+export const addAwardedGoal = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { teamId, minute } = req.body;
+    if (!teamId) throw new AppError("teamId required", 400);
+    const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id } });
+    if (!fixture) throw new AppError("Fixture not found", 404);
+    assertEventMutable(fixture.status, req.body.correctionReason);
+    if (![fixture.homeTeamId, fixture.awayTeamId].includes(teamId)) throw new AppError("Team is not part of this fixture", 400);
+    const eventMinute = Number(minute ?? 0);
+    if (!Number.isInteger(eventMinute) || eventMinute < 0 || eventMinute > 150) throw new AppError("Minute must be an integer between 0 and 150", 400);
+    const awardedGoal = await prisma.$transaction(async (tx) => {
+      const note = await tx.matchNote.create({ data: { fixtureId: fixture.id, teamId, type: "INFO", minute: eventMinute, note: AWARDED_GOAL_NOTE } });
+      await appendMatchEvent(tx, { fixtureId: fixture.id, type: "GOAL", minute: eventMinute, teamId, payload: { legacyNoteId: note.id, awardedGoal: true, correctionReason: req.body.correctionReason || null }, idempotencyKey: `legacy:note:${note.id}:created`, createdById: req.user?.userId });
+      return note;
+    });
+    await recalcScore(fixture.id);
+    await rebuildIfCorrected(fixture, req.body.correctionReason);
+    res.status(201).json(awardedGoal);
+  } catch (error) { next(error); }
+};
+
+export const updateGoal = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id } });
+    if (!fixture) throw new AppError("Fixture not found", 404);
+    assertEventMutable(fixture.status, req.body.correctionReason);
+    const goal = await prisma.goal.findFirst({ where: { id: req.params.goalId, fixtureId: fixture.id } });
+    if (!goal) throw new AppError("Goal not found", 404);
+    const minute = Number(req.body.minute);
+    if (!Number.isInteger(minute) || minute < 0 || minute > 150) throw new AppError("Minute must be an integer between 0 and 150", 400);
+    const scorer = await prisma.player.findUnique({ where: { id: req.body.scorerId }, select: { id: true, teamId: true, seasonId: true, isActive: true } });
+    if (!scorer || !scorer.isActive || scorer.seasonId !== fixture.seasonId || scorer.teamId !== goal.teamId) throw new AppError("Scorer must belong to the credited team", 400);
+    const updated = await prisma.goal.update({ where: { id: goal.id }, data: { playerId: scorer.id, minute } });
+    await rebuildIfCorrected(fixture, req.body.correctionReason);
+    res.json(updated);
+  } catch (error) { next(error); }
+};
+
 export const removeGoal = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { playerId } = req.body;
@@ -504,6 +544,7 @@ export const removeMatchEvent = async (req: Request, res: Response, next: NextFu
         await reverseLegacyEvent(tx, { fixtureId: fixture.id, legacyType: "note", legacyId: event.id, reason: req.body.correctionReason, createdById: req.user?.userId });
         await tx.matchNote.delete({ where: { id: event.id } });
       });
+      if (event.note === AWARDED_GOAL_NOTE) await recalcScore(fixture.id);
     } else {
       throw new AppError("Invalid event type", 400);
     }
@@ -589,10 +630,10 @@ export const updateTeamStats = async (req: Request, res: Response, next: NextFun
 async function recalcScore(fixtureId: string) {
   const fixture = await prisma.fixture.findUnique({ where: { id: fixtureId }, select: { homeTeamId: true, awayTeamId: true } });
   if (!fixture) return;
-  const goals = await prisma.goal.findMany({
-    where: { fixtureId },
-    include: { player: { select: { teamId: true } } },
-  });
+  const [goals, awardedGoals] = await Promise.all([
+    prisma.goal.findMany({ where: { fixtureId }, include: { player: { select: { teamId: true } } } }),
+    prisma.matchNote.findMany({ where: { fixtureId, type: "INFO", note: AWARDED_GOAL_NOTE }, select: { teamId: true } }),
+  ]);
   let homeGoals = 0;
   let awayGoals = 0;
   for (const g of goals) {
@@ -605,6 +646,10 @@ async function recalcScore(fixtureId: string) {
       if (scorerIsHome) homeGoals += 1;
       else awayGoals += 1;
     }
+  }
+  for (const awarded of awardedGoals) {
+    if (awarded.teamId === fixture.homeTeamId) homeGoals += 1;
+    if (awarded.teamId === fixture.awayTeamId) awayGoals += 1;
   }
   await prisma.fixture.update({
     where: { id: fixtureId },
