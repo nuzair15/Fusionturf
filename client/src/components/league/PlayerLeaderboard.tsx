@@ -1,14 +1,12 @@
 import type { PlayerStat } from "@/types";
 import { cn } from "@/lib/utils";
 
-type LeaderboardStat = "goals" | "assists" | "appearances" | "cleanSheets" | "saves" | "passAccuracy" | "tackles" | "yellowCards" | "rating" | "motm";
+type LeaderboardStat = "goals" | "assists" | "appearances" | "saves" | "yellowCards" | "redCards" | "motm";
 
-const labels: Record<LeaderboardStat, string> = { goals: "Goals", assists: "Assists", appearances: "Apps", cleanSheets: "Clean sheets", saves: "Saves", passAccuracy: "Pass %", tackles: "Tackles", yellowCards: "Yellow cards", rating: "Rating", motm: "MOTM" };
+const labels: Record<LeaderboardStat, string> = { goals: "Goals", assists: "Assists", appearances: "Apps", saves: "Saves", yellowCards: "Yellow cards", redCards: "Red cards", motm: "MOTM" };
 
 function statValue(row: PlayerStat, stat: LeaderboardStat) {
   if (stat === "motm") return (row as any).manOfTheMatch || 0;
-  if (stat === "rating") return row.averageRating ? row.averageRating.toFixed(1) : "—";
-  if (stat === "passAccuracy") return row.passAccuracy === null || row.passAccuracy === undefined ? "—" : `${row.passAccuracy}%`;
   return row[stat as keyof PlayerStat] ?? 0;
 }
 

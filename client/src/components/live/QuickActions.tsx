@@ -1,4 +1,4 @@
-import { Goal as GoalIcon, AlertTriangle, Square as SquareIcon, Play, Pause, Clock3, Flag, Undo2, UserPlus, Eye, Ban } from "lucide-react";
+import { Goal as GoalIcon, AlertTriangle, Square as SquareIcon, Play, Pause, Clock3, Flag, Undo2, UserPlus, Eye, Ban, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MatchStatus } from "@/types";
 
@@ -11,6 +11,7 @@ export type QuickAction =
   | "penalty"
   | "missed-penalty"
   | "var"
+  | "motm"
   | "start"
   | "pause"
   | "resume"
@@ -34,6 +35,7 @@ export function QuickActions({ status, onAction, disabled }: {
     { action: "red", icon: <span className="block h-3.5 w-2.5 rounded-[2px] bg-red-500 shadow-sm" />, label: "Red Card", desc: "Dismissal", shortcut: "R", tone: "bg-red-500/10 text-red-600 hover:bg-red-500/20" },
     { action: "substitution", icon: <UserPlus className="h-5 w-5" />, label: "Substitution", desc: "Bring a player on", shortcut: "S", tone: "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20" },
     { action: "var", icon: <Eye className="h-5 w-5" />, label: "VAR", desc: "Review check", shortcut: "V", tone: "bg-violet-500/10 text-violet-600 hover:bg-violet-500/20" },
+    { action: "motm", icon: <Star className="h-5 w-5" />, label: "Man of Match", desc: "Select award winner", shortcut: "★", tone: "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20" },
   ];
 
   const matchCards: { action: QuickAction; icon: React.ReactNode; label: string; desc: string; shortcut?: string; tone: string; hidden?: boolean }[] = [

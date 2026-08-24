@@ -19,6 +19,7 @@ import { NoteDialog, type NoteType } from "./NoteDialog";
 import { ConfirmationModal } from "./ConfirmationModal";
 import { EventDetailsDialog } from "./EventDetailsDialog";
 import { PlayerStatsDialog, type PlayerStatType } from "./PlayerStatsDialog";
+import { ManOfTheMatchDialog } from "./ManOfTheMatchDialog";
 import type { MatchStatus } from "@/types";
 
 interface UndoEntry {
@@ -34,7 +35,7 @@ interface ConfirmState {
   onConfirm: () => Promise<void> | void;
 }
 
-type DialogKind = "goal" | "own-goal" | "penalty" | "yellow" | "red" | "substitution" | "var" | "missed-penalty" | null;
+type DialogKind = "goal" | "own-goal" | "penalty" | "yellow" | "red" | "substitution" | "var" | "missed-penalty" | "motm" | null;
 
 let activityId = 1;
 
@@ -191,6 +192,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
       case "red": setDialog("red"); break;
       case "substitution": setDialog("substitution"); break;
       case "var": setDialog("var"); break;
+      case "motm": setDialog("motm"); break;
       case "missed-penalty": setDialog("missed-penalty"); break;
       case "start": setStatus("LIVE"); break;
       case "resume": setStatus("LIVE"); break;
@@ -508,6 +510,14 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
         minute={minute}
         onClose={() => setDialog(null)}
         onConfirm={handleNote}
+      />
+      <ManOfTheMatchDialog
+        open={dialog === "motm"}
+        home={homeTeam}
+        away={awayTeam}
+        selectedId={data.fixture.manOfTheMatchId}
+        onClose={() => setDialog(null)}
+        onSelect={async (playerId) => { await handleSetMotm(playerId); setDialog(null); }}
       />
       <ConfirmationModal
         open={!!confirm}

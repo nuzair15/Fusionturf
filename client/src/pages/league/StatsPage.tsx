@@ -5,15 +5,17 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import type { PlayerStat } from "@/types";
-import { ChevronLeft, Shield, Star, Target, Trophy, Users } from "lucide-react";
+import { ChevronLeft, Eye, Star, Target, Trophy, Users } from "lucide-react";
 import { PlayerLeaderboard } from "@/components/league/PlayerLeaderboard";
 
 const categories = [
   { key: "goals", label: "Scorers", icon: Trophy },
   { key: "assists", label: "Assists", icon: Target },
-  { key: "rating", label: "Ratings", icon: Star },
+  { key: "motm", label: "Man of the Match", icon: Star },
   { key: "appearances", label: "Appearances", icon: Users },
-  { key: "cleanSheets", label: "Clean sheets", icon: Shield },
+  { key: "saves", label: "Saves", icon: Eye },
+  { key: "yellowCards", label: "Yellow cards", icon: Target },
+  { key: "redCards", label: "Red cards", icon: Target },
 ] as const;
 
 export function StatsPage() {

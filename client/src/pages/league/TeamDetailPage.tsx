@@ -1,248 +1,42 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
-import type { Team } from "@/types";
-import { ChevronLeft, MapPin, CalendarDays, Trophy, Users, GalleryVertical, BadgeIcon } from "lucide-react";
-import { LeagueHero, LeagueCard, LeaguePills, LeagueEmptyState } from "@/components/league/LeagueUI";
-import { formatDate } from "@/lib/utils";
+import type { Fixture, Team } from "@/types";
+import { CalendarDays, ChevronLeft, MapPin, Trophy, Users } from "lucide-react";
+import { LeagueCard, LeagueEmptyState } from "@/components/league/LeagueUI";
 import { FollowButton } from "@/components/league/FollowButton";
 import { PageError, PageSkeleton } from "@/components/PageState";
-import { fixtureDateKey, sortedFixtures } from "@/lib/fixtures";
+import { fixtureDateKey, fixtureScoreLabel, sortedFixtures } from "@/lib/fixtures";
+import { formatDate } from "@/lib/utils";
+
+function MatchRow({ fixture, onOpen }: { fixture: Fixture; onOpen: () => void }) {
+  return <button onClick={onOpen} className="grid w-full grid-cols-[1fr_auto_1fr] items-center gap-2 border-b px-3 py-3 text-left last:border-0 transition hover:bg-secondary/50 sm:px-4"><div className="flex min-w-0 items-center gap-2"><img src={fixture.homeTeam.logoUrl || "/placeholder.svg"} alt="" className="h-7 w-7 shrink-0 rounded-full bg-muted object-cover" /><span className="truncate text-xs font-semibold sm:text-sm">{fixture.homeTeam.shortName || fixture.homeTeam.name}</span></div><div className="text-center"><p className="text-base font-black tabular-nums">{fixtureScoreLabel(fixture)}</p><p className="text-[9px] text-muted-foreground sm:text-[10px]">{formatDate(fixtureDateKey(fixture))}</p></div><div className="flex min-w-0 items-center justify-end gap-2"><span className="truncate text-right text-xs font-semibold sm:text-sm">{fixture.awayTeam.shortName || fixture.awayTeam.name}</span><img src={fixture.awayTeam.logoUrl || "/placeholder.svg"} alt="" className="h-7 w-7 shrink-0 rounded-full bg-muted object-cover" /></div></button>;
+}
 
 export function TeamDetailPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
-  const [tab, setTab] = useState("overview");
-
-  const { data: team, isLoading, isError, refetch } = useQuery({
-    queryKey: ["team", slug],
-    queryFn: () => api.get<Team>(`/league/teams/${slug}`),
-    enabled: !!slug,
-    staleTime: 0,
-    refetchOnWindowFocus: true,
-    refetchInterval: 30000,
-  });
-
-  const allMatches = useMemo(() => {
-    return sortedFixtures([...(team?.homeMatches || []), ...(team?.awayMatches || [])]);
-  }, [team]);
-  const standing = team?.standings?.[0];
-
+  const { data: team, isLoading, isError, refetch } = useQuery({ queryKey: ["team", slug], queryFn: () => api.get<Team>(`/league/teams/${slug}`), enabled: !!slug, staleTime: 0, refetchOnWindowFocus: true, refetchInterval: 30000 });
+  const allMatches = useMemo(() => sortedFixtures([...(team?.homeMatches || []), ...(team?.awayMatches || [])]), [team]);
   if (isLoading) return <PageSkeleton />;
   if (isError || !team) return <PageError title="Team profile not found" description="This club may have been removed or its profile is temporarily unavailable." onRetry={() => void refetch()} action={<Button variant="outline" onClick={() => navigate("/league")}>Back to league</Button>} />;
+  const standing = team.standings?.[0];
+  const completed = allMatches.filter((match) => match.status === "COMPLETED").slice(0, 5);
+  const upcoming = allMatches.filter((match) => match.status !== "COMPLETED").slice(0, 5);
 
-  return (
-    <div className="space-y-8 pb-8">
-      <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
-        <Button variant="ghost" onClick={() => { if (window.history.state?.idx > 0) navigate(-1); else navigate("/league"); }} className="mb-4 gap-1">
-          <ChevronLeft className="h-4 w-4" /> Back
-        </Button>
-        <LeagueHero
-          image={team.coverUrl || team.logoUrl || "/hero.jpeg"}
-          eyebrow={<><BadgeIcon className="h-3.5 w-3.5" /> Club profile</>}
-          title={team.name}
-          subtitle={`${team.city || "City unknown"} • ${team.homeStadium || "Home venue pending"}${team.description ? ` • ${team.description}` : ""}`}
-          actions={(
-            <>
-              <FollowButton type="TEAM" entityId={team.id} />
-              <Badge variant="secondary" className="rounded-full px-3 py-1">{team._count?.players || 0} players</Badge>
-              <Badge variant="secondary" className="rounded-full px-3 py-1">{standing ? `#${standing.position} • ${standing.points} pts` : "No standing yet"}</Badge>
-            </>
-          )}
-          stats={[
-            { label: "Founded", value: team.foundedYear || "—" },
-            { label: "Matches", value: allMatches.length },
-            { label: "Sponsors", value: team.sponsors?.length || 0 },
-            { label: "Gallery", value: team.galleries?.length || 0 },
-          ]}
-        />
-      </div>
+  return <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8"><motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+    <Button variant="ghost" onClick={() => navigate(-1)} className="mb-4 -ml-2 gap-1"><ChevronLeft className="h-4 w-4" /> Back</Button>
+    <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-sky-950 p-5 text-white shadow-xl sm:p-7"><div className="absolute -right-16 -top-20 h-56 w-56 rounded-full bg-primary/30 blur-3xl" /><div className="relative flex flex-col gap-5 sm:flex-row sm:items-center"><img src={team.logoUrl || "/placeholder.svg"} alt="" className="h-20 w-20 rounded-2xl border border-white/15 bg-white/10 object-cover shadow-lg sm:h-28 sm:w-28" /><div className="min-w-0 flex-1"><p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-200">Club profile</p><h1 className="mt-1 truncate text-3xl font-black tracking-tight sm:text-4xl">{team.name}</h1><p className="mt-2 flex items-center gap-1.5 text-sm text-slate-300"><MapPin className="h-4 w-4" /> {team.city || "Club location"}{team.homeStadium ? ` · ${team.homeStadium}` : ""}</p><div className="mt-4"><FollowButton type="TEAM" entityId={team.id} /></div></div><div className="grid grid-cols-3 gap-2 text-center"><div className="rounded-xl bg-white/10 px-3 py-2"><p className="text-xl font-black">{standing ? `#${standing.position}` : "—"}</p><p className="text-[10px] uppercase text-slate-300">Position</p></div><div className="rounded-xl bg-white/10 px-3 py-2"><p className="text-xl font-black">{standing?.points ?? 0}</p><p className="text-[10px] uppercase text-slate-300">Points</p></div><div className="rounded-xl bg-white/10 px-3 py-2"><p className="text-xl font-black">{team._count?.players || team.players?.length || 0}</p><p className="text-[10px] uppercase text-slate-300">Squad</p></div></div></div></section>
 
-      <div className="mx-auto max-w-7xl px-4 sm:px-6">
-        <LeaguePills
-          active={tab}
-          onChange={setTab}
-          items={[
-            { key: "overview", label: "Overview", icon: <Trophy className="h-4 w-4" /> },
-            { key: "squad", label: "Squad", icon: <Users className="h-4 w-4" /> },
-            { key: "fixtures", label: "Fixtures", icon: <CalendarDays className="h-4 w-4" /> },
-            { key: "stats", label: "Stats", icon: <BadgeIcon className="h-4 w-4" /> },
-            { key: "gallery", label: "Gallery", icon: <GalleryVertical className="h-4 w-4" /> },
-          ]}
-        />
-      </div>
+    <div className="mt-6 grid gap-5 lg:grid-cols-[1.1fr_0.9fr]"><LeagueCard title="About the club"><div className="space-y-4 p-4 sm:p-5"><p className="text-sm leading-6 text-muted-foreground">{team.description || "No club description has been added yet."}</p><div className="flex flex-wrap gap-2 text-xs"><span className="rounded-full bg-secondary px-3 py-1.5">{team.homeStadium || "Home venue TBC"}</span>{team.foundedYear && <span className="rounded-full bg-secondary px-3 py-1.5">Founded {team.foundedYear}</span>}</div></div></LeagueCard><LeagueCard title="Season snapshot"><div className="grid grid-cols-4 gap-px bg-border p-px">{[["P", standing?.played || 0], ["W", standing?.wins || 0], ["D", standing?.draws || 0], ["L", standing?.losses || 0], ["GF", standing?.goalsFor || 0], ["GA", standing?.goalsAgainst || 0], ["GD", standing?.goalDifference || 0], ["Pts", standing?.points || 0]].map(([label, stat]) => <div key={label as string} className="bg-card p-3 text-center"><p className="text-lg font-black tabular-nums">{stat as number}</p><p className="text-[10px] font-semibold uppercase text-muted-foreground">{label as string}</p></div>)}</div></LeagueCard></div>
 
-      {tab === "overview" && (
-        <div className="mx-auto grid max-w-7xl gap-6 px-4 sm:px-6 lg:grid-cols-[1.15fr_0.85fr]">
-          <LeagueCard title="About the club">
-            <div className="space-y-4 p-4">
-              <p className="text-sm text-muted-foreground">{team.description || "No club description added yet."}</p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border bg-secondary/30 p-4">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Home stadium</p>
-                  <p className="mt-1 font-semibold">{team.homeStadium || "TBD"}</p>
-                </div>
-                <div className="rounded-2xl border bg-secondary/30 p-4">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Location</p>
-                  <p className="mt-1 font-semibold">{team.city || "TBD"}</p>
-                </div>
-              </div>
-            </div>
-          </LeagueCard>
+    <section className="mt-6"><LeagueCard title="Squad" action={<span className="text-sm text-muted-foreground">{team.players?.length || 0} players</span>}>{team.players?.length ? <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3 sm:gap-3 sm:p-4 lg:grid-cols-4 xl:grid-cols-5">{team.players.map((player) => <button key={player.id} onClick={() => navigate(`/league/players/${player.slug}`)} className="flex items-center gap-2 rounded-xl border p-2 text-left transition hover:bg-secondary/50"><img src={player.photoUrl || "/placeholder.svg"} alt="" className="h-10 w-10 rounded-lg bg-muted object-cover" /><span className="min-w-0"><span className="block truncate text-xs font-bold sm:text-sm">{player.firstName} {player.lastName}</span><span className="block text-[10px] text-muted-foreground">{player.position || "Player"}{player.jerseyNumber ? ` · #${player.jerseyNumber}` : ""}</span></span></button>)}</div> : <div className="p-4"><LeagueEmptyState title="No squad uploaded" description="Add players to show the squad." /></div>}</LeagueCard></section>
 
-          <LeagueCard title="Season snapshot">
-            <div className="space-y-3 p-4">
-              {standing ? (
-                <>
-                  <div className="rounded-2xl border bg-primary/5 p-4">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Current position</p>
-                    <p className="mt-1 text-3xl font-bold">#{standing.position}</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    {[
-                      ["Played", standing.played],
-                      ["Wins", standing.wins],
-                      ["Draws", standing.draws],
-                      ["Losses", standing.losses],
-                      ["Goals For", standing.goalsFor],
-                      ["Goals Against", standing.goalsAgainst],
-                    ].map(([label, value]) => (
-                      <div key={label as string} className="rounded-2xl border bg-secondary/30 p-3">
-                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
-                        <p className="mt-1 text-lg font-semibold">{value as number}</p>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="rounded-2xl border bg-secondary/30 p-4">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Points</p>
-                    <p className="mt-1 text-3xl font-bold">{standing.points}</p>
-                  </div>
-                </>
-              ) : (
-                <LeagueEmptyState title="No season table yet" description="This club will show its ranking once standings exist." />
-              )}
-            </div>
-          </LeagueCard>
-        </div>
-      )}
+    <div className="mt-6 grid gap-5 lg:grid-cols-2"><LeagueCard title="Recent matches" action={<CalendarDays className="h-4 w-4 text-muted-foreground" />}>{completed.length ? <div>{completed.map((fixture) => <MatchRow key={fixture.id} fixture={fixture} onOpen={() => navigate(`/league/fixtures/${fixture.id}`)} />)}</div> : <LeagueEmptyState title="No results yet" description="Completed matches will appear here." />}</LeagueCard><LeagueCard title="Upcoming fixtures" action={<CalendarDays className="h-4 w-4 text-muted-foreground" />}>{upcoming.length ? <div>{upcoming.map((fixture) => <MatchRow key={fixture.id} fixture={fixture} onOpen={() => navigate(`/league/fixtures/${fixture.id}`)} />)}</div> : <LeagueEmptyState title="No upcoming fixtures" description="The next fixtures will appear here." />}</LeagueCard></div>
 
-      {tab === "squad" && (
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <LeagueCard title="Squad">
-            {team.players && team.players.length > 0 ? (
-              <div className="grid gap-3 p-4 grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {team.players.map((player) => {
-                  return (
-                    <button key={player.id} onClick={() => navigate(`/league/players/${player.slug}`)} className="overflow-hidden rounded-2xl border text-left transition hover:-translate-y-0.5 hover:shadow-md">
-                      <div className="aspect-[4/5] bg-muted">
-                        <img src={player.photoUrl || "/placeholder.svg"} alt="" className="h-full w-full object-cover" />
-                      </div>
-                      <div className="space-y-1 p-3">
-                        <p className="truncate font-semibold">{player.firstName} {player.lastName}</p>
-                        <p className="text-xs text-muted-foreground">{player.position || "Player"} • #{player.jerseyNumber || "—"}</p>
-                        <p className="text-xs text-primary">Open profile for statistics →</p>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="p-4"><LeagueEmptyState title="No squad uploaded" description="Add players to surface the squad view." /></div>
-            )}
-          </LeagueCard>
-        </div>
-      )}
-
-      {tab === "fixtures" && (
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <LeagueCard title="Fixtures">
-            {allMatches.length > 0 ? (
-              <div className="space-y-2 p-4">
-                {allMatches.slice(0, 8).map((match) => (
-                  <button key={match.id} onClick={() => navigate(`/league/fixtures/${match.id}`)} className="flex w-full items-center justify-between rounded-2xl border px-4 py-4 text-left transition hover:bg-secondary/50">
-                    <div className="flex items-center gap-3">
-                      <img src={match.homeTeam.logoUrl || "/placeholder.svg"} alt="" className="h-9 w-9 rounded-full bg-muted object-cover" />
-                      <div>
-                        <p className="font-semibold">{match.homeTeam.shortName || match.homeTeam.name} vs {match.awayTeam.shortName || match.awayTeam.name}</p>
-                        <p className="text-xs text-muted-foreground">{formatDate(fixtureDateKey(match))} · {match.kickoffTime || "TBD"}</p>
-                      </div>
-                    </div>
-                    <Badge variant={match.status === "COMPLETED" ? "default" : "secondary"}>
-                      {match.status === "COMPLETED" ? `${match.homeScore ?? 0}-${match.awayScore ?? 0}` : match.status}
-                    </Badge>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="p-4"><LeagueEmptyState title="No fixtures yet" description="Fixtures will show here once they’re scheduled." /></div>
-            )}
-          </LeagueCard>
-        </div>
-      )}
-
-      {tab === "stats" && (
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <div className="grid gap-6 lg:grid-cols-3">
-            <LeagueCard title="Team stats">
-              <div className="p-4 text-sm">
-                {standing ? (
-                  <div className="space-y-3">
-                    <div className="flex justify-between"><span className="text-muted-foreground">Position</span><span className="font-semibold">#{standing.position}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">Points</span><span className="font-semibold">{standing.points}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">Goal difference</span><span className="font-semibold">{standing.goalDifference >= 0 ? `+${standing.goalDifference}` : standing.goalDifference}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">Form</span><span className="font-semibold">{standing.form || "—"}</span></div>
-                  </div>
-                ) : <LeagueEmptyState title="No stats yet" description="Season data will appear here after the first round." />}
-              </div>
-            </LeagueCard>
-
-            <LeagueCard title="Performance">
-              <div className="grid gap-3 p-4">
-                {[
-                  ["Wins", standing?.wins || 0],
-                  ["Draws", standing?.draws || 0],
-                  ["Losses", standing?.losses || 0],
-                ].map(([label, value]) => (
-                  <div key={label as string} className="rounded-2xl border bg-secondary/30 p-4">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-                    <p className="mt-1 text-2xl font-bold">{value as number}</p>
-                  </div>
-                ))}
-              </div>
-            </LeagueCard>
-
-            <LeagueCard title="Roster size">
-              <div className="p-4">
-                <div className="rounded-2xl border bg-secondary/30 p-4 text-center">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Players</p>
-                  <p className="mt-1 text-4xl font-bold">{team._count?.players || 0}</p>
-                </div>
-              </div>
-            </LeagueCard>
-          </div>
-        </div>
-      )}
-
-      {tab === "gallery" && (
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <LeagueCard title="Gallery">
-            {team.galleries && team.galleries.length > 0 ? (
-              <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
-                {team.galleries.slice(0, 8).map((gallery) => (
-                  <img key={gallery.id} src={gallery.imageUrl} alt="" className="aspect-square rounded-2xl object-cover" />
-                ))}
-              </div>
-            ) : (
-              <div className="p-4"><LeagueEmptyState title="No gallery yet" description="Add club media to show matchday and behind-the-scenes moments." /></div>
-            )}
-          </LeagueCard>
-        </div>
-      )}
-    </div>
-  );
+    <section className="mt-6"><LeagueCard title="Gallery">{team.galleries?.length ? <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3 sm:gap-3 sm:p-4 lg:grid-cols-4">{team.galleries.slice(0, 12).map((gallery) => <img key={gallery.id} src={gallery.imageUrl} alt={gallery.title || "Club gallery"} className="aspect-square rounded-xl object-cover" />)}</div> : <div className="p-4"><LeagueEmptyState title="No gallery yet" description="Club media will appear here." /></div>}</LeagueCard></section>
+  </motion.div></div>;
 }
