@@ -20,7 +20,16 @@ export function TeamDetailPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const { data: team, isLoading, isError, refetch } = useQuery({ queryKey: ["team", slug], queryFn: () => api.get<Team>(`/league/teams/${slug}`), enabled: !!slug, staleTime: 0, refetchOnWindowFocus: true, refetchInterval: 30000 });
-  const allMatches = useMemo(() => sortedFixtures([...(team?.homeMatches || []), ...(team?.awayMatches || [])]), [team]);
+  const allMatches = useMemo(() => {
+    if (!team) return [];
+    // The team endpoint only includes the opponent relation on each fixture.
+    // Fill in this team locally so home and away rows have the same shape.
+    const club = { id: team.id, name: team.name, shortName: team.shortName, slug: team.slug, logoUrl: team.logoUrl, city: team.city };
+    return sortedFixtures([
+      ...(team.homeMatches || []).map((fixture) => ({ ...fixture, homeTeam: fixture.homeTeam || club })),
+      ...(team.awayMatches || []).map((fixture) => ({ ...fixture, awayTeam: fixture.awayTeam || club })),
+    ] as Fixture[]);
+  }, [team]);
   if (isLoading) return <PageSkeleton />;
   if (isError || !team) return <PageError title="Team profile not found" description="This club may have been removed or its profile is temporarily unavailable." onRetry={() => void refetch()} action={<Button variant="outline" onClick={() => navigate("/league")}>Back to league</Button>} />;
   const standing = team.standings?.[0];
