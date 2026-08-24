@@ -8,6 +8,7 @@ import { Select } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { ErrorState } from "@/components/admin/ErrorState";
 import { formatDate, formatTime, formatCurrency } from "@/lib/utils";
+import { bookingCustomerName, bookingCustomerPhone } from "@/lib/bookingCustomer";
 import { businessDateKey } from "@/lib/fixtures";
 import type { Booking, Venue } from "@/types";
 import {
@@ -373,7 +374,7 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
                       aria-label={`Open booking at ${formatTime(b.startTime)} on ${dayKey}`}
                       onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handleBookingClick(b); } }}
                     >
-                      <span className="font-medium">{b.user?.firstName || "?"}</span>
+                      <span className="font-medium">{bookingCustomerName(b)}</span>
                       <span className="ml-1">{formatTime(b.startTime)}</span>
                     </div>
                   );
@@ -456,7 +457,7 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-sm">
-                        {b.user?.firstName} {b.user?.lastName}
+                        {bookingCustomerName(b)}
                       </span>
                       <Badge variant="outline" className="text-[10px] bg-background/50">
                         {b.status}
@@ -523,8 +524,8 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
             className="fixed z-50 w-64 rounded-lg border bg-popover p-3 shadow-lg text-sm"
             style={{ left: hoverPos.x + 12, top: hoverPos.y - 10, pointerEvents: "none" }}
           >
-            <p className="font-semibold">{hoveredBooking.user?.firstName} {hoveredBooking.user?.lastName}</p>
-            <p className="text-xs text-muted-foreground">{hoveredBooking.user?.phone || ""}</p>
+            <p className="font-semibold">{bookingCustomerName(hoveredBooking)}</p>
+            <p className="text-xs text-muted-foreground">{bookingCustomerPhone(hoveredBooking)}</p>
             <div className="mt-1.5 flex items-center gap-2 text-xs">
               <Clock className="h-3 w-3" />
               {formatTime(hoveredBooking.startTime)} – {formatTime(hoveredBooking.endTime)}
@@ -583,11 +584,11 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
                   <div className="flex items-start gap-3 rounded-lg border p-4">
                     <User className="mt-0.5 h-5 w-5 text-muted-foreground" />
                     <div>
-                      <p className="font-medium">{selectedBooking.user?.firstName} {selectedBooking.user?.lastName}</p>
+                      <p className="font-medium">{bookingCustomerName(selectedBooking)}</p>
                       <p className="text-sm text-muted-foreground">{selectedBooking.user?.email}</p>
-                      {selectedBooking.user?.phone && (
+                      {bookingCustomerPhone(selectedBooking) && (
                         <p className="flex items-center gap-1 text-sm text-muted-foreground">
-                          <Phone className="h-3 w-3" />{selectedBooking.user.phone}
+                          <Phone className="h-3 w-3" />{bookingCustomerPhone(selectedBooking)}
                         </p>
                       )}
                     </div>

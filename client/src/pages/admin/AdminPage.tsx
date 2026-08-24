@@ -13,6 +13,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { buildBookingMessage } from "@/lib/bookingMessage";
+import { bookingCustomerName, bookingCustomerPhone } from "@/lib/bookingCustomer";
 import { MatchControlCenter } from "@/components/live/MatchControlCenter";
 import { LineupEditor } from "@/components/admin/LineupEditor";
 import { AdminSidebar, SidebarDrawer } from "@/components/admin/AdminSidebar";
@@ -1641,14 +1642,14 @@ export function AdminPage() {
               title=""
               columns={[
                 { key: "bookingNumber", label: "#", render: (b) => <span className="font-medium">{b.bookingNumber}</span> },
-                { key: "customer", label: "Customer", sortable: true, sortValue: (b) => `${b.user?.firstName || ""} ${b.user?.lastName || ""}`, render: (b) => <>{b.user?.firstName || "?"} {b.user?.lastName || ""}<br /><span className="text-xs text-muted-foreground">{b.user?.phone || ""}</span></> },
+                { key: "customer", label: "Customer", sortable: true, sortValue: (b) => bookingCustomerName(b), render: (b) => <>{bookingCustomerName(b)}<br /><span className="text-xs text-muted-foreground">{bookingCustomerPhone(b)}</span></> },
                 { key: "venue", label: "Venue", render: (b) => <>{b.turf?.venue?.name || "?"}<br /><span className="text-xs text-muted-foreground">{b.turf?.name || ""}</span></> },
                 { key: "date", label: "Date", sortable: true, render: (b) => <span className="text-muted-foreground">{formatDate(b.date)}</span> },
                 { key: "time", label: "Time", render: (b) => <>{b.startTime} - {b.endTime}</> },
                 { key: "amount", label: "Amount", sortable: true, sortValue: (b) => b.totalAmount, render: (b) => <>₹{(b.totalAmount / 100).toFixed(2)}</> },
                 { key: "status", label: "Status", render: (b) => <Badge variant={b.status === "CONFIRMED" ? "default" : b.status === "CANCELLED" ? "destructive" : "secondary"}>{b.status}</Badge> },
                 { key: "whatsapp", label: "", render: (b) => {
-                  const phone = b.user?.phone?.replace(/[^0-9]/g, "");
+                  const phone = bookingCustomerPhone(b).replace(/[^0-9]/g, "");
                   const msg = buildBookingMessage(b);
                   if (!msg) return null;
                   const copy = async () => {

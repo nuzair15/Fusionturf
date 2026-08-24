@@ -1,5 +1,6 @@
 import type { Booking } from "@/types";
-import { formatTime, getDisplayName } from "./utils";
+import { bookingCustomerName } from "./bookingCustomer";
+import { formatTime } from "./utils";
 
 const inr = (paise: number): string =>
   new Intl.NumberFormat("en-IN", {
@@ -56,7 +57,7 @@ export function openBookingInvoice(booking: Booking, settings: Record<string, st
   const businessEmail = settings.contact_email || "";
   const businessPhone = settings.contact_phone || "";
 
-  const customerName = getDisplayName(booking.user?.firstName, booking.user?.lastName);
+  const customerName = bookingCustomerName(booking);
 
   const services = booking.bookingServices || [];
   const servicesTotal = services.reduce((sum, s) => sum + (s.price || 0) * (s.quantity || 1), 0);

@@ -1,11 +1,12 @@
 import type { Booking } from "@/types";
-import { formatBookingDate, formatTime, formatCurrency, getDisplayName } from "./utils";
+import { formatBookingDate, formatTime, formatCurrency } from "./utils";
+import { bookingCustomerName } from "./bookingCustomer";
 
 export function buildBookingMessage(booking: Booking): string {
   const template = booking.turf?.venue?.bookingMessageTemplate?.trim();
   if (!template) return "";
 
-  const customer = getDisplayName(booking.user?.firstName, booking.user?.lastName) || "there";
+  const customer = bookingCustomerName(booking) || "there";
   const venue = booking.turf?.venue?.name || "";
   const date = formatBookingDate(booking.date);
   const start = formatTime(booking.startTime);

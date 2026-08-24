@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
 import { formatDate, formatTime, formatCurrency } from "@/lib/utils";
 import { buildBookingMessage } from "@/lib/bookingMessage";
+import { bookingCustomerName, bookingCustomerPhone } from "@/lib/bookingCustomer";
 import { openBookingInvoice } from "@/lib/invoice";
 import type { Booking, Payment } from "@/types";
 import {
@@ -126,11 +127,11 @@ export function BookingDrawer({ booking, settings, onClose }: { booking: Booking
           <div className="flex items-start gap-3 rounded-lg border p-4">
             <User className="mt-0.5 h-5 w-5 text-muted-foreground shrink-0" />
             <div className="min-w-0 flex-1">
-              <p className="font-semibold">{booking.user?.firstName || "?"} {booking.user?.lastName || ""}</p>
+              <p className="font-semibold">{bookingCustomerName(booking)}</p>
               <p className="text-sm text-muted-foreground">{booking.user?.email || "—"}</p>
-              {booking.user?.phone && (
+              {bookingCustomerPhone(booking) && (
                 <p className="flex items-center gap-1.5 text-sm text-muted-foreground mt-0.5">
-                  <Phone className="h-3.5 w-3.5" /> {booking.user.phone}
+                  <Phone className="h-3.5 w-3.5" /> {bookingCustomerPhone(booking)}
                 </p>
               )}
             </div>
@@ -242,7 +243,7 @@ export function BookingDrawer({ booking, settings, onClose }: { booking: Booking
           {(() => {
             const msg = buildBookingMessage(booking);
             if (!msg) return null;
-            const phone = booking.user?.phone?.replace(/[^0-9]/g, "");
+            const phone = bookingCustomerPhone(booking).replace(/[^0-9]/g, "");
             const copy = async () => {
               try {
                 await navigator.clipboard.writeText(msg);
@@ -351,7 +352,7 @@ export function BookingDrawer({ booking, settings, onClose }: { booking: Booking
                 <Printer className="mr-1.5 h-4 w-4" /> Print Invoice
               </Button>
               {(() => {
-                const phone = booking.user?.phone?.replace(/[^0-9]/g, "");
+                const phone = bookingCustomerPhone(booking).replace(/[^0-9]/g, "");
                 const msg = buildBookingMessage(booking);
                 if (!phone || !msg) return null;
                 return (

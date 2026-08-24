@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
+import { bookingCustomerName } from "@/lib/bookingCustomer";
 import { ErrorState } from "@/components/admin/ErrorState";
 import { ActivityFeed } from "@/components/admin/ActivityFeed";
 import type { DashboardStats, Booking } from "@/types";
@@ -205,7 +206,7 @@ export function AdminDashboard() {
                       {recentBookings.slice(0, 6).map((b) => (
                         <tr key={b.id} className="border-b last:border-0 transition hover:bg-muted/20">
                           <td className="py-2.5 pr-3">
-                            <span className="font-medium">{b.user?.firstName} {b.user?.lastName}</span>
+                            <span className="font-medium">{bookingCustomerName(b)}</span>
                           </td>
                           <td className="py-2.5 pr-3 text-muted-foreground">{b.turf?.venue?.name || "—"}</td>
                           <td className="py-2.5 pr-3 text-muted-foreground">{b.startTime}–{b.endTime}</td>
