@@ -11,8 +11,16 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem("theme") as Theme) || "light");
-  const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">("light");
+  const [theme, setTheme] = useState<Theme>(() => {
+    // The old site always wrote "light" on first visit. Upgrade that legacy
+    // default once while keeping any choice made after the dark launch.
+    if (!localStorage.getItem("theme-default-v2")) {
+      localStorage.setItem("theme-default-v2", "dark");
+      return "dark";
+    }
+    return (localStorage.getItem("theme") as Theme) || "dark";
+  });
+  const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">("dark");
 
   useEffect(() => {
     const root = document.documentElement;
