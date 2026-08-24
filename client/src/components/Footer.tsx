@@ -1,24 +1,18 @@
 import { Link } from "react-router-dom";
 
 const footerLinks = {
-  Platform: [
+  Explore: [
     { label: "Book Turf", to: "/booking" },
     { label: "League", to: "/league" },
+    { label: "Fixtures", to: "/league/fixtures" },
     { label: "Standings", to: "/league/standings" },
     { label: "Statistics", to: "/league/stats" },
     { label: "Awards", to: "/league/awards" },
   ],
-  Company: [
-    { label: "About Us", to: "#" },
-    { label: "Contact", to: "#" },
-    { label: "Careers", to: "#" },
-    { label: "Press Kit", to: "#" },
-  ],
-  Support: [
-    { label: "Help Center", to: "#" },
-    { label: "Terms of Service", to: "#" },
-    { label: "Privacy Policy", to: "#" },
-    { label: "Cookie Policy", to: "#" },
+  Account: [
+    { label: "My account", to: "/dashboard" },
+    { label: "Manage booking", to: "/booking/manage" },
+    { label: "Sign in", to: "/auth" },
   ],
 };
 
@@ -52,12 +46,6 @@ export function Footer() {
           ))}
         </div>
         <div className="mt-8 border-t pt-8 text-center text-sm text-muted-foreground">
-          <Link
-            to="/admin"
-            className="mx-auto mb-4 flex w-fit items-center gap-2 rounded-lg border border-[#00d66f]/30 bg-[#00d66f]/10 px-4 py-2 text-sm font-medium text-[#00d66f] transition-colors hover:bg-[#00d66f]/20"
-          >
-            Admin Panel
-          </Link>
           &copy; {new Date().getFullYear()} Fusion Turf. All rights reserved.
         </div>
       </div>

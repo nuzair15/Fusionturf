@@ -4,12 +4,13 @@ import type { LivePlayer } from "@/types/live";
 import { PlayerCard } from "./PlayerCard";
 import { Input } from "@/components/ui/input";
 
-export const PlayerGrid = memo(function PlayerGrid({ title, players, teamId, teamColor, onPick, onDecrement, onIncrement, disabled, subbedOffIds }: {
+export const PlayerGrid = memo(function PlayerGrid({ title, players, teamId, teamColor, onPick, onAppearance, onDecrement, onIncrement, disabled, subbedOffIds }: {
   title: string;
   players: LivePlayer[];
   teamId: string;
   teamColor?: "emerald" | "blue";
   onPick?: (player: LivePlayer) => void;
+  onAppearance?: (player: LivePlayer) => void;
   onDecrement?: (playerId: string, statType: "assist" | "yellowCard" | "redCard") => void;
   onIncrement?: (playerId: string, statType: "assist" | "yellowCard" | "redCard") => void;
   disabled?: boolean;
@@ -45,6 +46,7 @@ export const PlayerGrid = memo(function PlayerGrid({ title, players, teamId, tea
       isGoalkeeper={goalkeeperId === p.id}
       subbedOff={subbedOffIds?.has(p.id)}
       onSelect={onPick ? () => onPick(p) : undefined}
+      onAppearance={onAppearance ? () => onAppearance(p) : undefined}
       onDecrement={onDecrement ? (statType) => onDecrement(p.id, statType) : undefined}
       onIncrement={onIncrement ? (statType) => onIncrement(p.id, statType) : undefined}
       disabled={disabled}

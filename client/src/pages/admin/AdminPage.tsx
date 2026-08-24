@@ -28,43 +28,10 @@ import { LayoutDashboard, Users, Calendar, CalendarDays, Trophy, Settings, Activ
 import { VenueCalendar } from "@/components/admin/VenueCalendar";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 import { useAuth } from "@/providers/AuthProvider";
+import { ADMIN_ROLE_TABS, ADMIN_TABS } from "@/config/adminNavigation";
 
-const adminTabs = [
-  { id: "overview", label: "Overview", icon: LayoutDashboard },
-  { id: "seasons", label: "Seasons", icon: Calendar },
-  { id: "teams", label: "Teams", icon: Trophy },
-  { id: "players", label: "Players", icon: Users },
-  { id: "player-stats", label: "Player Stats", icon: TrendingUp },
-  { id: "fixtures", label: "Fixtures", icon: Activity },
-  { id: "competitions", label: "Competitions", icon: Trophy },
-  { id: "awards", label: "Awards", icon: Medal },
-  { id: "gallery", label: "Gallery", icon: Image },
-  { id: "venues", label: "Venues", icon: MapPin },
-  { id: "bookings", label: "Bookings", icon: Calendar },
-  { id: "calendar", label: "Calendar", icon: CalendarDays },
-  { id: "analytics", label: "Analytics", icon: TrendingUp },
-  { id: "news", label: "News", icon: Newspaper },
-  { id: "sponsors", label: "Sponsors", icon: Handshake },
-  { id: "coupons", label: "Coupons", icon: Tag },
-  { id: "ads", label: "Ads", icon: Monitor },
-  { id: "faqs", label: "FAQs", icon: HelpCircle },
-  { id: "reviews", label: "Reviews", icon: MessageSquare },
-  { id: "suspensions", label: "Suspensions", icon: AlertTriangle },
-  { id: "activity", label: "Activity Logs", icon: ListChecks },
-  { id: "recycle-bin", label: "Recycle Bin", icon: Trash2 },
-  { id: "settings", label: "Settings", icon: Settings },
-  { id: "users", label: "Users", icon: Users },
-];
-
-const roleTabs: Record<string, string[]> = {
-  SUPER_ADMIN: adminTabs.map((tab) => tab.id),
-  LEAGUE_ADMIN: ["seasons", "competitions", "fixtures", "teams", "players", "player-stats", "awards", "suspensions", "recycle-bin", "gallery", "sponsors", "news"],
-  BOOKING_MANAGER: ["overview", "bookings", "calendar", "analytics", "venues", "coupons", "reviews"],
-  CONTENT_EDITOR: ["news", "gallery", "sponsors", "ads", "faqs"],
-  STATISTICIAN: ["seasons", "fixtures", "teams", "players", "player-stats", "awards", "suspensions"],
-  REFEREE: ["seasons", "fixtures", "teams", "players", "suspensions"],
-  VIEWER: ["seasons", "fixtures", "teams", "players", "player-stats", "awards", "gallery", "sponsors", "news", "suspensions"],
-};
+const adminTabs = ADMIN_TABS;
+const roleTabs = ADMIN_ROLE_TABS;
 
 // Response of the server's shared schedule planner (see
 // planFixtureSchedule in server roundRobin.ts) — the single source of truth
@@ -146,6 +113,7 @@ export function AdminPage() {
   const [playerSearch, setPlayerSearch] = useState("");
   const [fixtureSearch, setFixtureSearch] = useState("");
   const [fixtureTypeFilter, setFixtureTypeFilter] = useState<"all" | "league" | "friendly">("all");
+  const [fixtureStatusFilter, setFixtureStatusFilter] = useState("all");
   const [fixturePage, setFixturePage] = useState(1);
   const [bookingSearch, setBookingSearch] = useState("");
   const [newsSearch, setNewsSearch] = useState("");
@@ -274,7 +242,7 @@ export function AdminPage() {
     enabled: tabEnabled("player-stats") && !!selectedSeasonId,
   });
 
-  const { data: fixtures } = useQuery({ queryKey: ["admin-fixtures", fixtureSearch, fixtureTypeFilter, fixturePage], queryFn: () => api.get<PaginatedResponse<Fixture>>("/admin/fixtures", { page: String(fixturePage), limit: "25", ...(fixtureSearch ? { search: fixtureSearch } : {}), ...(fixtureTypeFilter === "all" ? {} : { friendly: fixtureTypeFilter === "friendly" ? "true" : "false" }) }), enabled: tabEnabled("fixtures") });
+  const { data: fixtures } = useQuery({ queryKey: ["admin-fixtures", fixtureSearch, fixtureTypeFilter, fixtureStatusFilter, fixturePage], queryFn: () => api.get<PaginatedResponse<Fixture>>("/admin/fixtures", { page: String(fixturePage), limit: "25", ...(fixtureSearch ? { search: fixtureSearch } : {}), ...(fixtureTypeFilter === "all" ? {} : { friendly: fixtureTypeFilter === "friendly" ? "true" : "false" }), ...(fixtureStatusFilter === "all" ? {} : { status: fixtureStatusFilter }) }), enabled: tabEnabled("fixtures") });
 
   const { data: competitions } = useQuery({ queryKey: ["admin-competitions", selectedSeasonId], queryFn: () => api.get<Competition[]>("/admin/competitions", { ...(selectedSeasonId ? { seasonId: selectedSeasonId } : {}) }), enabled: tabEnabled("competitions") });
   const { data: bracket } = useQuery({ queryKey: ["admin-bracket", bracketCompetitionId], queryFn: () => api.get<any>(`/admin/competitions/${bracketCompetitionId}/bracket`), enabled: tabEnabled("competitions") && !!bracketCompetitionId });
@@ -936,7 +904,7 @@ export function AdminPage() {
           <>
             <DataTable<Fixture>
               title="Fixtures"
-              filters={<Select value={fixtureTypeFilter} onChange={(e) => { setFixtureTypeFilter(e.target.value as typeof fixtureTypeFilter); setFixturePage(1); }} className="w-40"><option value="all">All matches</option><option value="league">League only</option><option value="friendly">Friendly only</option></Select>}
+              filters={<><Select value={fixtureTypeFilter} onChange={(e) => { setFixtureTypeFilter(e.target.value as typeof fixtureTypeFilter); setFixturePage(1); }} className="w-40"><option value="all">All matches</option><option value="league">League only</option><option value="friendly">Friendly only</option></Select><Select value={fixtureStatusFilter} onChange={(e) => { setFixtureStatusFilter(e.target.value); setFixturePage(1); }} className="w-44"><option value="all">All statuses</option><option value="SCHEDULED">Scheduled</option><option value="LIVE">Live</option><option value="COMPLETED">Completed / old</option><option value="POSTPONED">Postponed</option><option value="CANCELLED">Cancelled</option></Select></>}
               columns={[
                 { key: "home", label: "Home", sortable: true, sortValue: (f) => f.homeTeam?.name || "", render: (f) => <span className="font-medium">{f.homeTeam?.name || "?"}</span> },
                 { key: "score", label: "Score", render: (f) => <span className="font-bold">{f.status === "COMPLETED" ? `${f.homeScore ?? 0} - ${f.awayScore ?? 0}` : "vs"}</span> },

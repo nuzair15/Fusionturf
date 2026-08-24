@@ -1,11 +1,12 @@
 import type { LiveTeam } from "@/types/live";
 import { PlayerGrid } from "./PlayerGrid";
 
-export function PlayerPanel({ home, away, onPickHome, onPickAway, onDecrement, onIncrement, subbedOffIds, disabled }: {
+export function PlayerPanel({ home, away, onPickHome, onPickAway, onAppearance, onDecrement, onIncrement, subbedOffIds, disabled }: {
   home: LiveTeam;
   away: LiveTeam;
   onPickHome?: (p: LiveTeam["players"][number]) => void;
   onPickAway?: (p: LiveTeam["players"][number]) => void;
+  onAppearance?: (teamId: string, p: LiveTeam["players"][number]) => void;
   onDecrement?: (teamId: string, playerId: string, statType: "assist" | "yellowCard" | "redCard") => void;
   onIncrement?: (teamId: string, playerId: string, statType: "assist" | "yellowCard" | "redCard") => void;
   subbedOffIds?: Set<string>;
@@ -19,6 +20,7 @@ export function PlayerPanel({ home, away, onPickHome, onPickAway, onDecrement, o
         teamId={home.id}
         teamColor="emerald"
         onPick={onPickHome}
+        onAppearance={onAppearance ? (p) => onAppearance(home.id, p) : undefined}
         onDecrement={onDecrement ? (pid, s) => onDecrement(home.id, pid, s) : undefined}
         onIncrement={onIncrement ? (pid, s) => onIncrement(home.id, pid, s) : undefined}
         subbedOffIds={subbedOffIds}
@@ -30,6 +32,7 @@ export function PlayerPanel({ home, away, onPickHome, onPickAway, onDecrement, o
         teamId={away.id}
         teamColor="blue"
         onPick={onPickAway}
+        onAppearance={onAppearance ? (p) => onAppearance(away.id, p) : undefined}
         onDecrement={onDecrement ? (pid, s) => onDecrement(away.id, pid, s) : undefined}
         onIncrement={onIncrement ? (pid, s) => onIncrement(away.id, pid, s) : undefined}
         subbedOffIds={subbedOffIds}

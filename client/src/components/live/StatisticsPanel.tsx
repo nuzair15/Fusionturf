@@ -1,6 +1,6 @@
-import { memo, useCallback } from "react";
+import { memo, useCallback, useState } from "react";
 import { BarChart3 } from "lucide-react";
-import type { LiveFixtureInfo } from "@/types/live";
+import type { LiveFixtureInfo, LiveTeam, LivePlayer } from "@/types/live";
 import { cn } from "@/lib/utils";
 
 interface StatRow {
@@ -29,12 +29,16 @@ function StatBar({ home, away, suffix }: { home: number; away: number; suffix?: 
   );
 }
 
-export const StatisticsPanel = memo(function StatisticsPanel({ fixture, onUpdate, homeColor = "text-emerald-600", awayColor = "text-blue-600" }: {
+export const StatisticsPanel = memo(function StatisticsPanel({ fixture, homeTeam, awayTeam, onUpdate, onShot, homeColor = "text-emerald-600", awayColor = "text-blue-600" }: {
   fixture: LiveFixtureInfo;
+  homeTeam: LiveTeam;
+  awayTeam: LiveTeam;
   onUpdate?: (field: string, delta: number) => void;
+  onShot?: (player: LivePlayer, teamId: string, outcome: "ON_TARGET" | "OFF_TARGET") => void;
   homeColor?: string;
   awayColor?: string;
 }) {
+  const [shotOutcome, setShotOutcome] = useState<"ON_TARGET" | "OFF_TARGET" | null>(null);
   const rows: StatRow[] = [
     { key: "Possession", label: "Possession", home: fixture.homePossession ?? 0, away: fixture.awayPossession ?? 0, suffix: "%" },
     { key: "Shots", label: "Shots", home: fixture.homeShots ?? 0, away: fixture.awayShots ?? 0 },
@@ -82,6 +86,19 @@ export const StatisticsPanel = memo(function StatisticsPanel({ fixture, onUpdate
           </div>
         ))}
       </div>
+      {onShot && <div className="mt-4 border-t pt-3">
+        <p className="mb-2 text-[11px] font-semibold text-muted-foreground">Record shot — choose outcome, then player</p>
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" onClick={() => setShotOutcome("ON_TARGET")} className={cn("rounded-lg border px-2 py-2 text-xs font-semibold", shotOutcome === "ON_TARGET" ? "border-emerald-500 bg-emerald-500/10 text-emerald-700" : "bg-background")}>On target</button>
+          <button type="button" onClick={() => setShotOutcome("OFF_TARGET")} className={cn("rounded-lg border px-2 py-2 text-xs font-semibold", shotOutcome === "OFF_TARGET" ? "border-amber-500 bg-amber-500/10 text-amber-700" : "bg-background")}>Off target</button>
+        </div>
+        {shotOutcome && <div className="mt-2 max-h-36 space-y-1 overflow-y-auto">
+          {[{ team: homeTeam, label: "Home" }, { team: awayTeam, label: "Away" }].map(({ team, label }) => <div key={team.id}>
+            <p className="px-1 text-[10px] font-semibold uppercase text-muted-foreground">{label}</p>
+            <div className="grid grid-cols-2 gap-1">{team.players.map((player) => <button key={player.id} type="button" onClick={() => { onShot(player, team.id, shotOutcome); setShotOutcome(null); }} className="truncate rounded bg-muted/60 px-2 py-1 text-left text-[11px] hover:bg-muted">{player.firstName} {player.lastName}</button>)}</div>
+          </div>)}
+        </div>}
+      </div>}
     </div>
   );
 });

@@ -18,7 +18,10 @@ export interface LivePlayer {
     assists: number;
     yellowCards: number;
     redCards: number;
+    shots: number;
+    shotsOnTarget: number;
   };
+  appearance?: { isStarter: boolean; enteredAt?: number | null } | null;
 }
 
 export interface LiveTeam {
@@ -102,6 +105,7 @@ export interface LiveFixtureInfo {
   awayOffsides?: number;
   homeExpectedGoals?: number;
   awayExpectedGoals?: number;
+  matchClockServerTime?: string;
   manOfTheMatchId?: string | null;
   matchPlayerRatings?: Record<string, number>;
 }

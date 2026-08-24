@@ -133,6 +133,12 @@ enum MatchEventType {
   CORRECTION
   REVERSAL
   SETTLEMENT
+  SHOT
+}
+
+enum ShotOutcome {
+  ON_TARGET
+  OFF_TARGET
 }
 
 enum OutboxStatus {
@@ -979,6 +985,7 @@ model Player {
   pollOptions        PollOption[]
   friendlyStats      FriendlyPlayerStat[]
   matchAppearances   MatchAppearance[]
+  matchShots         MatchShot[]
   transfers          PlayerTransfer[]
 
   @@unique([seasonId, slug])
@@ -1110,6 +1117,7 @@ model Fixture {
   polls              Poll[]
   resultRevisions    MatchResultRevision[]
   eventStream        MatchEvent[]
+  shots              MatchShot[]
   bracketMatch       BracketMatch?
 
   @@index([seasonId])
@@ -1454,6 +1462,22 @@ model MatchAppearance {
   @@unique([fixtureId, playerId])
   @@index([playerId, teamId])
   @@map("match_appearances")
+}
+
+model MatchShot {
+  id        String      @id @default(uuid())
+  fixtureId String
+  fixture   Fixture     @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
+  playerId  String
+  player    Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  teamId    String
+  outcome   ShotOutcome
+  minute    Int?
+  createdAt DateTime    @default(now())
+
+  @@index([fixtureId, outcome])
+  @@index([playerId, teamId])
+  @@map("match_shots")
 }
 
 model MatchPlayerRating {

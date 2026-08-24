@@ -163,6 +163,8 @@ router.patch("/fixtures/:id/man-of-the-match", authorize("SUPER_ADMIN", "LEAGUE_
 router.post("/fixtures/:id/substitution", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.addSubstitution);
 router.post("/fixtures/:id/event/remove", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.removeMatchEvent);
 router.post("/fixtures/:id/note", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.addMatchNote);
+router.post("/fixtures/:id/appearance", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.recordMatchAppearance);
+router.post("/fixtures/:id/shot", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.recordMatchShot);
 
 // Global Search
 router.get("/search", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "BOOKING_MANAGER", "CONTENT_EDITOR", "STATISTICIAN", "REFEREE", "VIEWER"), admin.adminSearch);

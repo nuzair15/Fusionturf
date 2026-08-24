@@ -81,6 +81,9 @@ export const getFixtures = async (req: Request, res: Response, next: NextFunctio
     const { search } = req.query;
     const where: any = { deletedAt: null };
     if (req.query.seasonId) where.seasonId = String(req.query.seasonId);
+    if (req.query.status && ["SCHEDULED", "LIVE", "PAUSED", "HALF_TIME", "EXTRA_TIME", "PENALTIES", "COMPLETED", "CANCELLED", "POSTPONED"].includes(String(req.query.status))) {
+      where.status = String(req.query.status);
+    }
     if (req.query.friendly === "true") where.isFriendly = true;
     if (req.query.friendly === "false") where.isFriendly = false;
     if (search) where.OR = [
@@ -96,7 +99,10 @@ export const getFixtures = async (req: Request, res: Response, next: NextFunctio
       season: { select: { name: true } },
       competition: { select: { timezone: true } },
     } as const;
-    const buckets = [
+    const buckets: any[] = where.status ? [{
+      where: { ...where },
+      orderBy: [{ scheduledDate: "desc" }, { kickoffAt: { sort: "desc", nulls: "last" } }, { id: "asc" }],
+    }] : [
       {
         where: { ...where, status: { in: ACTIVE_MATCH_STATUSES } },
         orderBy: [{ scheduledDate: "asc" }, { kickoffAt: { sort: "asc", nulls: "last" } }, { id: "asc" }],
@@ -117,7 +123,7 @@ export const getFixtures = async (req: Request, res: Response, next: NextFunctio
         where: { ...where, status: { notIn: [...ACTIVE_MATCH_STATUSES, "SCHEDULED", "COMPLETED"] } },
         orderBy: [{ scheduledDate: "desc" }, { kickoffAt: { sort: "desc", nulls: "last" } }, { id: "asc" }],
       },
-    ] as const;
+    ];
     const counts = await Promise.all(buckets.map((bucket) => prisma.fixture.count({ where: bucket.where })));
     const total = counts.reduce((sum, count) => sum + count, 0);
     let remainingSkip = skip;

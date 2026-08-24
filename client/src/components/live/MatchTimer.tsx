@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Pause, Play, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -15,16 +14,11 @@ export function MatchTimer({ running, seconds, onTogglePause, onReset }: {
   onTogglePause: () => void;
   onReset: () => void;
 }) {
-  const [displaySeconds, setDisplaySeconds] = useState(seconds);
-  useEffect(() => setDisplaySeconds(seconds), [seconds]);
-  useEffect(() => {
-    if (!running) return;
-    const id = setInterval(() => setDisplaySeconds((s) => s + 1), 1000);
-    return () => clearInterval(id);
-  }, [running]);
-
-  const mins = Math.floor(displaySeconds / 60);
-  const secs = displaySeconds % 60;
+  // The server owns the clock. The console receives the authoritative elapsed
+  // value on each poll; this component deliberately does not increment it in
+  // the browser, so multiple operators see the same timer.
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
   const isHalfTime = mins === 45;
 
   return (
@@ -32,7 +26,7 @@ export function MatchTimer({ running, seconds, onTogglePause, onReset }: {
       <div className="flex flex-col items-center">
         <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Clock</span>
         <motion.span
-          key={displaySeconds}
+          key={seconds}
           initial={{ opacity: 0.4 }}
           animate={{ opacity: 1 }}
           className={cn(

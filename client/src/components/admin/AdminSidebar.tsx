@@ -7,6 +7,7 @@ import {
   Shield, Settings, ChevronDown, X, LogOut, CheckCircle2,
   Image, Ticket, Monitor, CircleHelp, MessageSquare,
 } from "lucide-react";
+import { ADMIN_NAV_GROUPS } from "@/config/adminNavigation";
 
 interface NavItem {
   id: string;
@@ -19,51 +20,7 @@ interface NavGroup {
   items: NavItem[];
 }
 
-const navGroups: NavGroup[] = [
-  { items: [{ id: "overview", label: "Dashboard", icon: LayoutDashboard }] },
-  {
-    label: "OPERATIONS",
-    items: [
-      { id: "bookings", label: "Bookings", icon: Calendar },
-      { id: "calendar", label: "Calendar", icon: MapPin },
-      { id: "analytics", label: "Analytics", icon: BarChart3 },
-    ],
-  },
-  {
-    label: "FOOTBALL",
-    items: [
-      { id: "seasons", label: "League", icon: Trophy },
-      { id: "competitions", label: "Competitions", icon: Trophy },
-      { id: "fixtures", label: "Fixtures", icon: Activity },
-      { id: "teams", label: "Teams", icon: Users },
-      { id: "players", label: "Players", icon: Users },
-      { id: "player-stats", label: "Player Stats", icon: BarChart3 },
-      { id: "awards", label: "Awards", icon: Medal },
-      { id: "suspensions", label: "Suspensions", icon: Shield },
-    ],
-  },
-  {
-    label: "CONTENT & BUSINESS",
-    items: [
-      { id: "venues", label: "Venues", icon: MapPin },
-      { id: "gallery", label: "Gallery", icon: Image },
-      { id: "sponsors", label: "Sponsors", icon: Handshake },
-      { id: "news", label: "News", icon: Newspaper },
-      { id: "coupons", label: "Coupons", icon: Ticket },
-      { id: "ads", label: "Ads", icon: Monitor },
-      { id: "faqs", label: "FAQs", icon: CircleHelp },
-      { id: "reviews", label: "Reviews", icon: MessageSquare },
-    ],
-  },
-  {
-    label: "SYSTEM",
-    items: [
-      { id: "activity", label: "Activity", icon: GitCompare },
-      { id: "users", label: "Users", icon: Shield },
-      { id: "settings", label: "Settings", icon: Settings },
-    ],
-  },
-];
+const navGroups: NavGroup[] = ADMIN_NAV_GROUPS.map((group) => ({ label: group.label, items: [...group.items] }));
 
 const allIds = navGroups.flatMap((g) => g.items.map((i) => i.id));
 

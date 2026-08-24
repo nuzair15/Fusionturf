@@ -111,6 +111,10 @@ export function PlayerStatsDialog({ open, playerId, teamId, home, away, stripCol
       </div>
 
       <div className="space-y-2">
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-xl bg-violet-500/10 p-3 text-center"><p className="text-xl font-black text-violet-700">{player.stats.shots}</p><p className="text-[10px] font-semibold uppercase text-muted-foreground">Shots</p></div>
+          <div className="rounded-xl bg-cyan-500/10 p-3 text-center"><p className="text-xl font-black text-cyan-700">{player.stats.shotsOnTarget}</p><p className="text-[10px] font-semibold uppercase text-muted-foreground">On target</p></div>
+        </div>
         {STAT_META.map((meta) => (
           <div key={meta.key} className="flex items-center justify-between rounded-xl border px-3 py-2.5">
             <span className="flex items-center gap-2 text-sm font-semibold">

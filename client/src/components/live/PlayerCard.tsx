@@ -4,12 +4,13 @@ import { cn } from "@/lib/utils";
 import type { LivePlayer } from "@/types/live";
 import { getInitials } from "@/lib/utils";
 
-export const PlayerCard = memo(function PlayerCard({ player, isCaptain, isGoalkeeper, subbedOff, onSelect, onDecrement, onIncrement, disabled }: {
+export const PlayerCard = memo(function PlayerCard({ player, isCaptain, isGoalkeeper, subbedOff, onSelect, onAppearance, onDecrement, onIncrement, disabled }: {
   player: LivePlayer;
   isCaptain?: boolean;
   isGoalkeeper?: boolean;
   subbedOff?: boolean;
   onSelect?: () => void;
+  onAppearance?: () => void;
   onDecrement?: (statType: "assist" | "yellowCard" | "redCard") => void;
   onIncrement?: (statType: "assist" | "yellowCard" | "redCard") => void;
   disabled?: boolean;
@@ -57,6 +58,8 @@ export const PlayerCard = memo(function PlayerCard({ player, isCaptain, isGoalke
           <span>{player.position || "—"}</span>
           <span className="flex items-center gap-1"><span className="font-bold text-emerald-600">{stats.goals}</span>G</span>
           <span className="flex items-center gap-1"><span className="font-bold text-blue-500">{stats.assists}</span>A</span>
+          <span className="flex items-center gap-1"><span className="font-bold text-violet-600">{stats.shots}</span>S</span>
+          <span className="flex items-center gap-1"><span className="font-bold text-cyan-600">{stats.shotsOnTarget}</span>OT</span>
           <span className="flex items-center gap-0.5">
             <span className={cn("h-2.5 w-1.5 rounded-[1px]", stats.yellowCards > 0 ? "bg-amber-400" : "bg-muted")} />
             {stats.yellowCards}
@@ -92,6 +95,7 @@ export const PlayerCard = memo(function PlayerCard({ player, isCaptain, isGoalke
           </div>
         </div>
       )}
+      {onAppearance && <button type="button" onClick={(e) => { e.stopPropagation(); onAppearance(); }} className={cn("shrink-0 rounded-md px-1.5 py-1 text-[10px] font-semibold", player.appearance ? "bg-emerald-500/10 text-emerald-700" : "bg-muted text-muted-foreground")} title="Mark player appearance">{player.appearance ? "Played" : "Appear"}</button>}
     </div>
   );
 });

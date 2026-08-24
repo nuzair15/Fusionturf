@@ -72,6 +72,8 @@ export const getLiveStats = async (req: Request, res: Response, next: NextFuncti
     const substitutions = await prisma.substitution.findMany({ where: { fixtureId: fixture.id }, include: { playerOff: { select: { id: true, firstName: true, lastName: true, photoUrl: true, jerseyNumber: true, position: true, teamId: true } }, playerOn: { select: { id: true, firstName: true, lastName: true, photoUrl: true, jerseyNumber: true, position: true, teamId: true } } }, orderBy: { minute: "asc" } });
     const notes = await prisma.matchNote.findMany({ where: { fixtureId: fixture.id }, include: { player: { select: { id: true, firstName: true, lastName: true, photoUrl: true, jerseyNumber: true, position: true, teamId: true } } }, orderBy: { minute: "asc" } });
     const ratings = await prisma.matchPlayerRating.findMany({ where: { fixtureId: fixture.id }, select: { playerId: true, rating: true } });
+    const appearances = await prisma.matchAppearance.findMany({ where: { fixtureId: fixture.id }, select: { playerId: true, isStarter: true, enteredAt: true } });
+    const shots = await prisma.matchShot.findMany({ where: { fixtureId: fixture.id }, select: { playerId: true, outcome: true } });
     const lineups = await prisma.lineup.findMany({ where: { fixtureId: fixture.id } });
     const lineupByPlayer = new Map(lineups.map((l) => [l.playerId, l]));
     const hasLineup = lineups.length > 0;
@@ -98,7 +100,10 @@ export const getLiveStats = async (req: Request, res: Response, next: NextFuncti
         assists: assists.filter((a: any) => a.playerId === p.id).length,
         yellowCards: cards.filter((c: any) => c.playerId === p.id && c.type === "YELLOW").length,
         redCards: cards.filter((c: any) => c.playerId === p.id && (c.type === "RED" || c.type === "SECOND_YELLOW")).length,
+        shots: shots.filter((s) => s.playerId === p.id).length,
+        shotsOnTarget: shots.filter((s) => s.playerId === p.id && s.outcome === "ON_TARGET").length,
       },
+      appearance: appearances.find((a) => a.playerId === p.id) || null,
       };
     };
 
@@ -112,6 +117,7 @@ export const getLiveStats = async (req: Request, res: Response, next: NextFuncti
         status: fixture.status,
         matchClockSeconds: fixture.matchClockSeconds + (fixture.status === "LIVE" && fixture.matchClockStartedAt
           ? Math.max(0, Math.floor((Date.now() - fixture.matchClockStartedAt.getTime()) / 1000)) : 0),
+        matchClockServerTime: new Date().toISOString(),
         kickoffTime: fixture.kickoffTime,
         round: fixture.round,
         stadium: fixture.stadium,
@@ -142,6 +148,55 @@ export const getLiveStats = async (req: Request, res: Response, next: NextFuncti
   } catch (error) {
     next(error);
   }
+};
+
+export const recordMatchAppearance = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { playerId, teamId, minute, isStarter } = req.body || {};
+    if (!playerId || !teamId) throw new AppError("playerId and teamId are required", 400);
+    const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { id: true, seasonId: true, homeTeamId: true, awayTeamId: true, status: true } });
+    if (!fixture) throw new AppError("Fixture not found", 404);
+    assertEventMutable(fixture.status, req.body.correctionReason);
+    if (![fixture.homeTeamId, fixture.awayTeamId].includes(teamId)) throw new AppError("Team is not part of this fixture", 400);
+    const player = await prisma.player.findFirst({ where: { id: playerId, seasonId: fixture.seasonId, teamId, isActive: true }, select: { id: true } });
+    if (!player) throw new AppError("Player does not belong to this fixture team", 400);
+    const enteredAt = minute == null ? null : Math.max(0, Math.min(150, Number(minute)));
+    const appearance = await prisma.$transaction(async (tx) => {
+      const row = await tx.matchAppearance.upsert({
+        where: { fixtureId_playerId: { fixtureId: fixture.id, playerId } },
+        create: { fixtureId: fixture.id, playerId, teamId, isStarter: !!isStarter, enteredAt },
+        update: { teamId, isStarter: !!isStarter, enteredAt },
+      });
+      await appendMatchEvent(tx, { fixtureId: fixture.id, type: "STATE_CHANGE", minute: enteredAt, teamId, playerId, payload: { action: "APPEARANCE", isStarter: !!isStarter, correctionReason: req.body.correctionReason || null }, idempotencyKey: `appearance:${fixture.id}:${playerId}:${Date.now()}`, createdById: req.user?.userId });
+      return row;
+    });
+    res.status(201).json(appearance);
+  } catch (error) { next(error); }
+};
+
+export const recordMatchShot = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { playerId, teamId, outcome, minute } = req.body || {};
+    if (!playerId || !teamId || !["ON_TARGET", "OFF_TARGET"].includes(outcome)) throw new AppError("playerId, teamId, and a valid shot outcome are required", 400);
+    const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { id: true, seasonId: true, homeTeamId: true, awayTeamId: true, status: true } });
+    if (!fixture) throw new AppError("Fixture not found", 404);
+    assertEventMutable(fixture.status, req.body.correctionReason);
+    if (![fixture.homeTeamId, fixture.awayTeamId].includes(teamId)) throw new AppError("Team is not part of this fixture", 400);
+    const player = await prisma.player.findFirst({ where: { id: playerId, seasonId: fixture.seasonId, teamId, isActive: true }, select: { id: true } });
+    if (!player) throw new AppError("Shooter does not belong to this fixture team", 400);
+    const eventMinute = minute == null ? null : Math.max(0, Math.min(150, Number(minute)));
+    const shot = await prisma.$transaction(async (tx) => {
+      const row = await tx.matchShot.create({ data: { fixtureId: fixture.id, playerId, teamId, outcome, minute: eventMinute } });
+      const isHome = teamId === fixture.homeTeamId;
+      await tx.fixture.update({ where: { id: fixture.id }, data: {
+        [isHome ? "homeShots" : "awayShots"]: { increment: 1 },
+        ...(outcome === "ON_TARGET" ? { [isHome ? "homeShotsOnTarget" : "awayShotsOnTarget"]: { increment: 1 } } : {}),
+      } });
+      await appendMatchEvent(tx, { fixtureId: fixture.id, type: "SHOT", minute: eventMinute, teamId, playerId, payload: { outcome, correctionReason: req.body.correctionReason || null }, idempotencyKey: `shot:${row.id}`, createdById: req.user?.userId });
+      return row;
+    });
+    res.status(201).json(shot);
+  } catch (error) { next(error); }
 };
 
 export const updateLiveStat = async (req: Request, res: Response, next: NextFunction) => {

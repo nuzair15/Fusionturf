@@ -10,11 +10,10 @@ import type { Fixture, Standing, Team, Season, Venue, News, PaginatedResponse } 
 import { Trophy, Calendar, BarChart3, Medal, Newspaper, ChevronRight, Users, MapPin, Target, Shield, Flame } from "lucide-react";
 import { LeagueHero, LeagueCard, LeagueEmptyState, LeaguePills, SectionLink, StatTile, TrendBadge } from "@/components/league/LeagueUI";
 import { ACTIVE_MATCH_STATUSES, fixtureDateKey, fixtureScoreLabel } from "@/lib/fixtures";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 export function LeaguePage() {
   const navigate = useNavigate();
-  const [mode, setMode] = useState("overview");
 
   const { data: currentSeason } = useQuery({ queryKey: ["current-season"], queryFn: () => api.get<Season>("/league/seasons/current"), retry: false, refetchOnWindowFocus: true, refetchInterval: 60000 });
   const { data: fixtures } = useQuery({ queryKey: ["fixtures", "league", "upcoming", 20], queryFn: () => api.get<{ data: Fixture[] }>("/v2/fixtures", { limit: "20", scope: "upcoming" }), staleTime: 0, refetchOnWindowFocus: true, refetchInterval: 15000 });
@@ -60,20 +59,19 @@ export function LeaguePage() {
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <LeaguePills
-          active={mode}
-          onChange={setMode}
+          active="overview"
+          onChange={(key) => navigate(key === "overview" ? "/league" : `/league/${key === "table" ? "standings" : key}`)}
           items={[
             { key: "overview", label: "Overview", icon: <BarChart3 className="h-4 w-4" /> },
-            { key: "table", label: "Table", icon: <Trophy className="h-4 w-4" /> },
+            { key: "table", label: "Standings", icon: <Trophy className="h-4 w-4" /> },
             { key: "fixtures", label: "Fixtures", icon: <Calendar className="h-4 w-4" /> },
-            { key: "clubs", label: "Clubs", icon: <Users className="h-4 w-4" /> },
             { key: "stats", label: "Stats", icon: <Target className="h-4 w-4" /> },
             { key: "news", label: "News", icon: <Newspaper className="h-4 w-4" /> },
           ]}
         />
       </div>
 
-      {mode === "overview" && (
+      {(
         <div className="mx-auto grid max-w-7xl gap-6 px-4 sm:px-6 xl:grid-cols-[1.15fr_0.85fr]">
           <LeagueCard title="Matchday focus" action={<SectionLink onClick={() => navigate("/league/fixtures")}>All fixtures</SectionLink>}>
             <div className="grid gap-3 p-4">
@@ -154,7 +152,7 @@ export function LeaguePage() {
         </div>
       )}
 
-      {mode === "table" && (
+      {false && (
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <LeagueCard title="League table" action={<SectionLink onClick={() => navigate("/league/standings")}>Open full table</SectionLink>}>
             <div className="overflow-x-auto">
@@ -199,7 +197,7 @@ export function LeaguePage() {
         </div>
       )}
 
-      {mode === "fixtures" && (
+      {false && (
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <LeagueCard title="Fixtures and results" action={<SectionLink onClick={() => navigate("/league/fixtures")}>Calendar view</SectionLink>}>
             <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
@@ -225,7 +223,7 @@ export function LeaguePage() {
         </div>
       )}
 
-      {mode === "clubs" && (
+      {false && (
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <LeagueCard title="Clubs" action={<SectionLink onClick={() => navigate("/league")}>View all</SectionLink>}>
             <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -249,7 +247,7 @@ export function LeaguePage() {
         </div>
       )}
 
-      {mode === "stats" && (
+      {false && (
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <div className="grid gap-6 lg:grid-cols-3">
             <StatTile label="Goals" value={fixtureList.filter((f) => f.homeScore != null && f.awayScore != null).reduce((sum, f) => sum + (f.homeScore || 0) + (f.awayScore || 0), 0)} />
@@ -259,7 +257,7 @@ export function LeaguePage() {
         </div>
       )}
 
-      {mode === "news" && (
+      {false && (
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <LeagueCard title="Latest headlines" action={<SectionLink onClick={() => navigate("/league/news")}>Newsroom</SectionLink>}>
             <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-4">
