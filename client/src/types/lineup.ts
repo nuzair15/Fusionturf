@@ -60,4 +60,5 @@ export interface LineupEntryInput {
 export interface SaveLineupPayload {
   home: LineupEntryInput[];
   away: LineupEntryInput[];
+  correctionReason?: string;
 }

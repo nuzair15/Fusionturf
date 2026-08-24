@@ -10,7 +10,7 @@ import { saveFixtureLineups } from "@/services/lineupApi";
 import { calculateFormation } from "@/lib/lineup";
 import type { Fixture, Player } from "@/types";
 import type { FixtureLineupPlayer, LineupEntryInput } from "@/types/lineup";
-import { X, Trash2, Plus } from "lucide-react";
+import { X, Trash2 } from "lucide-react";
 
 interface TeamPanelProps {
   side: "home" | "away";
@@ -20,7 +20,6 @@ interface TeamPanelProps {
   players: Player[];
   entries: LineupEntryInput[];
   addValue: string;
-  onAddChange: (value: string) => void;
   onAdd: (playerId: string) => void;
   onUpdate: (playerId: string, patch: Partial<LineupEntryInput>) => void;
   onRemove: (playerId: string) => void;
@@ -36,7 +35,6 @@ function TeamPanel({
   players,
   entries,
   addValue,
-  onAddChange,
   onAdd,
   onUpdate,
   onRemove,
@@ -57,8 +55,8 @@ function TeamPanel({
         </span>
       </div>
 
-      <div className="mb-2 flex items-center gap-2">
-        <Select value={addValue} onChange={(e) => onAddChange(e.target.value)} aria-label={`Add player to ${teamName}`}>
+      <div className="mb-2">
+        <Select value={addValue} onChange={(e) => onAdd(e.target.value)} aria-label={`Add player to ${teamName}`}>
           <option value="">Add player…</option>
           {available.map((p) => (
             <option key={p.id} value={p.id}>
@@ -66,16 +64,6 @@ function TeamPanel({
             </option>
           ))}
         </Select>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="shrink-0 gap-1"
-          disabled={!addValue}
-          onClick={() => { onAdd(addValue); }}
-        >
-          <Plus className="h-3.5 w-3.5" /> Add
-        </Button>
       </div>
 
       <div className="space-y-2">
@@ -155,6 +143,21 @@ function TeamPanel({
   );
 }
 
+const SIX_A_SIDE_FORMATIONS = ["2-2-1", "1-3-1", "2-1-2"] as const;
+type SixASideFormation = (typeof SIX_A_SIDE_FORMATIONS)[number];
+
+function sixASidePositions(side: "home" | "away", formation: SixASideFormation) {
+  const home = side === "home";
+  const rowCounts: Record<SixASideFormation, number[]> = { "2-2-1": [2, 2, 1], "1-3-1": [1, 3, 1], "2-1-2": [2, 1, 2] };
+  const rowY: Record<SixASideFormation, number[]> = { "2-2-1": [78, 62, 46], "1-3-1": [78, 62, 46], "2-1-2": [78, 61, 44] };
+  const positions: Array<{ x: number; y: number; goalkeeper?: boolean }> = [{ x: 50, y: home ? 91 : 9, goalkeeper: true }];
+  rowCounts[formation].forEach((count, rowIndex) => {
+    const y = home ? rowY[formation][rowIndex] : 100 - rowY[formation][rowIndex];
+    for (let i = 0; i < count; i += 1) positions.push({ x: ((i + 1) / (count + 1)) * 100, y });
+  });
+  return positions;
+}
+
 export function LineupEditor({ fixture, onClose, onSaved }: {
   fixture: Fixture;
   onClose: () => void;
@@ -185,6 +188,9 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const [correctionReason, setCorrectionReason] = useState("");
+  const [homeFormationChoice, setHomeFormationChoice] = useState<SixASideFormation>("2-2-1");
+  const [awayFormationChoice, setAwayFormationChoice] = useState<SixASideFormation>("2-2-1");
   const initialized = useRef(false);
 
   useEffect(() => {
@@ -286,7 +292,45 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
     );
   };
 
+  const applySixASideFormation = (side: "home" | "away", formation: SixASideFormation) => {
+    const entries = side === "home" ? homeEntries : awayEntries;
+    const players = side === "home" ? homePlayers : awayPlayers;
+    const setter = side === "home" ? setHomeEntries : setAwayEntries;
+    const positions = sixASidePositions(side, formation);
+    const selected = entries.slice(0, 6);
+    const selectedIds = new Set(selected.map((entry) => entry.playerId));
+    const added: LineupEntryInput[] = players.filter((player) => !selectedIds.has(player.id)).slice(0, Math.max(0, 6 - selected.length)).map((player) => ({
+      playerId: player.id,
+      isStarter: true,
+      isCaptain: false,
+      isGoalkeeper: false,
+      role: null,
+      xPosition: 50,
+      yPosition: 50,
+    }));
+    const starters: LineupEntryInput[] = [...selected, ...added].slice(0, 6);
+    if (starters.length < 6) {
+      setError(`${side === "home" ? "Home" : "Away"} needs six players for a 6-a-side formation.`);
+      return;
+    }
+    const keeperIndex = Math.max(0, starters.findIndex((entry) => entry.isGoalkeeper));
+    const next = starters.map((entry, index) => ({
+      ...entry,
+      isStarter: true,
+      isGoalkeeper: index === keeperIndex,
+      role: index === keeperIndex ? "GK" : entry.role ?? null,
+      xPosition: positions[index].x,
+      yPosition: positions[index].y,
+    }));
+    const bench = entries.filter((entry) => !next.some((starter) => starter.playerId === entry.playerId)).map((entry) => ({ ...entry, isStarter: false }));
+    setter([...next, ...bench]);
+  };
+
   const handleSave = async () => {
+    if (fixture.status === "COMPLETED" && !correctionReason.trim()) {
+      setError("Add a reason before saving a completed fixture correction.");
+      return;
+    }
     setSaving(true);
     setError("");
     setSaved(false);
@@ -299,6 +343,7 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
       await saveFixtureLineups(fixture.id, {
         home: homeEntries.map((e) => ({ ...e, role: resolveRole("home", e) })),
         away: awayEntries.map((e) => ({ ...e, role: resolveRole("away", e) })),
+        ...(fixture.status === "COMPLETED" ? { correctionReason: correctionReason.trim() } : {}),
       });
       setSaved(true);
       queryClient.invalidateQueries({ queryKey: ["fixture-lineups", fixture.id] });
@@ -329,6 +374,19 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
 
         {error && <p className="mb-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
         {saved && !error && <p className="mb-3 rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600">Lineups saved successfully.</p>}
+        {fixture.status === "COMPLETED" && (
+          <div className="mb-4 rounded-xl border border-amber-400/40 bg-amber-500/10 p-3">
+            <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">Completed match correction</p>
+            <p className="mt-1 text-xs text-muted-foreground">Explain the change. The correction is audited and player statistics are recalculated.</p>
+            <textarea
+              className="mt-2 min-h-16 w-full rounded-md border bg-background px-3 py-2 text-sm"
+              value={correctionReason}
+              onChange={(e) => setCorrectionReason(e.target.value)}
+              placeholder="Example: corrected the starting goalkeeper after reviewing the match sheet"
+              aria-label="Correction reason"
+            />
+          </div>
+        )}
 
         {lineupsLoading ? (
           <div className="flex h-64 items-center justify-center text-muted-foreground">Loading lineups…</div>
@@ -365,6 +423,22 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
               className="mx-auto max-w-sm"
             />
 
+            <div className="mt-4 grid gap-2 rounded-xl border bg-muted/20 p-3 sm:grid-cols-2">
+              {(["home", "away"] as const).map((side) => {
+                const choice = side === "home" ? homeFormationChoice : awayFormationChoice;
+                const setChoice = side === "home" ? setHomeFormationChoice : setAwayFormationChoice;
+                return (
+                  <div key={side} className="flex items-center gap-2">
+                    <span className="min-w-14 text-xs font-medium">{side === "home" ? "Home" : "Away"}</span>
+                    <Select value={choice} onChange={(e) => { const value = e.target.value as SixASideFormation; setChoice(value); applySixASideFormation(side, value); }} aria-label={`${side} 6-a-side formation`}>
+                      {SIX_A_SIDE_FORMATIONS.map((formation) => <option key={formation} value={formation}>{formation}</option>)}
+                    </Select>
+                  </div>
+                );
+              })}
+              <p className="text-[11px] text-muted-foreground sm:col-span-2">Choose a 6-a-side shape to place six players automatically, then drag any player to fine-tune.</p>
+            </div>
+
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <TeamPanel
                 side="home"
@@ -374,7 +448,6 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
                 players={homePlayers}
                 entries={homeEntries}
                 addValue={homeAddId}
-                onAddChange={setHomeAddId}
                 onAdd={(id) => addPlayer("home", id)}
                 onUpdate={(id, patch) => updateEntry("home", id, patch)}
                 onRemove={(id) => removePlayer("home", id)}
@@ -389,7 +462,6 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
                 players={awayPlayers}
                 entries={awayEntries}
                 addValue={awayAddId}
-                onAddChange={setAwayAddId}
                 onAdd={(id) => addPlayer("away", id)}
                 onUpdate={(id, patch) => updateEntry("away", id, patch)}
                 onRemove={(id) => removePlayer("away", id)}
@@ -400,8 +472,8 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
 
             <div className="mt-4 flex items-center justify-end gap-2">
               <Button variant="ghost" onClick={onClose}>Cancel</Button>
-              <Button onClick={handleSave} disabled={saving}>
-                {saving ? "Saving…" : "Save Lineups"}
+              <Button onClick={handleSave} disabled={saving || (fixture.status === "COMPLETED" && !correctionReason.trim())}>
+                {saving ? "Saving…" : fixture.status === "COMPLETED" ? "Save Correction" : "Save Lineups"}
               </Button>
             </div>
           </>

@@ -483,7 +483,11 @@ export const updateFixtureLineups = async (req: Request, res: Response, next: Ne
       select: { id: true, homeTeamId: true, awayTeamId: true, status: true },
     });
     if (!fixture) throw new AppError("Fixture not found", 404);
-    if (fixture.status === "COMPLETED") throw new AppError("Use the audited correction flow for a completed fixture lineup", 400);
+    const isCompletedCorrection = fixture.status === "COMPLETED";
+    const correctionReason = typeof req.body?.correctionReason === "string" ? req.body.correctionReason.trim() : "";
+    if (isCompletedCorrection && !correctionReason) {
+      throw new AppError("A reason is required when correcting a completed fixture lineup", 400);
+    }
 
     const { home, away } = req.body || {};
     if (!Array.isArray(home) || !Array.isArray(away)) {
@@ -574,6 +578,25 @@ export const updateFixtureLineups = async (req: Request, res: Response, next: Ne
       data: [...homeEntries.map((entry) => ({ fixtureId: fixture.id, playerId: entry.playerId, teamId: fixture.homeTeamId, isStarter: entry.isStarter !== false })), ...awayEntries.map((entry) => ({ fixtureId: fixture.id, playerId: entry.playerId, teamId: fixture.awayTeamId, isStarter: entry.isStarter !== false }))],
       skipDuplicates: true,
     });
+
+    if (isCompletedCorrection) {
+      await prisma.$transaction(async (tx) => {
+        await appendMatchEvent(tx, {
+          fixtureId: fixture.id,
+          type: "CORRECTION",
+          payload: { action: "LINEUP_CORRECTION", reason: correctionReason },
+          idempotencyKey: `lineup-correction:${fixture.id}:${Date.now()}`,
+          createdById: req.user?.userId,
+        });
+      });
+      const season = await prisma.fixture.findUnique({ where: { id: fixture.id }, select: { seasonId: true } });
+      if (season) {
+        await Promise.all([
+          leagueSystem.recalculatePlayerStats(season.seasonId),
+          leagueSystem.recalculateFriendlyPlayerStats(season.seasonId),
+        ]);
+      }
+    }
 
     res.json({ success: true });
   } catch (error) {
