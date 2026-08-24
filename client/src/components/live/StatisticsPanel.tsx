@@ -23,5 +23,18 @@ export const StatisticsPanel = memo(function StatisticsPanel({ fixture, onUpdate
   ];
   const bump = useCallback((team: "home" | "away", key: string, delta: number) => onUpdate?.(`${team}${key}`, delta), [onUpdate]);
   const stepper = "flex h-6 w-6 items-center justify-center rounded-full text-xs font-black transition active:scale-90 disabled:opacity-25";
-  return <div className="rounded-xl border bg-card/40 p-3"><p className="mb-2 flex items-center gap-1.5 text-sm font-bold"><BarChart3 className="h-4 w-4 text-muted-foreground" /> Team statistics</p><div className="mb-2 grid grid-cols-3 text-[11px] font-semibold text-muted-foreground"><span className={homeColor}>Home</span><span className="text-center">Stat</span><span className="text-right text-blue-600">Away</span></div><div className="flex flex-col gap-3">{rows.map((row) => <div key={row.key}><div className="mb-1 grid grid-cols-[auto_1fr_auto] items-center gap-2 px-1"><div className="flex items-center gap-1"><button aria-label={`Decrease home ${row.label}`} onClick={() => bump("home", row.key, -1)} disabled={!onUpdate} className={cn(stepper, "bg-emerald-500/10 text-emerald-600")}>−</button><button aria-label={`Increase home ${row.label}`} onClick={() => bump("home", row.key, 1)} disabled={!onUpdate} className={cn(stepper, "bg-emerald-500/10 text-emerald-600")}>+</button></div><span className="text-center text-[11px] font-medium text-muted-foreground">{row.label}</span><div className="flex items-center gap-1"><button aria-label={`Decrease away ${row.label}`} onClick={() => bump("away", row.key, -1)} disabled={!onUpdate} className={cn(stepper, "bg-blue-500/10 text-blue-600")}>−</button><button aria-label={`Increase away ${row.label}`} onClick={() => bump("away", row.key, 1)} disabled={!onUpdate} className={cn(stepper, "bg-blue-500/10 text-blue-600")}>+</button></div></div><StatBar home={row.home} away={row.away} suffix={row.suffix} /></div>)}</div><p className="mt-3 text-center text-[10px] text-muted-foreground">Tap repeatedly; changes save automatically.</p></div>;
+
+  return <div className="rounded-xl border bg-card/40 p-3">
+    <p className="mb-2 flex items-center gap-1.5 text-sm font-bold"><BarChart3 className="h-4 w-4 text-muted-foreground" /> Team statistics</p>
+    <div className="mb-2 grid grid-cols-3 text-[11px] font-semibold text-muted-foreground"><span className={homeColor}>Home</span><span className="text-center">Stat</span><span className="text-right text-blue-600">Away</span></div>
+    <div className="flex flex-col gap-3">{rows.map((row) => <div key={row.key}>
+      <div className="mb-1 grid grid-cols-[auto_1fr_auto] items-center gap-2 px-1">
+        <div className="flex items-center gap-1"><button aria-label={`Decrease home ${row.label}`} onClick={() => bump("home", row.key, -1)} disabled={!onUpdate} className={cn(stepper, "bg-emerald-500/10 text-emerald-600")}>-</button><button aria-label={`Increase home ${row.label}`} onClick={() => bump("home", row.key, 1)} disabled={!onUpdate} className={cn(stepper, "bg-emerald-500/10 text-emerald-600")}>+</button></div>
+        <span className="text-center text-[11px] font-medium text-muted-foreground">{row.label}</span>
+        <div className="flex items-center gap-1"><button aria-label={`Decrease away ${row.label}`} onClick={() => bump("away", row.key, -1)} disabled={!onUpdate} className={cn(stepper, "bg-blue-500/10 text-blue-600")}>-</button><button aria-label={`Increase away ${row.label}`} onClick={() => bump("away", row.key, 1)} disabled={!onUpdate} className={cn(stepper, "bg-blue-500/10 text-blue-600")}>+</button></div>
+      </div>
+      <StatBar home={row.home} away={row.away} suffix={row.suffix} />
+    </div>)}</div>
+    <p className="mt-3 text-center text-[10px] text-muted-foreground">Changes save about 1.5 seconds after your last tap.</p>
+  </div>;
 });

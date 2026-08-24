@@ -1,23 +1,18 @@
 import { memo } from "react";
 import { Crown, Shield } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, getInitials } from "@/lib/utils";
 import type { LivePlayer } from "@/types/live";
-import { getInitials } from "@/lib/utils";
 
-export const PlayerCard = memo(function PlayerCard({ player, isCaptain, isGoalkeeper, subbedOff, onSelect, onAppearance, onDecrement, onIncrement, disabled }: {
+export const PlayerCard = memo(function PlayerCard({ player, isCaptain, isGoalkeeper, subbedOff, onSelect, onAppearance, disabled }: {
   player: LivePlayer;
   isCaptain?: boolean;
   isGoalkeeper?: boolean;
   subbedOff?: boolean;
   onSelect?: () => void;
   onAppearance?: () => void;
-  onDecrement?: (statType: "assist" | "yellowCard" | "redCard") => void;
-  onIncrement?: (statType: "assist" | "yellowCard" | "redCard") => void;
   disabled?: boolean;
 }) {
   const initials = getInitials(player.firstName, player.lastName);
-
-  const stepperBtn = "flex h-6 w-6 items-center justify-center rounded-full text-xs font-black transition active:scale-90 disabled:opacity-25";
   const stats = player.stats;
 
   return (
@@ -50,12 +45,12 @@ export const PlayerCard = memo(function PlayerCard({ player, isCaptain, isGoalke
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1">
-          <span className="w-6 text-xs font-black text-muted-foreground">{player.jerseyNumber ?? "—"}</span>
+          <span className="w-6 text-xs font-black text-muted-foreground">{player.jerseyNumber ?? "-"}</span>
           <p className="truncate text-sm font-semibold leading-tight">{player.firstName} {player.lastName}</p>
           {isGoalkeeper && <Shield className="h-3.5 w-3.5 shrink-0 text-blue-500" />}
         </div>
         <div className="flex items-center gap-2 pl-7 text-[11px] text-muted-foreground">
-          <span>{player.position || "—"}</span>
+          <span>{player.position || "-"}</span>
           <span className="flex items-center gap-1"><span className="font-bold text-emerald-600">{stats.goals}</span>G</span>
           <span className="flex items-center gap-1"><span className="font-bold text-blue-500">{stats.assists}</span>A</span>
           <span className="flex items-center gap-0.5">
@@ -68,31 +63,6 @@ export const PlayerCard = memo(function PlayerCard({ player, isCaptain, isGoalke
           </span>
         </div>
       </div>
-      {(onDecrement || onIncrement) && (
-        <div className="flex flex-col items-end gap-0.5">
-          <div className="flex items-center gap-1">
-            <button aria-label={`Decrease assists for ${player.firstName}`} className={cn(stepperBtn, "bg-blue-500/10 text-blue-600")}
-              onClick={(e) => { e.stopPropagation(); if (stats.assists > 0) onDecrement?.("assist"); }}>−</button>
-            <span className="w-4 text-center text-xs font-bold text-blue-600">{stats.assists}</span>
-            <button aria-label={`Increase assists for ${player.firstName}`} className={cn(stepperBtn, "bg-blue-500/10 text-blue-600")}
-              onClick={(e) => { e.stopPropagation(); onIncrement?.("assist"); }}>+</button>
-          </div>
-          <div className="flex items-center gap-1">
-            <button aria-label={`Decrease yellow cards for ${player.firstName}`} className={cn(stepperBtn, "bg-amber-500/10 text-amber-600")}
-              onClick={(e) => { e.stopPropagation(); if (stats.yellowCards > 0) onDecrement?.("yellowCard"); }}>−</button>
-            <span className="w-4 text-center text-xs font-bold text-amber-600">{stats.yellowCards}</span>
-            <button aria-label={`Increase yellow cards for ${player.firstName}`} className={cn(stepperBtn, "bg-amber-500/10 text-amber-600")}
-              onClick={(e) => { e.stopPropagation(); onIncrement?.("yellowCard"); }}>+</button>
-          </div>
-          <div className="flex items-center gap-1">
-            <button aria-label={`Decrease red cards for ${player.firstName}`} className={cn(stepperBtn, "bg-red-500/10 text-red-600")}
-              onClick={(e) => { e.stopPropagation(); if (stats.redCards > 0) onDecrement?.("redCard"); }}>−</button>
-            <span className="w-4 text-center text-xs font-bold text-red-600">{stats.redCards}</span>
-            <button aria-label={`Increase red cards for ${player.firstName}`} className={cn(stepperBtn, "bg-red-500/10 text-red-600")}
-              onClick={(e) => { e.stopPropagation(); onIncrement?.("redCard"); }}>+</button>
-          </div>
-        </div>
-      )}
       {onAppearance && <button type="button" onClick={(e) => { e.stopPropagation(); onAppearance(); }} className={cn("shrink-0 rounded-md px-1.5 py-1 text-[10px] font-semibold", player.appearance ? "bg-emerald-500/10 text-emerald-700" : "bg-muted text-muted-foreground")} title="Mark player appearance">{player.appearance ? "Played" : "Appear"}</button>}
     </div>
   );

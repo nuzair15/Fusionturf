@@ -1203,7 +1203,7 @@ const [goals, assists, cards, shots, fixtures, appearances, substitutions, goalk
     prisma.matchShot.groupBy({ by: ["playerId", "outcome"], where: { playerId: { in: playerIds }, fixture: countedFixturesWhere(seasonId) }, _count: { _all: true } }),
     prisma.fixture.findMany({
       where: { ...countedFixturesWhere(seasonId), AND: [{ OR: [{ homeTeamId: { in: teamIds } }, { awayTeamId: { in: teamIds } }] }] },
-      select: { id: true, homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, matchClockSeconds: true },
+      select: { id: true, homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, homeShotsOnTarget: true, awayShotsOnTarget: true, matchClockSeconds: true },
     }),
     prisma.matchAppearance.findMany({ where: { playerId: { in: playerIds }, fixture: countedFixturesWhere(seasonId) }, select: { playerId: true, fixtureId: true } }),
     prisma.substitution.findMany({ where: { fixture: countedFixturesWhere(seasonId) }, select: { fixtureId: true, playerOffId: true, playerOnId: true, minute: true } }),
@@ -1243,15 +1243,19 @@ const [goals, assists, cards, shots, fixtures, appearances, substitutions, goalk
   }
 
   const fixtureById = new Map(fixtures.map((fixture) => [fixture.id, fixture]));
-  const goalkeeperStats = new Map<string, { cleanSheets: number; conceded: number }>();
+  const goalkeeperStats = new Map<string, { cleanSheets: number; conceded: number; saves: number }>();
   for (const lineup of goalkeeperLineups) {
     if (!playerAppearances.get(lineup.playerId)?.has(lineup.fixtureId)) continue;
     const fixture = fixtureById.get(lineup.fixtureId);
     if (!fixture) continue;
-    const conceded = lineup.teamId === fixture.homeTeamId ? fixture.awayScore : lineup.teamId === fixture.awayTeamId ? fixture.homeScore : null;
-    if (conceded == null) continue;
-    const row = goalkeeperStats.get(lineup.playerId) || { cleanSheets: 0, conceded: 0 };
+    const isHomeGoalkeeper = lineup.teamId === fixture.homeTeamId;
+    const isAwayGoalkeeper = lineup.teamId === fixture.awayTeamId;
+    if (!isHomeGoalkeeper && !isAwayGoalkeeper) continue;
+    const conceded = Number(isHomeGoalkeeper ? fixture.awayScore : fixture.homeScore) || 0;
+    const shotsOnTargetAgainst = Number(isHomeGoalkeeper ? fixture.awayShotsOnTarget : fixture.homeShotsOnTarget) || 0;
+    const row = goalkeeperStats.get(lineup.playerId) || { cleanSheets: 0, conceded: 0, saves: 0 };
     row.conceded += conceded;
+    row.saves += Math.max(0, shotsOnTargetAgainst - conceded);
     if (conceded === 0) row.cleanSheets += 1;
     goalkeeperStats.set(lineup.playerId, row);
   }
@@ -1265,7 +1269,7 @@ const [goals, assists, cards, shots, fixtures, appearances, substitutions, goalk
 
   await prisma.$transaction([prisma.playerStat.deleteMany({ where: { seasonId } }), ...players.filter((player) => player.teamId).map((player) => {
     const teamId = player.teamId!;
-    const goalkeeper = goalkeeperStats.get(player.id) || { cleanSheets: 0, conceded: 0 };
+    const goalkeeper = goalkeeperStats.get(player.id) || { cleanSheets: 0, conceded: 0, saves: 0 };
     const card = cardCounts.get(player.id) || { yellow: 0, red: 0 };
     const isGoalkeeper = player.position === "GK";
     const data = {
@@ -1279,6 +1283,7 @@ const [goals, assists, cards, shots, fixtures, appearances, substitutions, goalk
       redCards: card.red,
       cleanSheets: isGoalkeeper ? goalkeeper.cleanSheets : null,
       goalsConceded: isGoalkeeper ? goalkeeper.conceded : null,
+      saves: isGoalkeeper ? goalkeeper.saves : null,
     };
     return prisma.playerStat.upsert({
       where: { seasonId_playerId_teamId: { seasonId, playerId: player.id, teamId } },

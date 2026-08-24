@@ -1,4 +1,4 @@
-import { Goal as GoalIcon, AlertTriangle, Square as SquareIcon, Play, Pause, Clock3, Flag, Undo2, UserPlus, Eye, Ban, Star } from "lucide-react";
+import { Goal as GoalIcon, AlertTriangle, Play, Pause, Clock3, Flag, Undo2, Ban, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MatchStatus } from "@/types";
 
@@ -6,11 +6,9 @@ export type QuickAction =
   | "goal"
   | "yellow"
   | "red"
-  | "substitution"
   | "own-goal"
   | "penalty"
   | "missed-penalty"
-  | "var"
   | "motm"
   | "start"
   | "pause"
@@ -33,8 +31,6 @@ export function QuickActions({ status, onAction, disabled }: {
     { action: "missed-penalty", icon: <Ban className="h-5 w-5" />, label: "Missed Penalty", desc: "Saved or off target", shortcut: "M", tone: "bg-orange-500/10 text-orange-600 hover:bg-orange-500/20" },
     { action: "yellow", icon: <span className="block h-3.5 w-2.5 rounded-[2px] bg-amber-400 shadow-sm" />, label: "Yellow Card", desc: "Caution", shortcut: "Y", tone: "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20" },
     { action: "red", icon: <span className="block h-3.5 w-2.5 rounded-[2px] bg-red-500 shadow-sm" />, label: "Red Card", desc: "Dismissal", shortcut: "R", tone: "bg-red-500/10 text-red-600 hover:bg-red-500/20" },
-    { action: "substitution", icon: <UserPlus className="h-5 w-5" />, label: "Substitution", desc: "Bring a player on", shortcut: "S", tone: "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20" },
-    { action: "var", icon: <Eye className="h-5 w-5" />, label: "VAR", desc: "Review check", shortcut: "V", tone: "bg-violet-500/10 text-violet-600 hover:bg-violet-500/20" },
     { action: "motm", icon: <Star className="h-5 w-5" />, label: "Man of Match", desc: "Select award winner", shortcut: "★", tone: "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20" },
   ];
 
@@ -48,7 +44,7 @@ export function QuickActions({ status, onAction, disabled }: {
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
         {eventCards.map((c) => (
           <button
             key={c.action}

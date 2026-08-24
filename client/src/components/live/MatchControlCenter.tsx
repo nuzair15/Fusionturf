@@ -14,7 +14,6 @@ import { StatisticsPanel } from "./StatisticsPanel";
 import { ActivityFeed, type ActivityItem } from "./ActivityFeed";
 import { GoalDialog, type GoalType } from "./GoalDialog";
 import { CardDialog } from "./CardDialog";
-import { SubstitutionDialog } from "./SubstitutionDialog";
 import { NoteDialog, type NoteType } from "./NoteDialog";
 import { ConfirmationModal } from "./ConfirmationModal";
 import { EventDetailsDialog } from "./EventDetailsDialog";
@@ -35,7 +34,7 @@ interface ConfirmState {
   onConfirm: () => Promise<void> | void;
 }
 
-type DialogKind = "goal" | "own-goal" | "penalty" | "yellow" | "red" | "substitution" | "var" | "missed-penalty" | "motm" | null;
+type DialogKind = "goal" | "own-goal" | "penalty" | "yellow" | "red" | "missed-penalty" | "motm" | null;
 
 let activityId = 1;
 
@@ -56,6 +55,9 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
   const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
   const [draftHydrated, setDraftHydrated] = useState(false);
   const fetchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const teamStatValues = useRef<Record<string, number>>({});
+  const pendingTeamStats = useRef<Record<string, number>>({});
+  const teamStatsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftKey = `fusion-live-draft:${fixtureId}`;
 
   const pushActivity = useCallback((text: string, tone: ActivityItem["tone"] = "info") => {
@@ -70,7 +72,10 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
     if (!silent) setLoading(true);
     try {
       const res = await liveMatchApi.fetchLiveStats(fixtureId);
-    setData(res);
+      for (const [key, value] of Object.entries(res.fixture)) {
+        if (typeof value === "number" && pendingTeamStats.current[key] === undefined) teamStatValues.current[key] = value;
+      }
+      setData(res);
       setClockSeconds(res.fixture.matchClockSeconds || 0);
     } catch (e: any) {
       toast("Failed to load live match", e.message, "error");
@@ -126,7 +131,10 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
     setTimerRunning(data?.fixture.status === "LIVE");
   }, [data?.fixture.status]);
 
-  useEffect(() => () => { if (fetchRef.current) clearTimeout(fetchRef.current); }, []);
+  useEffect(() => () => {
+    if (fetchRef.current) clearTimeout(fetchRef.current);
+    if (teamStatsTimer.current) clearTimeout(teamStatsTimer.current);
+  }, []);
 
   const refresh = useCallback(async (after?: () => Promise<void> | void) => {
     if (after) await after();
@@ -164,12 +172,6 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
     data?.matchStats.substitutions.forEach((s) => set.add(s.playerOff.id));
     return set;
   }, [data]);
-  const subbedOnIds = useMemo(() => {
-    const set = new Set<string>();
-    data?.matchStats.substitutions.forEach((s) => set.add(s.playerOn.id));
-    return set;
-  }, [data]);
-
   const events = useMemo(() => (data ? buildTimeline(data) : []), [data]);
 
   const undoLast = useCallback(() => {
@@ -190,8 +192,6 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
       case "penalty": setDialog("penalty"); break;
       case "yellow": setDialog("yellow"); break;
       case "red": setDialog("red"); break;
-      case "substitution": setDialog("substitution"); break;
-      case "var": setDialog("var"); break;
       case "motm": setDialog("motm"); break;
       case "missed-penalty": setDialog("missed-penalty"); break;
       case "start": setStatus("LIVE"); break;
@@ -207,11 +207,12 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
 
   const handleGoal = useCallback(async (payload: { teamId: string; scorerId: string; assistId?: string; minute: number; isOwnGoal: boolean; isPenalty: boolean }) => {
     const label = payload.isOwnGoal ? "Own goal added" : payload.isPenalty ? "Penalty goal added" : "Goal added";
-    await runAction(
+    const result = await runAction(
       () => liveMatchApi.addGoal(fixtureId, { ...payload, correctionReason: correction() }),
       "Goal Added Successfully",
       { type: "goal", label }
     );
+    return Boolean(result);
   }, [correction, fixtureId, runAction]);
 
   const handleCard = useCallback(async (payload: { teamId: string; playerId: string; cardType: "yellow" | "red" }) => {
@@ -224,14 +225,6 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
     );
   }, [fixtureId, runAction]);
 
-  const handleSubstitution = useCallback(async (payload: { teamId: string; playerOffId: string; playerOnId: string; minute: number }) => {
-    await runAction(
-      () => liveMatchApi.addSubstitution(fixtureId, { ...payload, correctionReason: correction() }),
-      "Substitution completed",
-      { type: "substitution", label: "Substitution completed" }
-    );
-  }, [fixtureId, runAction]);
-
   const handleNote = useCallback(async (payload: { teamId?: string; playerId?: string; type: "VAR" | "MISSED_PENALTY"; minute: number; note?: string }) => {
     const label = payload.type === "VAR" ? "VAR review logged" : "Missed penalty logged";
     await runAction(
@@ -241,30 +234,21 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
     );
   }, [fixtureId, runAction]);
 
-  const handlePlayerStat = useCallback((teamId: string, playerId: string, statType: "assist" | "yellowCard" | "redCard", action: "increment" | "decrement") => {
-    return runAction(
-      () => liveMatchApi.updateLiveStat(fixtureId, { playerId, statType, teamId, action, correctionReason: correction() }),
-      `${statType} ${action === "increment" ? "increased" : "decreased"}`,
-      action === "increment" ? { type: statType === "assist" ? "assist" : "card", label: `${statType} updated` } : undefined
-    );
-  }, [fixtureId, runAction]);
-
-  const pendingTeamStats = useRef<Record<string, number>>({});
-  const teamStatsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleTeamStat = useCallback((field: string, delta: number) => {
+    const nextValue = Math.max(0, (teamStatValues.current[field] ?? 0) + delta);
+    teamStatValues.current[field] = nextValue;
     setData((current) => {
       if (!current) return current;
-      const nextValue = Math.max(0, Number(current.fixture[field as keyof LiveMatchData["fixture"]] || 0) + delta);
       const nextFixture = { ...current.fixture, [field]: nextValue };
       if (field.toLowerCase().includes("possession")) {
         const opposite = field.startsWith("home") ? field.replace("home", "away") : field.replace("away", "home");
-        nextFixture[opposite as keyof typeof nextFixture] = Math.max(0, 100 - nextValue) as never;
+        const oppositeValue = Math.max(0, 100 - nextValue);
+        teamStatValues.current[opposite] = oppositeValue;
+        nextFixture[opposite as keyof typeof nextFixture] = oppositeValue as never;
       }
       return { ...current, fixture: nextFixture };
     });
-    const previousPending = pendingTeamStats.current[field];
-    const baseValue = previousPending ?? Number(data?.fixture[field as keyof LiveMatchData["fixture"]] || 0);
-    pendingTeamStats.current[field] = Math.max(0, baseValue + delta);
+    pendingTeamStats.current[field] = nextValue;
     if (field.toLowerCase().includes("possession")) {
       const opposite = field.startsWith("home") ? field.replace("home", "away") : field.replace("away", "home");
       pendingTeamStats.current[opposite] = Math.max(0, 100 - pendingTeamStats.current[field]);
@@ -281,8 +265,8 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
         toast("Team stats save failed", error.message, "error");
         await fetchStats(true);
       }
-    }, 350);
-  }, [correction, data, fetchStats, fixtureId]);
+    }, 1500);
+  }, [correction, fetchStats, fixtureId]);
 
   const handleAppearance = useCallback((teamId: string, player: LiveMatchData["homeTeam"]["players"][number]) => {
     return runAction(
@@ -303,7 +287,6 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
       if (key === "g") { e.preventDefault(); setDialog("goal"); }
       else if (key === "y") { e.preventDefault(); setDialog("yellow"); }
       else if (key === "r") { e.preventDefault(); setDialog("red"); }
-      else if (key === "s") { e.preventDefault(); setDialog("substitution"); }
       else if (key === " ") { e.preventDefault(); setStatus(data?.fixture.status === "LIVE" ? "PAUSED" : "LIVE"); }
     };
     document.addEventListener("keydown", handler);
@@ -443,8 +426,6 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
               onPickHome={(p) => setEditingPlayer({ playerId: p.id, teamId: homeTeam.id })}
               onPickAway={(p) => setEditingPlayer({ playerId: p.id, teamId: awayTeam.id })}
               onAppearance={handleAppearance}
-              onDecrement={(t, p, s) => handlePlayerStat(t, p, s, "decrement")}
-              onIncrement={(t, p, s) => handlePlayerStat(t, p, s, "increment")}
               subbedOffIds={subbedOffIds}
             />
           </div>
@@ -469,7 +450,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
         </div>
 
         <p className="mt-4 text-center text-[11px] text-muted-foreground">
-          Shortcuts: <kbd className="rounded bg-muted px-1">G</kbd> Goal · <kbd className="rounded bg-muted px-1">Y</kbd> Yellow · <kbd className="rounded bg-muted px-1">R</kbd> Red · <kbd className="rounded bg-muted px-1">S</kbd> Sub · <kbd className="rounded bg-muted px-1">Space</kbd> Pause · <kbd className="rounded bg-muted px-1">Ctrl+Z</kbd> Undo · <kbd className="rounded bg-muted px-1">Esc</kbd> Close
+          Shortcuts: <kbd className="rounded bg-muted px-1">G</kbd> Goal · <kbd className="rounded bg-muted px-1">Y</kbd> Yellow · <kbd className="rounded bg-muted px-1">R</kbd> Red · <kbd className="rounded bg-muted px-1">Space</kbd> Pause · <kbd className="rounded bg-muted px-1">Ctrl+Z</kbd> Undo · <kbd className="rounded bg-muted px-1">Esc</kbd> Close
         </p>
       </div>
 
@@ -492,19 +473,9 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
         onClose={() => setDialog(null)}
         onConfirm={handleCard}
       />
-      <SubstitutionDialog
-        open={dialog === "substitution"}
-        home={homeTeam}
-        away={awayTeam}
-        minute={minute}
-        subbedOffIds={subbedOffIds}
-        subbedOnIds={subbedOnIds}
-        onClose={() => setDialog(null)}
-        onConfirm={handleSubstitution}
-      />
       <NoteDialog
-        open={dialog === "var" || dialog === "missed-penalty"}
-        noteType={(dialog === "missed-penalty" ? "missed-penalty" : "var") as NoteType}
+        open={dialog === "missed-penalty"}
+        noteType={"missed-penalty" as NoteType}
         home={homeTeam}
         away={awayTeam}
         minute={minute}
