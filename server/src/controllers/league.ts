@@ -318,7 +318,30 @@ export const getPlayerBySlug = async (req: Request, res: Response, next: NextFun
       }));
       return rows;
     }))).flat();
-    res.json({ ...player, profileStats });
+    const matchHistory = await prisma.fixture.findMany({
+      where: {
+        deletedAt: null,
+        status: "COMPLETED",
+        OR: [
+          { lineups: { some: { playerId: player.id } } },
+          { appearances: { some: { playerId: player.id } } },
+          { substitutions: { some: { OR: [{ playerOnId: player.id }, { playerOffId: player.id }] } } },
+        ],
+      },
+      include: {
+        homeTeam: { select: { id: true, name: true, shortName: true, slug: true, logoUrl: true } },
+        awayTeam: { select: { id: true, name: true, shortName: true, slug: true, logoUrl: true } },
+        appearances: { where: { playerId: player.id }, select: { teamId: true, isStarter: true, enteredAt: true } },
+        goals: { where: { playerId: player.id }, select: { minute: true, isOwnGoal: true, isPenalty: true } },
+        assists: { where: { playerId: player.id }, select: { minute: true } },
+        cards: { where: { playerId: player.id }, select: { type: true, minute: true } },
+        matchPlayerRatings: { where: { playerId: player.id }, select: { rating: true } },
+        substitutions: { where: { OR: [{ playerOnId: player.id }, { playerOffId: player.id }] }, select: { playerOnId: true, playerOffId: true, minute: true } },
+      },
+      orderBy: [{ scheduledDate: "desc" }, { kickoffAt: { sort: "desc", nulls: "last" } }],
+      take: 20,
+    });
+    res.json({ ...player, profileStats, matchHistory });
   } catch (error) {
     next(error);
   }

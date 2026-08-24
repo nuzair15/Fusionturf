@@ -2,202 +2,70 @@ import { useParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import type { Player } from "@/types";
-import { ChevronLeft, MapPin, Ruler, Weight, Award, Footprints, Image as ImageIcon, Play } from "lucide-react";
+import { ArrowUpRight, Award, CalendarDays, ChevronLeft, Clock3, Image as ImageIcon, Play, ShieldCheck, Star, Target, Trophy } from "lucide-react";
 import { FollowButton } from "@/components/league/FollowButton";
 import { PageError, PageSkeleton } from "@/components/PageState";
+
+function value(input: number | string | null | undefined, suffix = "") {
+  return input === null || input === undefined || input === "" ? "—" : `${input}${suffix}`;
+}
+
+function Metric({ label, value: metricValue, tone = "text-foreground" }: { label: string; value: string | number; tone?: string }) {
+  return <div className="rounded-xl border border-border/70 bg-background/70 px-3 py-3 text-center shadow-sm"><p className={`text-xl font-extrabold tabular-nums sm:text-2xl ${tone}`}>{metricValue}</p><p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{label}</p></div>;
+}
+
+function StatLine({ label, statValue, tone }: { label: string; statValue: string | number; tone?: string }) {
+  return <div className="flex items-center justify-between border-b border-border/60 py-3 last:border-0"><span className="text-sm text-muted-foreground">{label}</span><span className={`text-sm font-bold tabular-nums ${tone || ""}`}>{statValue}</span></div>;
+}
+
+function formatMatchDate(date?: string) {
+  const parsed = date ? new Date(date) : null;
+  return parsed && !Number.isNaN(parsed.getTime()) ? new Intl.DateTimeFormat("en", { day: "numeric", month: "short", year: "numeric" }).format(parsed) : "Match date TBC";
+}
 
 export function PlayerDetailPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
-
-  const { data: player, isLoading, isError, refetch } = useQuery({
-    queryKey: ["player", slug],
-    queryFn: () => api.get<Player>(`/league/players/${slug}`),
-    enabled: !!slug,
-    staleTime: 0,
-    refetchOnWindowFocus: true,
-    refetchInterval: 30000,
-  });
+  const { data: player, isLoading, isError, refetch } = useQuery({ queryKey: ["player", slug], queryFn: () => api.get<Player>(`/league/players/${slug}`), enabled: !!slug, staleTime: 0, refetchOnWindowFocus: true, refetchInterval: 30000 });
 
   if (isLoading) return <PageSkeleton />;
   if (isError || !player) return <PageError title="Player profile not found" description="This player may no longer be in the active league, or their profile is unavailable." onRetry={() => void refetch()} action={<Button variant="outline" onClick={() => navigate("/league")}>Back to league</Button>} />;
 
   const calculatedStats = (player.profileStats || []) as any[];
-  const storedStats = [
-    ...((player.homeStats || []) as any[]).map((s) => ({ ...s, competition: "LEAGUE" })),
-    ...((player.friendlyStats || []) as any[]).map((s) => ({ ...s, competition: "FRIENDLY" })),
-  ];
-  const profileStats = [...calculatedStats, ...storedStats].filter((stat, index, rows) =>
-    rows.findIndex((candidate) => `${candidate.competition}-${candidate.seasonId}-${candidate.teamId}` === `${stat.competition}-${stat.seasonId}-${stat.teamId}`) === index,
-  );
-  const leagueStats = profileStats.filter((s: any) => s.competition === "LEAGUE");
-  const statsBySeason = leagueStats.reduce((acc: Record<string, { season: any; team: any; stats: any[] }>, s: any) => {
-    const key = `${s.season?.id || "unknown"}_${s.teamId}`;
-    if (!acc[key]) {
-      acc[key] = { season: s.season, team: s.team, stats: [] };
-    }
-    acc[key].stats.push(s);
-    return acc;
-  }, {});
-  const seasonKeys = Object.keys(statsBySeason);
-  const friendlyStats = profileStats.filter((s: any) => s.competition === "FRIENDLY");
+  const storedStats = [...((player.homeStats || []) as any[]).map((stat) => ({ ...stat, competition: "LEAGUE" })), ...((player.friendlyStats || []) as any[]).map((stat) => ({ ...stat, competition: "FRIENDLY" }))];
+  const profileStats = [...calculatedStats, ...storedStats].filter((stat, index, rows) => rows.findIndex((candidate) => `${candidate.competition}-${candidate.seasonId}-${candidate.teamId}` === `${stat.competition}-${stat.seasonId}-${stat.teamId}`) === index);
+  const leagueStats = profileStats.filter((stat) => stat.competition === "LEAGUE");
+  const featuredStat = leagueStats[0] || profileStats[0];
+  const friendlyStats = profileStats.filter((stat) => stat.competition === "FRIENDLY");
+  const history = player.matchHistory || [];
+  const name = `${player.firstName} ${player.lastName}`;
 
-  return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-        <Button variant="ghost" onClick={() => navigate(-1)} className="mb-4 gap-1">
-          <ChevronLeft className="h-4 w-4" /> Back
-        </Button>
+  return <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8"><motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+    <Button variant="ghost" onClick={() => navigate(-1)} className="mb-4 -ml-2 gap-1"><ChevronLeft className="h-4 w-4" /> Back</Button>
 
-        {/* Hero */}
-        <div className="relative mb-8 overflow-hidden rounded-2xl bg-gradient-to-r from-slate-800 to-slate-900 p-8 text-white">
-          <div className="flex flex-col items-center gap-4 sm:flex-row">
-            <img src={player.photoUrl || "/placeholder.svg"} alt="" className="h-32 w-32 rounded-2xl bg-white/10 object-cover" />
-            <div className="text-center sm:text-left">
-              <h1 className="text-3xl font-bold">{player.firstName} {player.lastName}</h1>
-              <p className="mt-1 text-white/80">{player.position} • #{player.jerseyNumber}</p>
-              {player.team && (
-                <p className="text-white/60">{player.team.name}</p>
-              )}
-              <div className="mt-3"><FollowButton type="PLAYER" entityId={player.id} /></div>
-            </div>
-          </div>
-        </div>
+    <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-sky-950 p-5 text-white shadow-xl sm:p-7">
+      <div className="absolute -right-16 -top-24 h-64 w-64 rounded-full bg-primary/30 blur-3xl" />
+      <div className="relative grid gap-6 lg:grid-cols-[1fr_430px] lg:items-end">
+        <div className="flex items-center gap-4 sm:gap-5"><img src={player.photoUrl || "/placeholder.svg"} alt={name} className="h-24 w-24 rounded-2xl border border-white/15 bg-white/10 object-cover shadow-lg sm:h-32 sm:w-32" /><div className="min-w-0"><p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-sky-200">Player profile</p><h1 className="truncate text-2xl font-black tracking-tight sm:text-4xl">{name}</h1><div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-200"><span className="rounded-full bg-white/10 px-2.5 py-1 font-semibold">{player.position || "Player"}{player.jerseyNumber ? ` · #${player.jerseyNumber}` : ""}</span>{player.team && <span className="flex items-center gap-1.5"><img src={player.team.logoUrl || "/placeholder.svg"} alt="" className="h-5 w-5 rounded-full object-cover" /> {player.team.name}</span>}</div><div className="mt-4"><FollowButton type="PLAYER" entityId={player.id} /></div></div></div>
+        <div className="grid grid-cols-4 gap-2 sm:gap-3"><Metric label="Apps" value={value(featuredStat?.appearances)} /><Metric label="Goals" value={value(featuredStat?.goals)} tone="text-emerald-500" /><Metric label="Assists" value={value(featuredStat?.assists)} tone="text-sky-500" /><Metric label="Minutes" value={value(featuredStat?.minutesPlayed)} /></div>
+      </div>
+    </section>
 
-        <div className="grid gap-8 lg:grid-cols-3">
-          <div className="space-y-6 lg:col-span-2">
-            {/* Biography */}
-            {player.biography && (
-              <Card>
-                <CardHeader><CardTitle>Biography</CardTitle></CardHeader>
-                <CardContent><p className="text-muted-foreground">{player.biography}</p></CardContent>
-              </Card>
-            )}
+    <div className="mt-6 grid gap-6 lg:grid-cols-3"><div className="space-y-6 lg:col-span-2">
+      <Card className="overflow-hidden border-border/80 shadow-sm"><div className="border-b bg-muted/30 px-5 py-4 sm:px-6"><div className="flex items-center gap-3"><div className="rounded-xl bg-primary/10 p-2 text-primary"><Trophy className="h-5 w-5" /></div><div><h2 className="font-bold">Season performance</h2><p className="text-sm text-muted-foreground">{featuredStat?.season?.name || "League"}{featuredStat?.team?.name ? ` · ${featuredStat.team.name}` : ""}</p></div></div></div><CardContent className="p-5 sm:p-6">{featuredStat ? <><div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><Metric label="Appearances" value={value(featuredStat.appearances)} /><Metric label="Goals" value={value(featuredStat.goals)} tone="text-emerald-600" /><Metric label="Assists" value={value(featuredStat.assists)} tone="text-sky-600" /><Metric label="Avg. rating" value={featuredStat.averageRating ? featuredStat.averageRating.toFixed(1) : "—"} tone="text-amber-500" /></div><div className="mt-6 grid gap-x-8 md:grid-cols-2"><div><p className="mb-1 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Attacking</p><StatLine label="Shots" statValue={value(featuredStat.shots)} /><StatLine label="Shots on target" statValue={value(featuredStat.shotsOnTarget)} /><StatLine label="Pass accuracy" statValue={value(featuredStat.passAccuracy, "%")} /><StatLine label="Minutes played" statValue={value(featuredStat.minutesPlayed)} /></div><div><p className="mb-1 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Defending & discipline</p><StatLine label="Tackles" statValue={value(featuredStat.tackles)} /><StatLine label="Interceptions" statValue={value(featuredStat.interceptions)} /><StatLine label="Yellow cards" statValue={value(featuredStat.yellowCards)} tone="text-amber-500" /><StatLine label="Red cards" statValue={value(featuredStat.redCards)} tone="text-red-500" /></div></div></> : <p className="py-5 text-sm text-muted-foreground">No season statistics have been recorded yet.</p>}</CardContent></Card>
+      {player.biography && <Card className="border-border/80 shadow-sm"><CardContent className="p-5 sm:p-6"><p className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">About {player.firstName}</p><p className="mt-3 leading-7 text-muted-foreground">{player.biography}</p></CardContent></Card>}
+    </div><Card className="h-fit border-border/80 shadow-sm"><CardContent className="p-5 sm:p-6"><div className="mb-4 flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-primary" /><h2 className="font-bold">Player details</h2></div><StatLine label="Nationality" statValue={value(player.nationality)} /><StatLine label="Age" statValue={value(player.age)} /><StatLine label="Height" statValue={value(player.height, " cm")} /><StatLine label="Weight" statValue={value(player.weight, " kg")} /><StatLine label="Preferred foot" statValue={value(player.preferredFoot)} /><StatLine label="Position" statValue={value(player.position)} /><StatLine label="Jersey number" statValue={player.jerseyNumber ? `#${player.jerseyNumber}` : "—"} /></CardContent></Card></div>
 
-            {player.galleries && player.galleries.length > 0 && (
-              <Card>
-                <CardHeader><CardTitle className="flex items-center gap-2"><ImageIcon className="h-5 w-5" /> Player Gallery</CardTitle></CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {player.galleries.map((item) => (
-                      <a key={item.id} href={item.videoUrl || item.imageUrl} target="_blank" rel="noreferrer" className="group overflow-hidden rounded-xl border bg-muted/30">
-                        <div className="relative aspect-square">
-                          <img src={item.imageUrl} alt={item.title} className="h-full w-full object-cover transition duration-300 group-hover:scale-105" />
-                          {item.videoUrl && <span className="absolute inset-0 flex items-center justify-center bg-black/25"><Play className="h-8 w-8 fill-white text-white" /></span>}
-                        </div>
-                        <p className="truncate px-3 py-2 text-sm font-medium">{item.title}</p>
-                      </a>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+    <Card className="mt-6 overflow-hidden border-border/80 shadow-sm"><div className="flex flex-col gap-3 border-b bg-muted/30 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"><div className="flex items-center gap-3"><div className="rounded-xl bg-primary/10 p-2 text-primary"><CalendarDays className="h-5 w-5" /></div><div><h2 className="font-bold">Match history</h2><p className="text-sm text-muted-foreground">Latest completed appearances and match contributions</p></div></div><span className="text-sm font-semibold text-muted-foreground">Last {history.length} matches</span></div><CardContent className="p-0">{history.length === 0 ? <p className="px-5 py-10 text-center text-sm text-muted-foreground">No completed match appearances have been recorded yet.</p> : <div className="divide-y">{history.map((fixture) => {
+      const appearance = fixture.appearances?.[0]; const playedForId = appearance?.teamId || player.teamId; const isHome = fixture.homeTeamId === playedForId; const playerTeam = isHome ? fixture.homeTeam : fixture.awayTeam; const opponent = isHome ? fixture.awayTeam : fixture.homeTeam; const teamScore = isHome ? fixture.homeScore : fixture.awayScore; const opponentScore = isHome ? fixture.awayScore : fixture.homeScore; const result = (teamScore ?? 0) > (opponentScore ?? 0) ? "W" : (teamScore ?? 0) < (opponentScore ?? 0) ? "L" : "D"; const rating = fixture.matchPlayerRatings?.[0]?.rating; const playerSub = fixture.substitutions?.[0]; const subNote = playerSub ? (playerSub.playerOnId === player.id ? `On ${playerSub.minute}'` : `Off ${playerSub.minute}'`) : appearance ? (appearance.isStarter ? "Started" : "Played") : "In squad";
+      return <button key={fixture.id} onClick={() => navigate(`/league/fixtures/${fixture.id}`)} className="group flex w-full items-center gap-3 px-4 py-4 text-left transition hover:bg-muted/40 sm:gap-4 sm:px-6"><span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-xs font-black ${result === "W" ? "bg-emerald-500/15 text-emerald-600" : result === "L" ? "bg-red-500/15 text-red-600" : "bg-amber-500/15 text-amber-600"}`}>{result}</span><div className="min-w-0 flex-1"><div className="flex items-center gap-2 text-xs text-muted-foreground"><Clock3 className="h-3.5 w-3.5" />{formatMatchDate(fixture.scheduledDate || fixture.matchDate)}<span className="hidden sm:inline">· {subNote}</span></div><div className="mt-1 flex items-center gap-2 font-semibold"><img src={playerTeam.logoUrl || "/placeholder.svg"} alt="" className="h-5 w-5 rounded-full object-cover" /><span className="truncate">{playerTeam.shortName || playerTeam.name}</span><span className="font-black tabular-nums">{teamScore ?? 0}–{opponentScore ?? 0}</span><span className="truncate">{opponent.shortName || opponent.name}</span><img src={opponent.logoUrl || "/placeholder.svg"} alt="" className="h-5 w-5 rounded-full object-cover" /></div><p className="mt-1 text-xs text-muted-foreground sm:hidden">{subNote}</p></div><div className="hidden shrink-0 items-center gap-2 md:flex">{fixture.goals?.length ? <span className="rounded-md bg-emerald-500/10 px-2 py-1 text-xs font-bold text-emerald-600">{fixture.goals.length} G</span> : null}{fixture.assists?.length ? <span className="rounded-md bg-sky-500/10 px-2 py-1 text-xs font-bold text-sky-600">{fixture.assists.length} A</span> : null}{rating ? <span className="flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-1 text-xs font-bold text-amber-600"><Star className="h-3 w-3 fill-current" />{rating.toFixed(1)}</span> : null}</div><ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground transition group-hover:text-foreground" /></button>;
+    })}</div>}</CardContent></Card>
 
-            {/* Season Stats by Season + Team */}
-            <>
-              <Card>
-                <CardHeader><CardTitle>League Statistics</CardTitle></CardHeader>
-                <CardContent className="space-y-6">
-                  {seasonKeys.map((key) => {
-                    const group = statsBySeason[key];
-                    const seasonLabel = group.season?.name || "Unknown Season";
-                    const team = group.team;
-                    const s = group.stats[0];
-                    return (
-                      <div key={key}>
-                        <div className="mb-3 flex items-center gap-2">
-                          {team?.logoUrl && <img src={team.logoUrl} alt="" className="h-5 w-5 rounded-full" />}
-                          <h3 className="text-sm font-semibold text-muted-foreground">{seasonLabel} — {team?.name || "Unknown Team"}</h3>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                          {[
-                            { label: "Appearances", value: s.appearances },
-                            { label: "Goals", value: s.goals, color: "text-green-500" },
-                            { label: "Assists", value: s.assists, color: "text-blue-500" },
-                            { label: "Minutes", value: s.minutesPlayed },
-                            { label: "Pass Accuracy", value: s.passAccuracy ? `${s.passAccuracy}%` : "-" },
-                            { label: "Shots", value: s.shots },
-                            { label: "Tackles", value: s.tackles },
-                            { label: "Interceptions", value: s.interceptions },
-                            { label: "Yellow Cards", value: s.yellowCards, color: "text-yellow-500" },
-                            { label: "Red Cards", value: s.redCards, color: "text-red-500" },
-                            { label: "Rating", value: s.averageRating?.toFixed(1) || "-" },
-                            { label: "Clean Sheets", value: s.cleanSheets ?? "-" },
-                          ].map((stat) => (
-                            <div key={stat.label} className="rounded-lg border p-3 text-center">
-                              <p className={`text-lg font-bold ${stat.color || ""}`}>{stat.value}</p>
-                              <p className="text-xs text-muted-foreground">{stat.label}</p>
-                            </div>
-                          ))}
-                        </div>
-                        {/* Detailed Stats */}
-                        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                          {[
-                            { label: "Shots on Target", value: s.shotsOnTarget },
-                            { label: "Fouls", value: s.fouls },
-                            { label: "Offsides", value: s.offsides },
-                            { label: "Saves", value: s.saves ?? "-" },
-                            { label: "Goals Conceded", value: s.goalsConceded ?? "-" },
-                            { label: "Distance Covered", value: s.distanceCovered ? `${s.distanceCovered}km` : "-" },
-                          ].map((stat) => (
-                            <div key={stat.label} className="rounded-lg border p-3 text-center">
-                              <p className="text-lg font-bold">{stat.value}</p>
-                              <p className="text-xs text-muted-foreground">{stat.label}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {seasonKeys.length === 0 && <p className="text-sm text-muted-foreground">No league statistics recorded yet.</p>}
-                </CardContent>
-              </Card>
-            </>
-
-            <Card>
-              <CardHeader><CardTitle>Friendly Statistics</CardTitle></CardHeader>
-              <CardContent className="space-y-3">{friendlyStats.map((s: any) => <div key={s.id} className="rounded-xl border p-4"><div className="mb-3 flex items-center gap-2 text-sm font-semibold"><span>{s.season?.name || "Friendly matches"}</span><span className="text-muted-foreground">·</span><span className="text-muted-foreground">{s.team?.name || "Team"}</span></div><div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{[["Appearances", s.appearances], ["Goals", s.goals], ["Assists", s.assists], ["Minutes", s.minutesPlayed], ["Shots", s.shots], ["On target", s.shotsOnTarget], ["Yellow cards", s.yellowCards], ["Rating", s.averageRating?.toFixed?.(1) || "-"]].map(([label, value]) => <div key={label as string} className="rounded-lg bg-secondary/40 p-3 text-center"><p className="font-bold">{value as any}</p><p className="text-xs text-muted-foreground">{label as string}</p></div>)}</div></div>)}</CardContent>
-            </Card>
-            {friendlyStats.length === 0 && <p className="text-sm text-muted-foreground">No friendly-match statistics recorded yet.</p>}
-
-            {/* Awards */}
-            {player.awards && player.awards.length > 0 && (
-              <Card>
-                <CardHeader><CardTitle>Awards</CardTitle></CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {player.awards.map((aw, i) => (
-                      <div key={i} className="flex items-center gap-2 rounded-lg border p-3">
-                        <Award className="h-5 w-5 text-yellow-500" />
-                        <span className="text-sm font-medium">{aw.award.name}</span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-
-          {/* Info Sidebar */}
-          <div>
-            <Card>
-              <CardHeader><CardTitle>Personal Info</CardTitle></CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                <div className="flex justify-between"><span className="text-muted-foreground">Nationality</span><span>{player.nationality}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Age</span><span>{player.age}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Height</span><span>{player.height} cm</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Weight</span><span>{player.weight} kg</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Preferred Foot</span><span>{player.preferredFoot}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Position</span><span className="font-medium">{player.position}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Jersey #</span><span className="font-medium">{player.jerseyNumber}</span></div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </motion.div>
-    </div>
-  );
+    {friendlyStats.length > 0 && <Card className="mt-6 border-border/80 shadow-sm"><CardContent className="p-5 sm:p-6"><div className="mb-4 flex items-center gap-2"><Target className="h-5 w-5 text-primary" /><h2 className="font-bold">Friendly statistics</h2></div><div className="grid gap-3 sm:grid-cols-2">{friendlyStats.map((stat) => <div key={stat.id} className="rounded-xl border bg-muted/20 p-4"><p className="text-sm font-semibold">{stat.season?.name || "Friendly matches"}</p><p className="mt-1 text-xs text-muted-foreground">{stat.team?.name || "Team"}</p><div className="mt-4 grid grid-cols-4 gap-2 text-center"><Metric label="Apps" value={value(stat.appearances)} /><Metric label="Goals" value={value(stat.goals)} tone="text-emerald-600" /><Metric label="Assists" value={value(stat.assists)} tone="text-sky-600" /><Metric label="Cards" value={value((stat.yellowCards || 0) + (stat.redCards || 0))} /></div></div>)}</div></CardContent></Card>}
+    {player.awards && player.awards.length > 0 && <Card className="mt-6 border-border/80 shadow-sm"><CardContent className="p-5 sm:p-6"><div className="mb-4 flex items-center gap-2"><Award className="h-5 w-5 text-amber-500" /><h2 className="font-bold">Awards</h2></div><div className="grid gap-3 sm:grid-cols-2">{player.awards.map((award, index) => <div key={index} className="flex items-center gap-3 rounded-xl border p-3"><Trophy className="h-5 w-5 text-amber-500" /><span className="text-sm font-semibold">{award.award.name}</span></div>)}</div></CardContent></Card>}
+    {player.galleries && player.galleries.length > 0 && <Card className="mt-6 border-border/80 shadow-sm"><CardContent className="p-5 sm:p-6"><div className="mb-4 flex items-center gap-2"><ImageIcon className="h-5 w-5 text-primary" /><h2 className="font-bold">Player gallery</h2></div><div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">{player.galleries.map((item) => <a key={item.id} href={item.videoUrl || item.imageUrl} target="_blank" rel="noreferrer" className="group overflow-hidden rounded-xl border bg-muted/30"><div className="relative aspect-square"><img src={item.imageUrl} alt={item.title} className="h-full w-full object-cover transition duration-300 group-hover:scale-105" />{item.videoUrl && <span className="absolute inset-0 grid place-items-center bg-black/25"><Play className="h-8 w-8 fill-white text-white" /></span>}</div><p className="truncate px-3 py-2 text-sm font-medium">{item.title}</p></a>)}</div></CardContent></Card>}
+  </motion.div></div>;
 }

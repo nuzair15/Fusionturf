@@ -81,6 +81,14 @@ export interface Player {
   homeStats?: PlayerStat[];
   friendlyStats?: FriendlyPlayerStat[];
   profileStats?: Array<PlayerStat & { competition?: "LEAGUE" | "FRIENDLY"; season?: Season; team?: Team }>;
+  matchHistory?: Array<Omit<Fixture, "goals" | "assists" | "cards" | "matchPlayerRatings" | "substitutions"> & {
+    appearances?: Array<{ teamId: string; isStarter: boolean; enteredAt?: number | null }>;
+    goals?: Array<{ minute: number; isOwnGoal?: boolean; isPenalty?: boolean }>;
+    assists?: Array<{ minute: number }>;
+    cards?: Array<{ type: "YELLOW" | "RED" | "SECOND_YELLOW"; minute: number }>;
+    matchPlayerRatings?: Array<{ rating: number }>;
+    substitutions?: Array<{ playerOnId: string; playerOffId: string; minute: number }>;
+  }>;
   awards?: AwardWinner[];
   galleries?: Gallery[];
 }
