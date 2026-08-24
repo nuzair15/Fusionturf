@@ -1,4 +1,5 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import { authenticate, authorize } from "../middleware/auth.js";
 import { activityLogger } from "../middleware/activityLogger.js";
 import * as admin from "../controllers/admin.js";
@@ -6,6 +7,18 @@ import * as bookingAdmin from "../controllers/booking.js";
 import * as playerStats from "../controllers/playerStats.js";
 
 const router = Router();
+
+// Live match readers refresh repeatedly while the clock runs. Limit this
+// separately by authenticated operator, rather than counting it against the
+// whole site's coarse IP-based 15-minute limit.
+const liveStatsReadLimit = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.userId || req.ip || "unknown",
+  message: { error: "Live match refresh limit reached. Please wait a moment." },
+});
 
 // All admin routes require authentication and admin role
 router.use(authenticate);
@@ -152,7 +165,7 @@ router.post("/standings/adjustments", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), 
 router.delete("/standings/adjustments/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.deleteStandingAdjustment);
 
 // Live Match Stats
-router.get("/fixtures/:id/live-stats", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN", "REFEREE", "VIEWER"), admin.getLiveStats);
+router.get("/fixtures/:id/live-stats", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN", "REFEREE", "VIEWER"), liveStatsReadLimit, admin.getLiveStats);
 router.post("/fixtures/:id/live-stats/update", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.updateLiveStat);
 router.patch("/fixtures/:id/live-stats/team", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.updateTeamStats);
 router.post("/fixtures/:id/live-stats/reset-clock", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.resetFixtureClock);

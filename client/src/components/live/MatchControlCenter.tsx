@@ -117,7 +117,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
   // Poll for updates while mounted. The server calculates elapsed time from
   // matchClockStartedAt; polling keeps every operator's display aligned.
   useEffect(() => {
-    const id = setInterval(() => fetchStats(true), data?.fixture.status === "LIVE" ? 1000 : 5000);
+    const id = setInterval(() => fetchStats(true), data?.fixture.status === "LIVE" ? 2000 : 5000);
     return () => clearInterval(id);
   }, [fetchStats, data?.fixture.status]);
 

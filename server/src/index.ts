@@ -94,6 +94,10 @@ app.use(
   rateLimit({
     windowMs: config.rateLimit.windowMs,
     max: config.rateLimit.max,
+    // The live console has its own authenticated, per-operator limiter below.
+    // A one-second scoreboard poll otherwise exhausts this global backstop
+    // before a 15-minute match has even finished.
+    skip: (req) => req.method === "GET" && /^\/api\/admin\/fixtures\/[^/]+\/live-stats$/.test(req.path),
     message: { error: "Too many requests, please try again later" },
   })
 );
