@@ -10,6 +10,7 @@ import { formatDate, formatCurrency, getMatchStatusColor } from "@/lib/utils";
 import type { Booking, DashboardStats } from "@/types";
 import { Calendar, Clock, MapPin, CreditCard, User, Settings, ArrowRight, Bell, Heart, Trophy, BarChart3 } from "lucide-react";
 import { fixtureDateKey, sortedFixtures } from "@/lib/fixtures";
+import { PlayerLeaderboard } from "@/components/league/PlayerLeaderboard";
 
 export function DashboardPage() {
   const { user, logout } = useAuth();
@@ -27,6 +28,19 @@ export function DashboardPage() {
     queryKey: ["fan-dashboard"],
     queryFn: () => api.get<any>("/league/fan/dashboard"),
     enabled: !!user,
+  });
+
+  const { data: topScorers } = useQuery({
+    queryKey: ["dashboard-top-scorers"],
+    queryFn: () => api.get<any[]>("/league/stats/players", { stat: "goals", friendly: "false" }),
+    enabled: !!user,
+    staleTime: 30_000,
+  });
+  const { data: topAssisters } = useQuery({
+    queryKey: ["dashboard-top-assisters"],
+    queryFn: () => api.get<any[]>("/league/stats/players", { stat: "assists", friendly: "false" }),
+    enabled: !!user,
+    staleTime: 30_000,
   });
 
   if (!user) {
@@ -78,6 +92,11 @@ export function DashboardPage() {
           <Card><CardHeader><CardTitle className="flex items-center gap-2"><Trophy className="h-4 w-4" /> Followed teams</CardTitle></CardHeader><CardContent className="space-y-2">{fanData.standings.map((row: any) => <div key={row.id} className="flex items-center gap-3 rounded-lg border p-3"><span className="font-bold text-primary">#{row.position}</span><span className="flex-1 font-medium">{row.team.name}</span><Badge>{row.points} pts</Badge></div>)}</CardContent></Card>
           <Card><CardHeader><CardTitle className="flex items-center gap-2"><BarChart3 className="h-4 w-4" /> Followed player stats</CardTitle></CardHeader><CardContent className="space-y-2">{(fanData.playerStats || []).slice(0, 5).map((s: any) => <div key={s.id} className="flex items-center gap-3 rounded-lg border p-3"><span className="flex-1 font-medium">{s.player.firstName} {s.player.lastName}</span><span className="text-sm">{s.goals} goals</span><span className="text-sm text-muted-foreground">{s.assists} assists</span></div>)}</CardContent></Card>
         </div>}
+
+        <div className="mt-8 grid gap-6 lg:grid-cols-2">
+          <Card className="overflow-hidden"><CardHeader className="flex flex-row items-center justify-between"><CardTitle className="flex items-center gap-2"><Trophy className="h-4 w-4 text-amber-500" /> Top scorers</CardTitle><Button variant="ghost" size="sm" onClick={() => navigate("/league/stats")}>All stats</Button></CardHeader><CardContent className="p-3"><PlayerLeaderboard rows={topScorers || []} stat="goals" compact /></CardContent></Card>
+          <Card className="overflow-hidden"><CardHeader className="flex flex-row items-center justify-between"><CardTitle className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-sky-500" /> Top assisters</CardTitle><Button variant="ghost" size="sm" onClick={() => navigate("/league/stats")}>All stats</Button></CardHeader><CardContent className="p-3"><PlayerLeaderboard rows={topAssisters || []} stat="assists" compact /></CardContent></Card>
+        </div>
 
         <div className="grid gap-6 md:grid-cols-3">
           {/* Quick Stats */}
