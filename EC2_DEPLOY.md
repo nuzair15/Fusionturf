@@ -8,7 +8,7 @@
 - EC2 user: `ubuntu`
 - EC2 repository: `/opt/fusionturf`
 - EC2 server directory: `/opt/fusionturf/server`
-- Recommended PM2 API name: `fusion-api`
+- Recommended PM2 API name: `fusionturf-api`
 
 The hostname `ip-172-31-41-136` is private to EC2. Use the instance public IP or DNS for SSH from outside the VPC.
 
@@ -47,7 +47,7 @@ npm ci --include=dev
 npx prisma generate
 npx prisma migrate deploy
 npm run build
-pm2 start dist/production.js --name fusion-api --cwd /opt/fusionturf/server --update-env
+pm2 start dist/production.js --name fusionturf-api --cwd /opt/fusionturf/server --update-env
 pm2 save
 pm2 startup
 ```
@@ -65,14 +65,22 @@ npm ci --include=dev
 npx prisma generate
 npx prisma migrate deploy
 npm run build
-pm2 reload fusion-api --update-env
+pm2 reload fusionturf-api --update-env
 pm2 save
+
+cd ../client
+npm ci
+npm run build
+
+# If Nginx serves the frontend, copy the build to its configured web root:
+# sudo rsync -a --delete dist/ /var/www/fusionturf/
+# sudo systemctl reload nginx
 ```
 
 If the process does not exist:
 
 ```bash
-pm2 start dist/production.js --name fusion-api --cwd /opt/fusionturf/server --update-env
+pm2 start dist/production.js --name fusionturf-api --cwd /opt/fusionturf/server --update-env
 pm2 save
 ```
 
@@ -83,6 +91,8 @@ cd /opt/fusionturf/client
 npm ci
 npm run build
 ```
+
+The frontend build is required for UI changes. Restarting the API alone does not update the browser app.
 
 For Nginx, replace the destination with the configured web root:
 
@@ -103,8 +113,8 @@ pm2 save
 
 ```bash
 pm2 list
-pm2 describe fusion-api
-pm2 logs fusion-api --lines 100
+pm2 describe fusionturf-api
+pm2 logs fusionturf-api --lines 100
 cd /opt/fusionturf/server
 test -f .env && echo ".env exists" || echo "ERROR: server/.env is missing"
 ```
