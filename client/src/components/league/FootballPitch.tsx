@@ -38,6 +38,9 @@ export const FootballPitch = memo(function FootballPitch({
 }: FootballPitchProps) {
   const pitchRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef<string | null>(null);
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pointerStartRef = useRef<{ player: FixtureLineupPlayer; pointerId: number; x: number; y: number } | null>(null);
+  const suppressClickRef = useRef(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const updatePosition = useCallback(
@@ -57,27 +60,39 @@ export const FootballPitch = memo(function FootballPitch({
       if (!editable || !onPlayerMove) return;
       e.preventDefault();
       e.stopPropagation();
-      draggingRef.current = player.id;
-      setDraggingId(player.id);
-      try {
-        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      } catch {
-        /* pointer capture unsupported */
-      }
-      updatePosition(e.clientX, e.clientY);
+      pointerStartRef.current = { player, pointerId: e.pointerId, x: e.clientX, y: e.clientY };
+      holdTimerRef.current = setTimeout(() => {
+        const start = pointerStartRef.current;
+        if (!start || start.player.id !== player.id) return;
+        draggingRef.current = player.id;
+        suppressClickRef.current = true;
+        setDraggingId(player.id);
+        try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* pointer capture unsupported */ }
+        updatePosition(e.clientX, e.clientY);
+      }, 1000);
     },
     [editable, onPlayerMove, updatePosition]
   );
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!editable || !draggingRef.current) return;
+      if (!editable) return;
+      const start = pointerStartRef.current;
+      if (!draggingRef.current && start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 8) {
+        if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+        holdTimerRef.current = null;
+        return;
+      }
+      if (!draggingRef.current) return;
       updatePosition(e.clientX, e.clientY);
     },
     [editable, updatePosition]
   );
 
   const endDrag = useCallback(() => {
+    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+    holdTimerRef.current = null;
+    pointerStartRef.current = null;
     draggingRef.current = null;
     setDraggingId(null);
   }, []);
@@ -119,7 +134,10 @@ export const FootballPitch = memo(function FootballPitch({
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
       onKeyDown={handleKeyDown(player)}
-      onClick={() => onPlayerTap?.(player)}
+      onClick={() => {
+        if (suppressClickRef.current) { suppressClickRef.current = false; return; }
+        onPlayerTap?.(player);
+      }}
     >
       <LineupPlayer
         player={player}
