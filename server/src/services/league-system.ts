@@ -5,6 +5,7 @@ import { AppError } from "../middleware/errorHandler.js";
 import { appendMatchEvent } from "./match-events.js";
 import { fixtureScheduleFields } from "../utils/fixtures.js";
 import { rankStandings } from "../utils/standings.js";
+import { syncFixtureBooking } from "./fixture-bookings.js";
 
 const TEAM_COUNT = 6;
 const MATCHES_PER_PAIR = 2;
@@ -58,6 +59,7 @@ export interface FixtureGenerationOptions {
 export interface FixtureGenerationResult {
   generated: number;
   skipped: number;
+  fixtureIds?: string[];
 }
 
 const fixtureCalendarKey = (value: Date): string => value.toISOString().slice(0, 10);
@@ -319,7 +321,7 @@ export async function generateSeasonFixtures(seasonId: string, options?: Fixture
   // the current schema, so regenerating the same schedule becomes a no-op.
   // The advisory transaction lock prevents concurrent requests from both
   // observing missing pairings and inserting duplicate schedules.
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`fixture-generation:${seasonId}`}))`;
 
     const existingLeagueFixtures = await tx.fixture.findMany({
@@ -351,9 +353,15 @@ export async function generateSeasonFixtures(seasonId: string, options?: Fixture
       }
     }
 
-    if (missing.length > 0) await tx.fixture.createMany({ data: missing });
-    return { generated: missing.length, skipped: fixtures.length - missing.length };
+    const created = missing.length > 0
+      ? await tx.fixture.createManyAndReturn({ data: missing, select: { id: true, kickoffTime: true } })
+      : [];
+    return { generated: missing.length, skipped: fixtures.length - missing.length, fixtureIds: created.filter((fixture) => fixture.kickoffTime).map((fixture) => fixture.id) };
   });
+
+  // Reserve after commit so the booking can safely reference each fixture.
+  await Promise.all((result.fixtureIds || []).map((fixtureId) => syncFixtureBooking(fixtureId)));
+  return result;
 }
 
 export async function createFixtureSchedulePreview(competitionId: string, rawOptions: FixtureGenerationOptions, requestedById?: string) {

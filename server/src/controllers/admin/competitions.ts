@@ -4,6 +4,8 @@ import bcrypt from "bcryptjs";
 import prisma from "../../config/database.js";
 import { config } from "../../config/index.js";
 import { AppError } from "../../middleware/errorHandler.js";
+import { fixtureScheduleFields } from "../../utils/fixtures.js";
+import { syncFixtureBooking } from "../../services/fixture-bookings.js";
 import { paginate, paginatedResponse, searchPlayerIds } from "../../utils/helpers.js";
 import { pick } from "../../utils/pick.js";
 import * as leagueSystem from "../../services/league-system.js";
@@ -72,7 +74,7 @@ export const generateCompetitionBracket = async (req: Request, res: Response, ne
           if (round === 1 && homeTeamId && awayTeamId) {
             const date = new Date(baseDate);
             date.setDate(date.getDate() + position - 1);
-            const fixture = await tx.fixture.create({ data: { seasonId: competition.seasonId, competitionId: competition.id, homeTeamId, awayTeamId, matchDate: date, kickoffTime: kickoffTime || null, round, status: "SCHEDULED" } });
+            const fixture = await tx.fixture.create({ data: { seasonId: competition.seasonId, competitionId: competition.id, homeTeamId, awayTeamId, matchDate: date, ...fixtureScheduleFields(date, kickoffTime || null, competition.timezone), kickoffTime: kickoffTime || null, round, status: "SCHEDULED" } });
             await tx.bracketMatch.update({ where: { id: row.id }, data: { fixtureId: fixture.id } });
             rows.push({ ...row, fixtureId: fixture.id });
           } else rows.push(row);
@@ -81,6 +83,7 @@ export const generateCompetitionBracket = async (req: Request, res: Response, ne
       await tx.competition.update({ where: { id: competition.id }, data: { bracketSize: teamIds.length, bracketStatus: "IN_PROGRESS" } });
       return rows;
     });
+    await Promise.all(created.filter((match) => match.fixtureId).map((match) => syncFixtureBooking(match.fixtureId)));
     res.status(201).json({ competitionId: competition.id, bracketSize: teamIds.length, matches: created });
   } catch (error) { next(error); }
 };
