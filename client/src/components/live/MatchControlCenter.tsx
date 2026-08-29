@@ -20,8 +20,9 @@ import { EventDetailsDialog } from "./EventDetailsDialog";
 import { PlayerStatsDialog, type PlayerStatType } from "./PlayerStatsDialog";
 import { ManOfTheMatchDialog } from "./ManOfTheMatchDialog";
 import { AwardedGoalDialog } from "./AwardedGoalDialog";
-import { EditGoalDialog } from "./EditGoalDialog";
+import { EditGoalDialog, type GoalUpdatePayload } from "./EditGoalDialog";
 import type { MatchStatus } from "@/types";
+import { eventMinuteFromClock } from "@/lib/matchClock";
 
 interface UndoEntry {
   type: "goal" | "assist" | "card" | "substitution" | "note";
@@ -79,7 +80,11 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
         if (typeof value === "number" && pendingTeamStats.current[key] === undefined) teamStatValues.current[key] = value;
       }
       setData(res);
-      setClockSeconds(res.fixture.matchClockSeconds || 0);
+      const serverSeconds = res.fixture.matchClockSeconds || 0;
+      const networkSeconds = res.fixture.status === "LIVE" && res.fixture.matchClockServerTime
+        ? Math.max(0, Math.floor((Date.now() - new Date(res.fixture.matchClockServerTime).getTime()) / 1000))
+        : 0;
+      setClockSeconds(serverSeconds + networkSeconds);
     } catch (e: any) {
       toast("Failed to load live match", e.message, "error");
     } finally {
@@ -133,6 +138,18 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
   useEffect(() => {
     setTimerRunning(data?.fixture.status === "LIVE");
   }, [data?.fixture.status]);
+
+  // Smoothly interpolate the server-owned clock between polls and use its
+  // cumulative minute for every newly recorded event.
+  useEffect(() => {
+    if (!timerRunning) return;
+    const id = setInterval(() => setClockSeconds((current) => current + 1), 1000);
+    return () => clearInterval(id);
+  }, [timerRunning]);
+
+  useEffect(() => {
+    setMinute(eventMinuteFromClock(clockSeconds));
+  }, [clockSeconds]);
 
   useEffect(() => () => {
     if (fetchRef.current) clearTimeout(fetchRef.current);
@@ -228,9 +245,9 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
     return Boolean(result);
   }, [correction, fixtureId, minute, runAction]);
 
-  const handleUpdateGoal = useCallback(async (goalId: string, scorerId: string, goalMinute: number) => {
+  const handleUpdateGoal = useCallback(async (goalId: string, payload: GoalUpdatePayload) => {
     const result = await runAction(
-      () => liveMatchApi.updateGoal(fixtureId, goalId, { scorerId, minute: goalMinute, correctionReason: correction() }),
+      () => liveMatchApi.updateGoal(fixtureId, goalId, { ...payload, correctionReason: correction() }),
       "Goal updated",
     );
     return Boolean(result);
@@ -409,7 +426,6 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
         <MatchHeader
           data={data}
           minute={minute}
-          onMinuteChange={setMinute}
           onClose={closeConsole}
           onTogglePause={() => setStatus(data.fixture.status === "LIVE" ? "PAUSED" : "LIVE")}
           onResetTimer={() => runAction(() => liveMatchApi.resetClock(fixtureId), "Match clock reset").then(() => { setMinute(0); setClockSeconds(0); })}

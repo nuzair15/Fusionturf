@@ -1,14 +1,13 @@
-import { Trophy, CalendarClock, MapPin, X, Minus, Plus } from "lucide-react";
+import { Trophy, CalendarClock, MapPin, X } from "lucide-react";
 import type { LiveMatchData } from "@/types/live";
 import { Scoreboard } from "./Scoreboard";
 import { MatchTimer } from "./MatchTimer";
 import { formatDate, formatTime } from "@/lib/utils";
 import { fixtureDateKey } from "@/lib/fixtures";
 
-export function MatchHeader({ data, minute, onMinuteChange, onClose, onTogglePause, onResetTimer, timerRunning, clockSeconds }: {
+export function MatchHeader({ data, minute, onClose, onTogglePause, onResetTimer, timerRunning, clockSeconds }: {
   data: LiveMatchData;
   minute: number;
-  onMinuteChange: (m: number) => void;
   onClose: () => void;
   onTogglePause: () => void;
   onResetTimer: () => void;
@@ -56,17 +55,12 @@ export function MatchHeader({ data, minute, onMinuteChange, onClose, onTogglePau
           awayLogo={awayTeam.logoUrl}
         />
         <div className="flex items-center gap-3">
-          <MatchTimer seconds={clockSeconds} running={timerRunning} onTogglePause={onTogglePause} onReset={onResetTimer} />
-          <div className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-1.5">
-            <button aria-label="Decrease minute" onClick={() => onMinuteChange(Math.max(0, minute - 1))} className="flex h-6 w-6 items-center justify-center rounded-full text-white transition hover:bg-white/20 active:scale-90">
-              <Minus className="h-3.5 w-3.5" />
-            </button>
+          <MatchTimer seconds={clockSeconds} status={fixture.status} running={timerRunning} onTogglePause={onTogglePause} onReset={onResetTimer} />
+          <div className="flex flex-col items-center rounded-full bg-white/10 px-4 py-1.5">
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-emerald-100/70">Event minute · auto</span>
             <span className="min-w-10 text-center text-lg font-black tabular-nums text-white">
               {minute}<span className="text-xs text-emerald-200">'</span>
             </span>
-            <button aria-label="Increase minute" onClick={() => onMinuteChange(Math.min(60, minute + 1))} className="flex h-6 w-6 items-center justify-center rounded-full text-white transition hover:bg-white/20 active:scale-90">
-              <Plus className="h-3.5 w-3.5" />
-            </button>
           </div>
         </div>
       </div>

@@ -97,7 +97,7 @@ export const getLiveStats = async (req: Request, res: Response, next: NextFuncti
       isGoalkeeper: lu?.isGoalkeeper ?? (p.position === "GK"),
       role: lu?.role ?? null,
       stats: {
-        goals: goals.filter((g: any) => g.playerId === p.id).length,
+        goals: goals.filter((g: any) => g.playerId === p.id && !g.isOwnGoal).length,
         assists: assists.filter((a: any) => a.playerId === p.id).length,
         yellowCards: cards.filter((c: any) => c.playerId === p.id && c.type === "YELLOW").length,
         redCards: cards.filter((c: any) => c.playerId === p.id && (c.type === "RED" || c.type === "SECOND_YELLOW")).length,
@@ -417,8 +417,58 @@ export const updateGoal = async (req: Request, res: Response, next: NextFunction
     const minute = Number(req.body.minute);
     if (!Number.isInteger(minute) || minute < 0 || minute > 150) throw new AppError("Minute must be an integer between 0 and 150", 400);
     const scorer = await prisma.player.findUnique({ where: { id: req.body.scorerId }, select: { id: true, teamId: true, seasonId: true, isActive: true } });
-    if (!scorer || !scorer.isActive || scorer.seasonId !== fixture.seasonId || scorer.teamId !== goal.teamId) throw new AppError("Scorer must belong to the credited team", 400);
-    const updated = await prisma.goal.update({ where: { id: goal.id }, data: { playerId: scorer.id, minute } });
+    const teamId = req.body.teamId || goal.teamId || scorer?.teamId;
+    if (!teamId || ![fixture.homeTeamId, fixture.awayTeamId].includes(teamId)) throw new AppError("Scorer team must be part of this fixture", 400);
+    if (!scorer || !scorer.isActive || scorer.seasonId !== fixture.seasonId || scorer.teamId !== teamId) throw new AppError("Scorer must belong to the selected team", 400);
+
+    const isOwnGoal = req.body.isOwnGoal === undefined ? goal.isOwnGoal : !!req.body.isOwnGoal;
+    const isPenalty = req.body.isPenalty === undefined ? goal.isPenalty : !!req.body.isPenalty;
+    if (isOwnGoal && isPenalty) throw new AppError("A goal cannot be both an own goal and a penalty goal", 400);
+
+    const shouldUpdateAssist = req.body.assistId !== undefined || isOwnGoal;
+    const assistId = isOwnGoal ? null : req.body.assistId;
+    if (assistId === scorer.id) throw new AppError("Scorer cannot assist their own goal", 400);
+    if (assistId) {
+      const assister = await prisma.player.findUnique({ where: { id: assistId }, select: { teamId: true, seasonId: true, isActive: true } });
+      if (!assister || !assister.isActive || assister.seasonId !== fixture.seasonId || assister.teamId !== teamId) throw new AppError("Assister must belong to the selected team", 400);
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const previousAssists = shouldUpdateAssist
+        ? await tx.assist.findMany({ where: { goalId: goal.id }, select: { id: true } })
+        : [];
+      if (shouldUpdateAssist) {
+        for (const previousAssist of previousAssists) {
+          await reverseLegacyEvent(tx, { fixtureId: fixture.id, legacyType: "assist", legacyId: previousAssist.id, reason: req.body.correctionReason, createdById: req.user?.userId });
+        }
+        await tx.assist.deleteMany({ where: { goalId: goal.id } });
+      }
+
+      const row = await tx.goal.update({ where: { id: goal.id }, data: { playerId: scorer.id, teamId, minute, isOwnGoal, isPenalty } });
+      if (shouldUpdateAssist && assistId) {
+        const assist = await tx.assist.create({ data: { fixtureId: fixture.id, playerId: assistId, teamId, minute, goalId: goal.id } });
+        await appendMatchEvent(tx, { fixtureId: fixture.id, type: "ASSIST", minute, teamId, playerId: assistId, secondaryPlayerId: scorer.id, payload: { legacyAssistId: assist.id, goalId: goal.id, correctionReason: req.body.correctionReason || null }, idempotencyKey: `legacy:assist:${assist.id}:created`, createdById: req.user?.userId });
+      }
+      await appendMatchEvent(tx, {
+        fixtureId: fixture.id,
+        type: "CORRECTION",
+        minute,
+        teamId,
+        playerId: scorer.id,
+        secondaryPlayerId: assistId || null,
+        payload: {
+          legacyType: "goal",
+          legacyId: goal.id,
+          before: { teamId: goal.teamId, playerId: goal.playerId, minute: goal.minute, isOwnGoal: goal.isOwnGoal, isPenalty: goal.isPenalty },
+          after: { teamId, playerId: scorer.id, minute, isOwnGoal, isPenalty, assistId: assistId || null },
+          reason: req.body.correctionReason || null,
+        },
+        idempotencyKey: `legacy:goal:${goal.id}:corrected:${Date.now()}`,
+        createdById: req.user?.userId,
+      });
+      return row;
+    });
+    await recalcScore(fixture.id);
     await rebuildIfCorrected(fixture, req.body.correctionReason);
     res.json(updated);
   } catch (error) { next(error); }

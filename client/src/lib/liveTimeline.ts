@@ -4,9 +4,9 @@ export function buildTimeline(data: LiveMatchData): TimelineEvent[] {
   const events: TimelineEvent[] = [];
   const { goals, assists, cards, substitutions, notes } = data.matchStats;
 
-  const assistByGoal = new Map<string, string>();
+  const assistByGoal = new Map<string, LiveMatchData["matchStats"]["assists"][number]>();
   for (const a of assists) {
-    assistByGoal.set(a.id, a.player.id);
+    if (a.goalId) assistByGoal.set(a.goalId, a);
   }
 
   for (const g of goals) {
@@ -18,8 +18,9 @@ export function buildTimeline(data: LiveMatchData): TimelineEvent[] {
       id: g.id,
       kind,
       minute: g.minute,
-      teamId: g.player.teamId,
+      teamId: g.teamId || g.player.teamId,
       player: g.player,
+      assistPlayer: assistByGoal.get(g.id)?.player,
     });
   }
 

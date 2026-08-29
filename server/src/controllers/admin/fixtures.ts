@@ -222,7 +222,11 @@ export const updateFixtureStatus = async (req: Request, res: Response, next: Nex
     const now = new Date();
     if (status === "COMPLETED") {
       if (fixture.homeScore === null || fixture.awayScore === null) throw new AppError("Completed fixtures require scores", 400);
+      const elapsed = fixture.status === "LIVE" && fixture.matchClockStartedAt
+        ? fixture.matchClockSeconds + Math.max(0, Math.floor((now.getTime() - fixture.matchClockStartedAt.getTime()) / 1000))
+        : fixture.matchClockSeconds;
       await leagueSystem.processMatchResult(req.params.id, fixture.homeScore, fixture.awayScore);
+      await prisma.fixture.update({ where: { id: fixture.id }, data: { matchClockSeconds: elapsed, matchClockStartedAt: null } });
     } else {
       const elapsed = fixture.status === "LIVE" && fixture.matchClockStartedAt
         ? fixture.matchClockSeconds + Math.max(0, Math.floor((now.getTime() - fixture.matchClockStartedAt.getTime()) / 1000))

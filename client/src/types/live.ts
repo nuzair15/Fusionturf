@@ -43,6 +43,7 @@ export interface LiveEventPlayer {
 export interface LiveGoal {
   id: string;
   minute: number;
+  teamId?: string;
   isOwnGoal: boolean;
   isPenalty: boolean;
   player: LiveEventPlayer;
@@ -50,6 +51,7 @@ export interface LiveGoal {
 
 export interface LiveAssist {
   id: string;
+  goalId?: string;
   minute: number;
   player: LiveEventPlayer;
 }
