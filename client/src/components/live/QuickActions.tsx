@@ -51,7 +51,7 @@ export function QuickActions({ status, onAction, disabled }: {
           <button
             key={c.action}
             onClick={() => onAction(c.action)}
-            disabled={disabled}
+            disabled={disabled || (status === "COMPLETED" && c.action !== "motm")}
             title={`${c.label} — ${c.desc}`}
             className={cn(
               "group relative flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3 text-center transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.97] disabled:opacity-40",
@@ -71,7 +71,7 @@ export function QuickActions({ status, onAction, disabled }: {
           <button
             key={c.action}
             onClick={() => onAction(c.action)}
-            disabled={disabled}
+            disabled={disabled || status === "COMPLETED"}
             title={c.label}
             className={cn(
               "flex min-h-12 items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-bold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.97] disabled:opacity-40",
@@ -84,7 +84,7 @@ export function QuickActions({ status, onAction, disabled }: {
         ))}
         <button
           onClick={() => onAction("undo")}
-          disabled={disabled}
+          disabled={disabled || status === "COMPLETED"}
           title="Undo last event (Ctrl+Z)"
           className="flex items-center justify-center gap-2 rounded-xl border bg-muted px-3 py-2.5 text-xs font-bold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.97] disabled:opacity-40"
         >

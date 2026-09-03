@@ -12,7 +12,7 @@ export const liveMatchApi = {
     api.patch(`/admin/fixtures/${fixtureId}/status`, { status }),
   resetClock: (fixtureId: string) => api.post(`/admin/fixtures/${fixtureId}/live-stats/reset-clock`),
 
-  updateLiveStat: (fixtureId: string, body: { playerId: string; statType: StatType; teamId: string; action: "increment" | "decrement" } & Correction) =>
+  updateLiveStat: (fixtureId: string, body: { playerId: string; statType: StatType; teamId: string; action: "increment" | "decrement"; minute?: number } & Correction) =>
     api.post(`/admin/fixtures/${fixtureId}/live-stats/update`, body),
 
   updateTeamStats: (fixtureId: string, body: Record<string, number | string>) =>
@@ -26,6 +26,9 @@ export const liveMatchApi = {
 
   updateGoal: (fixtureId: string, goalId: string, body: { teamId: string; scorerId: string; assistId?: string | null; minute: number; isOwnGoal: boolean; isPenalty: boolean } & Correction) =>
     api.patch(`/admin/fixtures/${fixtureId}/goal/${goalId}`, body),
+
+  updateCard: (fixtureId: string, cardId: string, body: { teamId: string; playerId: string; type: "YELLOW" | "SECOND_YELLOW" | "RED"; minute: number } & Correction) =>
+    api.patch(`/admin/fixtures/${fixtureId}/card/${cardId}`, body),
 
   addSubstitution: (fixtureId: string, body: { teamId: string; playerOffId: string; playerOnId: string; minute: number } & Correction) =>
     api.post(`/admin/fixtures/${fixtureId}/substitution`, body),

@@ -172,6 +172,7 @@ router.post("/fixtures/:id/live-stats/reset-clock", authorize("SUPER_ADMIN", "LE
 router.post("/fixtures/:id/goal", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.addGoal);
 router.post("/fixtures/:id/awarded-goal", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.addAwardedGoal);
 router.patch("/fixtures/:id/goal/:goalId", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.updateGoal);
+router.patch("/fixtures/:id/card/:cardId", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.updateCard);
 router.post("/fixtures/:id/goal/remove", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.removeGoal);
 router.patch("/fixtures/:id/match-rating", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.setMatchRating);
 router.patch("/fixtures/:id/man-of-the-match", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.setManOfTheMatch);

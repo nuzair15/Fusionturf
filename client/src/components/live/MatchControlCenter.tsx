@@ -21,6 +21,7 @@ import { PlayerStatsDialog, type PlayerStatType } from "./PlayerStatsDialog";
 import { ManOfTheMatchDialog } from "./ManOfTheMatchDialog";
 import { AwardedGoalDialog } from "./AwardedGoalDialog";
 import { EditGoalDialog, type GoalUpdatePayload } from "./EditGoalDialog";
+import { EditCardDialog, type CardUpdatePayload } from "./EditCardDialog";
 import type { MatchStatus } from "@/types";
 import { eventMinuteFromClock } from "@/lib/matchClock";
 
@@ -53,6 +54,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
   const [viewingEvent, setViewingEvent] = useState<TimelineEvent | null>(null);
   const [editingPlayer, setEditingPlayer] = useState<{ playerId: string; teamId: string } | null>(null);
   const [editingGoal, setEditingGoal] = useState<TimelineEvent | null>(null);
+  const [editingCard, setEditingCard] = useState<TimelineEvent | null>(null);
   const [timerRunning, setTimerRunning] = useState(false);
   const [clockSeconds, setClockSeconds] = useState(0);
   const [correctionReason, setCorrectionReason] = useState("");
@@ -253,15 +255,24 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
     return Boolean(result);
   }, [correction, fixtureId, runAction]);
 
-  const handleCard = useCallback(async (payload: { teamId: string; playerId: string; cardType: "yellow" | "red" }) => {
+  const handleCard = useCallback(async (payload: { teamId: string; playerId: string; cardType: "yellow" | "red"; minute: number }) => {
     const statType: StatType = payload.cardType === "yellow" ? "yellowCard" : "redCard";
     const label = payload.cardType === "yellow" ? "Yellow card added" : "Red card added";
-    await runAction(
-      () => liveMatchApi.updateLiveStat(fixtureId, { playerId: payload.playerId, statType, teamId: payload.teamId, action: "increment", correctionReason: correction() }),
+    const result = await runAction(
+      () => liveMatchApi.updateLiveStat(fixtureId, { playerId: payload.playerId, statType, teamId: payload.teamId, action: "increment", minute: payload.minute, correctionReason: correction() }),
       payload.cardType === "yellow" ? "Yellow card given" : "Red card given",
       { type: "card", label }
     );
-  }, [fixtureId, runAction]);
+    return Boolean(result);
+  }, [correction, fixtureId, runAction]);
+
+  const handleUpdateCard = useCallback(async (cardId: string, payload: CardUpdatePayload) => {
+    const result = await runAction(
+      () => liveMatchApi.updateCard(fixtureId, cardId, { ...payload, correctionReason: correction() }),
+      "Card updated",
+    );
+    return Boolean(result);
+  }, [correction, fixtureId, runAction]);
 
   const handleNote = useCallback(async (payload: { teamId?: string; playerId?: string; type: "VAR" | "MISSED_PENALTY"; minute: number; note?: string }) => {
     const label = payload.type === "VAR" ? "VAR review logged" : "Missed penalty logged";
@@ -372,11 +383,11 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
     const target = editingPlayer;
     if (!target) return;
     return runAction(
-      () => liveMatchApi.updateLiveStat(fixtureId, { playerId: target.playerId, statType, teamId: target.teamId, action, correctionReason: correction() }),
+      () => liveMatchApi.updateLiveStat(fixtureId, { playerId: target.playerId, statType, teamId: target.teamId, action, minute, correctionReason: correction() }),
       `${statType} ${action === "increment" ? "increased" : "decreased"}`,
       action === "increment" ? { type: statType === "goal" ? "goal" : statType === "assist" ? "assist" : "card", label: `${statType} updated` } : undefined
     );
-  }, [correction, editingPlayer, fixtureId, runAction]);
+  }, [correction, editingPlayer, fixtureId, minute, runAction]);
 
   const handleSetRating = useCallback((rating: number) => {
     const target = editingPlayer;
@@ -446,7 +457,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
         </div>
 
         <div className="mt-4 rounded-xl border bg-card/40 p-3 sm:p-4">
-          <QuickActions status={data.fixture.status} onAction={onQuickAction} disabled={busy || data.fixture.status === "COMPLETED"} />
+          <QuickActions status={data.fixture.status} onAction={onQuickAction} disabled={busy} />
         </div>
 
         {data.fixture.status === "COMPLETED" && <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 sm:p-4">
@@ -479,6 +490,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
               onView={setViewingEvent}
               onEditStats={(e) => e.player && e.teamId && setEditingPlayer({ playerId: e.player.id, teamId: e.teamId })}
               onEditGoal={setEditingGoal}
+              onEditCard={setEditingCard}
             />
           </div>
           <div className="order-3 space-y-3">
@@ -534,7 +546,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
         away={awayTeam}
         selectedId={data.fixture.manOfTheMatchId}
         onClose={() => setDialog(null)}
-        onSelect={async (playerId) => { await handleSetMotm(playerId); setDialog(null); }}
+        onSelect={async (playerId) => { const result = await handleSetMotm(playerId); if (result) setDialog(null); }}
       />
       <ConfirmationModal
         open={!!confirm}
@@ -571,6 +583,13 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
         away={awayTeam}
         onClose={() => setEditingGoal(null)}
         onConfirm={handleUpdateGoal}
+      />
+      <EditCardDialog
+        event={editingCard}
+        home={homeTeam}
+        away={awayTeam}
+        onClose={() => setEditingCard(null)}
+        onConfirm={handleUpdateCard}
       />
     </div>
   );

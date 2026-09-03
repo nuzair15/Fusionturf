@@ -171,6 +171,7 @@ export const recordMatchAppearance = async (req: Request, res: Response, next: N
       await appendMatchEvent(tx, { fixtureId: fixture.id, type: "STATE_CHANGE", minute: enteredAt, teamId, playerId, payload: { action: "APPEARANCE", isStarter: !!isStarter, correctionReason: req.body.correctionReason || null }, idempotencyKey: `appearance:${fixture.id}:${playerId}:${Date.now()}`, createdById: req.user?.userId });
       return row;
     });
+    await rebuildIfCorrected(fixture, req.body.correctionReason);
     res.status(201).json(appearance);
   } catch (error) { next(error); }
 };
@@ -214,7 +215,10 @@ export const updateLiveStat = async (req: Request, res: Response, next: NextFunc
     }
 
     const isIncrement = action === "increment";
-    const eventMinute = Math.max(0, Number(minute) || 0);
+    const eventMinute = Number(minute ?? 0);
+    if (!Number.isInteger(eventMinute) || eventMinute < 0 || eventMinute > 150) {
+      throw new AppError("Minute must be an integer between 0 and 150", 400);
+    }
 
     if (statType === "goal") {
       const existing = await prisma.goal.findFirst({ where: { fixtureId: fixture.id, playerId }, orderBy: { createdAt: "desc" } });
@@ -226,6 +230,7 @@ export const updateLiveStat = async (req: Request, res: Response, next: NextFunc
         });
         const goalCount = await prisma.goal.count({ where: { fixtureId: fixture.id, playerId } });
         await recalcScore(fixture.id);
+        await rebuildIfCorrected(fixture, req.body.correctionReason);
         res.json({ action: "added", goal, count: goalCount });
       } else {
         if (existing) {
@@ -236,6 +241,7 @@ export const updateLiveStat = async (req: Request, res: Response, next: NextFunc
         }
         const goalCount = await prisma.goal.count({ where: { fixtureId: fixture.id, playerId } });
         await recalcScore(fixture.id);
+        await rebuildIfCorrected(fixture, req.body.correctionReason);
         res.json({ action: "removed", count: goalCount });
       }
     } else if (statType === "assist") {
@@ -247,6 +253,7 @@ export const updateLiveStat = async (req: Request, res: Response, next: NextFunc
           return created;
         });
         const count = await prisma.assist.count({ where: { fixtureId: fixture.id, playerId } });
+        await rebuildIfCorrected(fixture, req.body.correctionReason);
         res.json({ action: "added", assist, count });
       } else {
         if (existing) {
@@ -256,6 +263,7 @@ export const updateLiveStat = async (req: Request, res: Response, next: NextFunc
           });
         }
         const count = await prisma.assist.count({ where: { fixtureId: fixture.id, playerId } });
+        await rebuildIfCorrected(fixture, req.body.correctionReason);
         res.json({ action: "removed", count });
       }
     } else if (statType === "yellowCard" || statType === "redCard") {
@@ -268,6 +276,7 @@ export const updateLiveStat = async (req: Request, res: Response, next: NextFunc
           return created;
         });
         const count = await prisma.card.count({ where: { fixtureId: fixture.id, playerId, type: cardType } });
+        await rebuildIfCorrected(fixture, req.body.correctionReason);
         res.json({ action: "added", card, count });
       } else {
         if (existing) {
@@ -277,6 +286,7 @@ export const updateLiveStat = async (req: Request, res: Response, next: NextFunc
           });
         }
         const count = await prisma.card.count({ where: { fixtureId: fixture.id, playerId, type: cardType } });
+        await rebuildIfCorrected(fixture, req.body.correctionReason);
         res.json({ action: "removed", count });
       }
     } else {
@@ -317,8 +327,9 @@ export const setMatchRating = async (req: Request, res: Response, next: NextFunc
 export const setManOfTheMatch = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { playerId } = req.body;
-    const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { id: true, homeTeamId: true, awayTeamId: true, manOfTheMatchId: true } });
+    const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { id: true, seasonId: true, status: true, homeTeamId: true, awayTeamId: true, manOfTheMatchId: true } });
     if (!fixture) throw new AppError("Fixture not found", 404);
+    const isCompletedCorrection = assertMutableFixture(fixture.status, req.body.correctionReason);
 
     let nextId: string | null = null;
     if (playerId) {
@@ -329,7 +340,23 @@ export const setManOfTheMatch = async (req: Request, res: Response, next: NextFu
       nextId = player.id;
     }
 
-    const updated = await prisma.fixture.update({ where: { id: fixture.id }, data: { manOfTheMatchId: nextId } });
+    const updated = await prisma.$transaction(async (tx) => {
+      const row = await tx.fixture.update({ where: { id: fixture.id }, data: { manOfTheMatchId: nextId } });
+      await appendMatchEvent(tx, {
+        fixtureId: fixture.id,
+        type: isCompletedCorrection ? "CORRECTION" : "STATE_CHANGE",
+        playerId: nextId,
+        payload: {
+          action: "MAN_OF_THE_MATCH",
+          previousPlayerId: fixture.manOfTheMatchId,
+          playerId: nextId,
+          reason: req.body.correctionReason || null,
+        },
+        idempotencyKey: `motm:${fixture.id}:${Date.now()}`,
+        createdById: req.user?.userId,
+      });
+      return row;
+    });
     res.json({ manOfTheMatchId: updated.manOfTheMatchId });
   } catch (error) {
     next(error);
@@ -474,6 +501,52 @@ export const updateGoal = async (req: Request, res: Response, next: NextFunction
   } catch (error) { next(error); }
 };
 
+export const updateCard = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id } });
+    if (!fixture) throw new AppError("Fixture not found", 404);
+    assertEventMutable(fixture.status, req.body.correctionReason);
+
+    const card = await prisma.card.findFirst({ where: { id: req.params.cardId, fixtureId: fixture.id } });
+    if (!card) throw new AppError("Card not found", 404);
+
+    const minute = Number(req.body.minute);
+    if (!Number.isInteger(minute) || minute < 0 || minute > 150) throw new AppError("Minute must be an integer between 0 and 150", 400);
+    const type = String(req.body.type || card.type);
+    if (!["YELLOW", "SECOND_YELLOW", "RED"].includes(type)) throw new AppError("Invalid card type", 400);
+
+    const playerId = String(req.body.playerId || card.playerId);
+    const player = await prisma.player.findUnique({ where: { id: playerId }, select: { id: true, teamId: true, seasonId: true, isActive: true } });
+    const teamId = String(req.body.teamId || card.teamId || player?.teamId || "");
+    if (!player || !player.isActive || player.seasonId !== fixture.seasonId || player.teamId !== teamId || ![fixture.homeTeamId, fixture.awayTeamId].includes(teamId)) {
+      throw new AppError("Player does not belong to the selected fixture team", 400);
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const row = await tx.card.update({ where: { id: card.id }, data: { playerId, teamId, type, minute } });
+      await appendMatchEvent(tx, {
+        fixtureId: fixture.id,
+        type: "CORRECTION",
+        minute,
+        teamId,
+        playerId,
+        payload: {
+          legacyType: "card",
+          legacyId: card.id,
+          before: { playerId: card.playerId, teamId: card.teamId, type: card.type, minute: card.minute },
+          after: { playerId, teamId, type, minute },
+          reason: req.body.correctionReason || null,
+        },
+        idempotencyKey: `legacy:card:${card.id}:corrected:${Date.now()}`,
+        createdById: req.user?.userId,
+      });
+      return row;
+    });
+    await rebuildIfCorrected(fixture, req.body.correctionReason);
+    res.json(updated);
+  } catch (error) { next(error); }
+};
+
 export const removeGoal = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { playerId } = req.body;
@@ -531,6 +604,7 @@ export const addSubstitution = async (req: Request, res: Response, next: NextFun
       await tx.matchAppearance.upsert({ where: { fixtureId_playerId: { fixtureId: fixture.id, playerId: playerOnId } }, create: { fixtureId: fixture.id, playerId: playerOnId, teamId, isStarter: false, enteredAt: eventMinute }, update: { enteredAt: eventMinute } });
       return created;
     });
+    await rebuildIfCorrected(fixture, req.body.correctionReason);
     res.status(201).json(sub);
   } catch (error) {
     next(error);

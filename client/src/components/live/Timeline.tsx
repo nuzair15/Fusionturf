@@ -8,7 +8,7 @@ import { TimelineCard } from "./TimelineCard";
 export const HOME_COLOR = "#22c55e";
 export const AWAY_COLOR = "#3b82f6";
 
-export function Timeline({ events, homeTeamId, awayTeamId, homeName, awayName, onDelete, onUndo, onCopy, onView, onEditStats, onEditGoal }: {
+export function Timeline({ events, homeTeamId, awayTeamId, homeName, awayName, onDelete, onUndo, onCopy, onView, onEditStats, onEditGoal, onEditCard }: {
   events: TimelineEvent[];
   homeTeamId: string;
   awayTeamId: string;
@@ -20,6 +20,7 @@ export function Timeline({ events, homeTeamId, awayTeamId, homeName, awayName, o
   onView: (event: TimelineEvent) => void;
   onEditStats?: (event: TimelineEvent) => void;
   onEditGoal?: (event: TimelineEvent) => void;
+  onEditCard?: (event: TimelineEvent) => void;
 }) {
   const [filter, setFilter] = useState<TimelineFilter>("all");
 
@@ -66,6 +67,7 @@ export function Timeline({ events, homeTeamId, awayTeamId, homeName, awayName, o
               onView={onView}
               onEditStats={onEditStats}
               onEditGoal={onEditGoal}
+              onEditCard={onEditCard}
             />
           ))}
         </AnimatePresence>

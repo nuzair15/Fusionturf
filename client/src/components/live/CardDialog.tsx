@@ -15,7 +15,7 @@ export function CardDialog({ open, cardType, home, away, minute, onClose, onConf
   away: LiveTeam;
   minute: number;
   onClose: () => void;
-  onConfirm: (payload: { teamId: string; playerId: string; cardType: "yellow" | "red" }) => void;
+  onConfirm: (payload: { teamId: string; playerId: string; cardType: "yellow" | "red"; minute: number }) => Promise<boolean> | boolean;
 }) {
   const [team, setTeam] = useState<LiveTeam | null>(null);
   const [playerId, setPlayerId] = useState<string | null>(null);
@@ -41,9 +41,11 @@ export function CardDialog({ open, cardType, home, away, minute, onClose, onConf
     if (!team || !playerId) return;
     setSubmitting(true);
     try {
-      await onConfirm({ teamId: team.id, playerId, cardType });
-      reset();
-      onClose();
+      const saved = await onConfirm({ teamId: team.id, playerId, cardType, minute });
+      if (saved) {
+        reset();
+        onClose();
+      }
     } finally {
       setSubmitting(false);
     }
@@ -70,7 +72,7 @@ export function CardDialog({ open, cardType, home, away, minute, onClose, onConf
         <>
           <div className="mb-2 flex items-center gap-2">
             <span className={cn("block h-4 w-2.5 rounded-[2px] shadow", cardColor)} />
-            <p className="text-sm font-semibold">{title} — {team.shortName || team.name}</p>
+            <p className="text-sm font-semibold">{title} — {team.shortName || team.name} — {minute}'</p>
           </div>
           <div className="relative mb-2">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

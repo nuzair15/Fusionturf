@@ -136,5 +136,6 @@ export interface TimelineEvent {
   playerOff?: LiveEventPlayer;
   note?: string;
   assistPlayer?: LiveEventPlayer;
+  cardType?: LiveCard["type"];
   createdAt?: string;
 }

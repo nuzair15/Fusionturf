@@ -32,6 +32,7 @@ export function buildTimeline(data: LiveMatchData): TimelineEvent[] {
       minute: c.minute,
       teamId: c.player.teamId,
       player: c.player,
+      cardType: c.type,
     });
   }
 

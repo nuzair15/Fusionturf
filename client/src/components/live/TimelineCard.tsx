@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import type { TimelineEvent } from "@/types/live";
 import { eventKindLabel } from "@/lib/liveTimeline";
 
-export const TimelineCard = memo(function TimelineCard({ event, stripColor, teamName, onDelete, onUndo, onCopy, onView, onEditStats, onEditGoal }: {
+export const TimelineCard = memo(function TimelineCard({ event, stripColor, teamName, onDelete, onUndo, onCopy, onView, onEditStats, onEditGoal, onEditCard }: {
   event: TimelineEvent;
   stripColor?: string;
   teamName?: string;
@@ -15,6 +15,7 @@ export const TimelineCard = memo(function TimelineCard({ event, stripColor, team
   onView: (event: TimelineEvent) => void;
   onEditStats?: (event: TimelineEvent) => void;
   onEditGoal?: (event: TimelineEvent) => void;
+  onEditCard?: (event: TimelineEvent) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -50,7 +51,8 @@ export const TimelineCard = memo(function TimelineCard({ event, stripColor, team
   const menuItems = [
     { label: "View Details", icon: <Eye className="h-3.5 w-3.5" />, onClick: () => onView(event) },
     ...(onEditGoal && event.player && isGoal ? [{ label: "Edit Goal", icon: <Pencil className="h-3.5 w-3.5" />, onClick: () => { setMenuOpen(false); onEditGoal(event); } }] : []),
-    ...(onEditStats && event.player && !isGoal ? [{ label: "Edit Player Stats", icon: <Pencil className="h-3.5 w-3.5" />, onClick: () => { setMenuOpen(false); onEditStats(event); } }] : []),
+    ...(onEditCard && event.player && isCard ? [{ label: "Edit Card", icon: <Pencil className="h-3.5 w-3.5" />, onClick: () => { setMenuOpen(false); onEditCard(event); } }] : []),
+    ...(onEditStats && event.player && !isGoal && !isCard ? [{ label: "Edit Player Stats", icon: <Pencil className="h-3.5 w-3.5" />, onClick: () => { setMenuOpen(false); onEditStats(event); } }] : []),
     { label: "Undo", icon: <Undo2 className="h-3.5 w-3.5" />, onClick: () => { setMenuOpen(false); onUndo(event); } },
     { label: "Delete", icon: <Trash2 className="h-3.5 w-3.5" />, onClick: () => { setMenuOpen(false); onDelete(event); } },
     { label: "Copy", icon: <Copy className="h-3.5 w-3.5" />, onClick: () => { setMenuOpen(false); onCopy(event); } },
