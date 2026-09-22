@@ -111,6 +111,8 @@ If Blueprint doesn't work, create three resources manually:
 
 ## Deploy to a small EC2 instance
 
+For the existing PM2 deployment, use [EC2_RELEASE.md](EC2_RELEASE.md). The Docker Compose instructions below apply only to a separate Compose deployment.
+
 This repo also ships `docker-compose.prod.yml`, tuned to run comfortably on
 a small single instance (e.g. a 1GB `t3.micro`/`t4g.micro`) alongside
 Postgres on the same box:
