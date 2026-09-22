@@ -17,7 +17,7 @@ When the checkout matches, run this block. The database connection must be avail
 
 ```bash
 set -euo pipefail
-umask 077
+umask 022
 cd /opt/fusionturf
 git status --short
 git pull --ff-only origin main
@@ -33,9 +33,9 @@ npm run build:server
 npm ci --include=dev --prefix client
 ( cd server && node -r dotenv/config -e 'const u = new URL(process.env.DATABASE_URL); console.log(`Database target: ${u.hostname}:${u.port || "5432"}${u.pathname}`)' )
 
-mkdir -p ../fusion-league-backups
-SEASON_BACKUP="$(pwd)/../fusion-league-backups/fusion_league_$(date -u +%Y%m%dT%H%M%SZ).dump"
-( cd server && node scripts/backup-database.mjs "$SEASON_BACKUP" )
+install -d -m 700 "$HOME/fusion-league-backups"
+SEASON_BACKUP="$HOME/fusion-league-backups/fusion_league_$(date -u +%Y%m%dT%H%M%SZ).dump"
+( umask 077; cd server && node scripts/backup-database.mjs "$SEASON_BACKUP" )
 pg_restore --list "$SEASON_BACKUP" > /dev/null
 ```
 
@@ -43,18 +43,20 @@ Read the `Database target` line and confirm it names the production database use
 
 ```bash
 set -euo pipefail
+umask 022
 cd /opt/fusionturf
 test -f server/package.json
 npm run db:migrate --prefix server
 pm2 restart fusionturf-api --update-env
+curl -fsS --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:5000/api/league/seasons -o /dev/null
 pm2 describe fusionturf-api
 pm2 logs fusionturf-api --lines 80 --nostream
 
-FRONTEND_STAGE="$(pwd)/../fusion-league-builds/client-$(git rev-parse --short HEAD)-$(date -u +%Y%m%dT%H%M%SZ)"
+FRONTEND_STAGE="$HOME/fusion-league-builds/client-$(git rev-parse --short HEAD)-$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$(dirname "$FRONTEND_STAGE")"
 npm run build --prefix client -- --outDir "$FRONTEND_STAGE"
-rsync -a --exclude=index.html "$FRONTEND_STAGE"/ client/dist/
-cp "$FRONTEND_STAGE/index.html" client/dist/index.html.new
+rsync -a --chmod=D755,F644 --exclude=index.html "$FRONTEND_STAGE"/ client/dist/
+install -m 644 "$FRONTEND_STAGE/index.html" client/dist/index.html.new
 mv -f client/dist/index.html.new client/dist/index.html
 ```
 
