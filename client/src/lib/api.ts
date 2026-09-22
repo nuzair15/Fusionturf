@@ -70,7 +70,12 @@ class ApiClient {
           window.dispatchEvent(new CustomEvent("fusion-auth-expired"));
         }
 
-        window.dispatchEvent(new CustomEvent("fusion-api-error", { detail: { message } }));
+        // The startup session check may receive 401 when a visitor's saved
+        // session has expired. AuthProvider clears that session; a public page
+        // should not show a global error notice for this background check.
+        if (!(path === "/auth/me" && response.status === 401)) {
+          window.dispatchEvent(new CustomEvent("fusion-api-error", { detail: { message } }));
+        }
         throw new Error(message);
       }
 
