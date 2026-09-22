@@ -194,7 +194,7 @@ export function AdminPage() {
     }
   };
 
-  const tabEnabled = (...tabs: string[]) => unlocked && tabs.includes(activeTab);
+  const tabEnabled = (...tabs: string[]) => unlocked && allowedTabs.has(activeTab) && tabs.includes(activeTab);
 
   const { data: dashboard, isLoading: dashboardLoading } = useQuery({ queryKey: ["admin-dashboard"], queryFn: () => api.get<DashboardStats>("/admin/dashboard"), enabled: tabEnabled("overview"), retry: 1, staleTime: 30000 });
 
@@ -260,9 +260,9 @@ export function AdminPage() {
 
   const { data: news } = useQuery({ queryKey: ["admin-news", newsSearch], queryFn: () => api.get<PaginatedResponse<News>>("/admin/news", { limit: "100", ...(newsSearch ? { search: newsSearch } : {}) }), enabled: tabEnabled("news") });
 
-  const { data: venues } = useQuery({ queryKey: ["admin-venues"], queryFn: () => api.get<{ data: Venue[] }>("/admin/venues"), enabled: tabEnabled("venues") });
+  const { data: venues } = useQuery({ queryKey: ["admin-venues"], queryFn: () => api.get<{ data: Venue[] }>("/admin/venues"), enabled: tabEnabled("venues", "calendar") });
 
-  const { data: settings } = useQuery({ queryKey: ["admin-settings"], queryFn: () => api.get<Record<string, string>>("/admin/settings"), enabled: unlocked });
+  const { data: settings } = useQuery({ queryKey: ["admin-settings"], queryFn: () => api.get<Record<string, string>>("/admin/settings"), enabled: tabEnabled("settings") });
 
   const { data: sponsors } = useQuery({ queryKey: ["admin-sponsors", sponsorSearch], queryFn: () => api.get<{ data: Sponsor[] }>("/admin/sponsors", { ...(sponsorSearch ? { search: sponsorSearch } : {}) }), enabled: tabEnabled("sponsors") });
 

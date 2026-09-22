@@ -11,7 +11,7 @@ const links = [
 export function BottomNav() {
   const { pathname } = useLocation();
   const { user } = useAuth();
-  const isAdmin = user && ["SUPER_ADMIN", "LEAGUE_ADMIN", "BOOKING_MANAGER"].includes(user.role);
+  const isAdmin = user && ["SUPER_ADMIN", "LEAGUE_ADMIN", "BOOKING_MANAGER", "BOOKING_ADMIN"].includes(user.role);
 
   if (pathname.startsWith("/admin")) return null;
 

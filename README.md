@@ -68,7 +68,14 @@ npm run dev
 
 ### Admin access
 
-Admin access is password-only. Set `ADMIN_PANEL_PASSWORD` in `server/.env`; no default production password is provided.
+Admin access uses individual staff accounts. To add a bookings-only account, configure `DATABASE_URL`, `BOOKING_ADMIN_EMAIL`, and `BOOKING_ADMIN_PASSWORD` in the server environment, then run these commands from `server/` after deploying the code:
+
+```sh
+npm run db:migrate
+npm run booking-admin:provision
+```
+
+The account can manage bookings, view the booking calendar and analytics, and read venues for the calendar. It cannot change venues, coupons, users, or league data. The provisioning command will refuse to change an existing account. Sign in at `/auth`, then open `/admin`; privileged accounts must enroll an authenticator on first sign-in when MFA is enabled.
 
 ## Deploy to Render
 

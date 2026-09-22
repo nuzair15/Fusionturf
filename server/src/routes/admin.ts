@@ -24,7 +24,7 @@ const liveStatsReadLimit = rateLimit({
 
 // All admin routes require authentication and admin role
 router.use(authenticate);
-router.use(authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "BOOKING_MANAGER", "CONTENT_EDITOR", "STATISTICIAN", "REFEREE", "VIEWER"));
+router.use(authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "BOOKING_MANAGER", "BOOKING_ADMIN", "CONTENT_EDITOR", "STATISTICIAN", "REFEREE", "VIEWER"));
 router.use(activityLogger);
 router.use(seasonWriteGuard);
 
@@ -137,16 +137,16 @@ router.get("/users", authorize("SUPER_ADMIN"), admin.getUsers);
 router.patch("/users/:id/role", authorize("SUPER_ADMIN"), admin.updateUserRole);
 
 // Booking Admin
-router.get("/bookings", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), bookingAdmin.adminGetAllBookings);
-router.post("/bookings/block-date", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), bookingAdmin.adminBlockDate);
-router.patch("/bookings/:id/status", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), bookingAdmin.adminUpdateBookingStatus);
-router.patch("/bookings/:id/payment", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), bookingAdmin.adminMarkBookingPaid);
-router.patch("/bookings/:id/refund", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), bookingAdmin.adminRefundBooking);
-router.patch("/bookings/:id/discount", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), bookingAdmin.adminUpdateBookingDiscount);
-router.patch("/bookings/:id", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), bookingAdmin.adminUpdateBooking);
+router.get("/bookings", authorize("SUPER_ADMIN", "BOOKING_MANAGER", "BOOKING_ADMIN"), bookingAdmin.adminGetAllBookings);
+router.post("/bookings/block-date", authorize("SUPER_ADMIN", "BOOKING_MANAGER", "BOOKING_ADMIN"), bookingAdmin.adminBlockDate);
+router.patch("/bookings/:id/status", authorize("SUPER_ADMIN", "BOOKING_MANAGER", "BOOKING_ADMIN"), bookingAdmin.adminUpdateBookingStatus);
+router.patch("/bookings/:id/payment", authorize("SUPER_ADMIN", "BOOKING_MANAGER", "BOOKING_ADMIN"), bookingAdmin.adminMarkBookingPaid);
+router.patch("/bookings/:id/refund", authorize("SUPER_ADMIN", "BOOKING_MANAGER", "BOOKING_ADMIN"), bookingAdmin.adminRefundBooking);
+router.patch("/bookings/:id/discount", authorize("SUPER_ADMIN", "BOOKING_MANAGER", "BOOKING_ADMIN"), bookingAdmin.adminUpdateBookingDiscount);
+router.patch("/bookings/:id", authorize("SUPER_ADMIN", "BOOKING_MANAGER", "BOOKING_ADMIN"), bookingAdmin.adminUpdateBooking);
 
 // Venue Management
-router.get("/venues", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), admin.getVenues);
+router.get("/venues", authorize("SUPER_ADMIN", "BOOKING_MANAGER", "BOOKING_ADMIN"), admin.getVenues);
 router.post("/venues", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), admin.createVenue);
 router.patch("/venues/:id", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), admin.updateVenue);
 router.delete("/venues/:id", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), admin.deleteVenue);
@@ -192,7 +192,7 @@ router.post("/fixtures/:id/appearance", authorize("SUPER_ADMIN", "LEAGUE_ADMIN",
 router.post("/fixtures/:id/shot", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.recordMatchShot);
 
 // Global Search
-router.get("/search", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "BOOKING_MANAGER", "CONTENT_EDITOR", "STATISTICIAN", "REFEREE", "VIEWER"), admin.adminSearch);
+router.get("/search", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "BOOKING_MANAGER", "BOOKING_ADMIN", "CONTENT_EDITOR", "STATISTICIAN", "REFEREE", "VIEWER"), admin.adminSearch);
 
 // Suspensions
 router.get("/suspensions", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN", "REFEREE", "VIEWER"), admin.adminGetSuspensions);

@@ -48,6 +48,7 @@ export const ADMIN_ROLE_TABS: Record<string, string[]> = {
   SUPER_ADMIN: ADMIN_TABS.map((tab) => tab.id),
   LEAGUE_ADMIN: ["seasons", "competitions", "fixtures", "teams", "players", "player-stats", "awards", "suspensions", "recycle-bin", "gallery", "sponsors", "news"],
   BOOKING_MANAGER: ["overview", "bookings", "calendar", "analytics", "venues", "coupons", "reviews"],
+  BOOKING_ADMIN: ["bookings", "calendar", "analytics"],
   CONTENT_EDITOR: ["news", "gallery", "sponsors", "ads", "faqs"],
   STATISTICIAN: ["seasons", "fixtures", "teams", "players", "player-stats", "awards", "suspensions"],
   REFEREE: ["seasons", "fixtures", "teams", "players", "suspensions"],

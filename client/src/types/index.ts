@@ -13,7 +13,7 @@ export interface User {
   createdAt: string;
 }
 
-export type UserRole = "SUPER_ADMIN" | "LEAGUE_ADMIN" | "BOOKING_MANAGER" | "CONTENT_EDITOR" | "REFEREE" | "STATISTICIAN" | "VIEWER" | "CUSTOMER";
+export type UserRole = "SUPER_ADMIN" | "LEAGUE_ADMIN" | "BOOKING_MANAGER" | "BOOKING_ADMIN" | "CONTENT_EDITOR" | "REFEREE" | "STATISTICIAN" | "VIEWER" | "CUSTOMER";
 
 export interface Season {
   lifecycle?: "DRAFT" | "ACTIVE" | "COMPLETED";

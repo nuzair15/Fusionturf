@@ -719,7 +719,7 @@ export const voteForAward = async (req: Request, res: Response, next: NextFuncti
     if (["ONCE_PER_DEVICE", "MULTIPLE"].includes(award.voteFrequency)) {
       throw new AppError("This voting frequency is not currently supported", 409, "VOTING_MODE_UNAVAILABLE");
     }
-    if (award.votingType === "ADMIN_ONLY" && req.user.role === "CUSTOMER") {
+    if (award.votingType === "ADMIN_ONLY" && ["CUSTOMER", "BOOKING_ADMIN"].includes(req.user.role)) {
       throw new AppError("Only admins can vote", 403);
     }
 

@@ -13,7 +13,7 @@ import { localNow } from "../../utils/time.js";
 
 
 const VALID_USER_ROLES = [
-  "SUPER_ADMIN", "LEAGUE_ADMIN", "BOOKING_MANAGER", "CONTENT_EDITOR",
+  "SUPER_ADMIN", "LEAGUE_ADMIN", "BOOKING_MANAGER", "BOOKING_ADMIN", "CONTENT_EDITOR",
   "REFEREE", "STATISTICIAN", "VIEWER", "CUSTOMER",
 ] as const;
 
@@ -243,7 +243,7 @@ export const adminSearch = async (req: Request, res: Response, next: NextFunctio
     const q = String(req.query.q || "").trim();
     if (!q) return res.json({ data: [] });
     const role = req.user?.role;
-    const canReadBookings = role === "SUPER_ADMIN" || role === "BOOKING_MANAGER";
+    const canReadBookings = role === "SUPER_ADMIN" || role === "BOOKING_MANAGER" || role === "BOOKING_ADMIN";
     const canReadUsers = role === "SUPER_ADMIN";
     const canReadFootball = ["SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN", "REFEREE", "VIEWER"].includes(role || "");
     const canReadContent = ["SUPER_ADMIN", "LEAGUE_ADMIN", "CONTENT_EDITOR", "VIEWER"].includes(role || "");

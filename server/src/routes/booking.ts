@@ -36,9 +36,9 @@ router.get("/my", authenticate, getMyBookings);
 router.patch("/:id/cancel", authenticate, cancelBooking);
 
 // Admin
-router.get("/admin", authenticate, authorize("SUPER_ADMIN", "BOOKING_MANAGER", "LEAGUE_ADMIN"), adminGetAllBookings);
-router.post("/block-date", authenticate, authorize("SUPER_ADMIN", "BOOKING_MANAGER"), adminBlockDate);
-router.get("/analytics/revenue", authenticate, authorize("SUPER_ADMIN", "BOOKING_MANAGER"), adminRevenueAnalytics);
-router.get("/calendar", authenticate, authorize("SUPER_ADMIN", "BOOKING_MANAGER"), getCalendarBookings);
+router.get("/admin", authenticate, authorize("SUPER_ADMIN", "BOOKING_MANAGER", "BOOKING_ADMIN", "LEAGUE_ADMIN"), adminGetAllBookings);
+router.post("/block-date", authenticate, authorize("SUPER_ADMIN", "BOOKING_MANAGER", "BOOKING_ADMIN"), adminBlockDate);
+router.get("/analytics/revenue", authenticate, authorize("SUPER_ADMIN", "BOOKING_MANAGER", "BOOKING_ADMIN"), adminRevenueAnalytics);
+router.get("/calendar", authenticate, authorize("SUPER_ADMIN", "BOOKING_MANAGER", "BOOKING_ADMIN"), getCalendarBookings);
 
 export default router;
