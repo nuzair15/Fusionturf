@@ -25,12 +25,12 @@ git rev-parse --short HEAD
 test -f server/.env || test -n "${DATABASE_URL:-}"
 command -v pg_dump
 command -v pg_restore
+command -v rsync
 
 npm ci --include=dev --prefix server
 npm run db:generate --prefix server
 npm run build:server
 npm ci --include=dev --prefix client
-npm run build:client
 ( cd server && node -r dotenv/config -e 'const u = new URL(process.env.DATABASE_URL); console.log(`Database target: ${u.hostname}:${u.port || "5432"}${u.pathname}`)' )
 
 mkdir -p ../fusion-league-backups
@@ -46,11 +46,18 @@ npm run db:migrate --prefix server
 pm2 restart fusionturf-api --update-env
 pm2 describe fusionturf-api
 pm2 logs fusionturf-api --lines 80 --nostream
+
+FRONTEND_STAGE="$(pwd)/../fusion-league-builds/client-$(git rev-parse --short HEAD)-$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "$(dirname "$FRONTEND_STAGE")"
+npm run build --prefix client -- --outDir "$FRONTEND_STAGE"
+rsync -a --exclude=index.html "$FRONTEND_STAGE"/ client/dist/
+cp "$FRONTEND_STAGE/index.html" client/dist/index.html.new
+mv -f client/dist/index.html.new client/dist/index.html
 ```
 
 The backup helper reads `DATABASE_URL` without printing it or passing its password as a `pg_dump` command argument. The `pg_dump` client must be compatible with the PostgreSQL server version; if the backup or its `pg_restore --list` check fails, the migration does not run because of `set -e`. `prisma migrate deploy` applies pending migrations and does not seed or reset data. [Prisma's migration documentation](https://docs.prisma.io/docs/orm/prisma-client/deployment/deploy-database-changes-with-prisma-migrate) describes this production command; [PM2's CLI reference](https://pm2.io/docs/runtime/reference/pm2-cli/) documents `restart --update-env`.
 
-The built frontend is already in Nginx's `/opt/fusionturf/client/dist` root. No Nginx reload or frontend PM2 restart is needed. Check the configuration and public routes after the API restart:
+The frontend is built outside Nginx's live `/opt/fusionturf/client/dist` root. Its assets are copied first, then `index.html` is replaced by a single rename so the live site is not cleared during the build. No Nginx reload or frontend PM2 restart is needed. Check the configuration and public routes after publication:
 
 `VITE_API_URL` is baked into the frontend build. Preserve the production value already supplied by the EC2 environment or `client/.env.production`, and confirm it points to the existing API route. Preserve `CORS_ORIGIN`, `FRONTEND_URL`, and `CLOUDINARY_*` in the API's environment; the new team-banner upload uses the existing Cloudinary integration. Check the public site and API after the frontend is published:
 
