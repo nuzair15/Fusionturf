@@ -39,9 +39,12 @@ SEASON_BACKUP="$(pwd)/../fusion-league-backups/fusion_league_$(date -u +%Y%m%dT%
 pg_restore --list "$SEASON_BACKUP" > /dev/null
 ```
 
-Read the `Database target` line and confirm it names the production database used by PM2. Confirm the backup path exists and is nonempty. Then apply the migration and restart the existing API process:
+Read the `Database target` line and confirm it names the production database used by PM2. Confirm the backup path exists and is nonempty. Run the next block in the same SSH shell; it still resets the working directory and error handling so a later paste from `~` cannot run npm in `/home/ubuntu`:
 
 ```bash
+set -euo pipefail
+cd /opt/fusionturf
+test -f server/package.json
 npm run db:migrate --prefix server
 pm2 restart fusionturf-api --update-env
 pm2 describe fusionturf-api
