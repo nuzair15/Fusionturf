@@ -220,6 +220,18 @@ export const updateFixtureStatus = async (req: Request, res: Response, next: Nex
     if (!canTransitionMatch(fixture.status, status)) {
       throw new AppError(`Cannot move a fixture from ${fixture.status} to ${status}`, 409, "ILLEGAL_MATCH_STATE");
     }
+    if (status === "LIVE" && fixture.status === "SCHEDULED") {
+      const lineups = await prisma.lineup.findMany({ where: { fixtureId: fixture.id }, select: { playerId: true, teamId: true } });
+      if (lineups.length) {
+        for (const entry of lineups) await assertPlayerEligibility(fixture, entry.playerId, entry.teamId);
+      } else {
+        const squad = await prisma.matchdaySquadEntry.findMany({
+          where: { squad: { fixtureId: fixture.id } },
+          select: { playerId: true, squad: { select: { teamId: true } } },
+        });
+        for (const entry of squad) await assertPlayerEligibility(fixture, entry.playerId, entry.squad.teamId);
+      }
+    }
     const now = new Date();
     if (status === "COMPLETED") {
       if (fixture.homeScore === null || fixture.awayScore === null) throw new AppError("Completed fixtures require scores", 400);
@@ -464,6 +476,30 @@ export const restoreFixture = async (req: Request, res: Response, next: NextFunc
 };
 
 // ─── Fixture Lineups ───
+
+export const getFixtureLineupEligibility = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const fixture = await prisma.fixture.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, seasonId: true, competitionId: true, homeTeamId: true, awayTeamId: true, status: true },
+    });
+    if (!fixture) throw new AppError("Fixture not found", 404);
+
+    const suspensions = fixture.status === "COMPLETED" ? [] : await prisma.suspension.findMany({
+      where: {
+        seasonId: fixture.seasonId,
+        isActive: true,
+        deletedAt: null,
+        player: { teamId: { in: [fixture.homeTeamId, fixture.awayTeamId] }, deletedAt: null },
+        OR: [{ competitionId: null }, { competitionId: fixture.competitionId }],
+      },
+      select: { playerId: true, reason: true, matchBan: true, served: true, competitionId: true },
+    });
+    res.json({ suspensions });
+  } catch (error) {
+    next(error);
+  }
+};
 
 interface LineupEntryInput {
   playerId: string;

@@ -8,6 +8,7 @@ import { appendMatchEvent } from "./match-events.js";
 import { fixtureScheduleFields } from "../utils/fixtures.js";
 import { rankStandings } from "../utils/standings.js";
 import { syncFixtureBooking } from "./fixture-bookings.js";
+import { consecutiveYellowMilestone } from "./yellow-suspension.js";
 
 const TEAM_COUNT = 6;
 const MATCHES_PER_PAIR = 2;
@@ -932,7 +933,10 @@ export async function selectMatchdaySquad(fixtureId: string, teamId: string, pla
   if (starters !== 6 || substitutes !== 2) throw new AppError("Matchday squad must contain 6 starters and 2 substitutes", 400);
 
   const activeSuspensions = await prisma.suspension.findMany({
-    where: { playerId: { in: playerIds }, isActive: true, seasonId: fixture.seasonId },
+    where: {
+      playerId: { in: playerIds }, isActive: true, deletedAt: null, seasonId: fixture.seasonId,
+      OR: [{ competitionId: null }, { competitionId: fixture.competitionId }],
+    },
   });
   if (activeSuspensions.length > 0) {
     throw new AppError(`Suspended players cannot be selected: ${activeSuspensions.map((s) => s.playerId).join(", ")}`, 400);
@@ -977,16 +981,18 @@ export async function processSuspensions(fixtureId: string): Promise<void> {
     }
   }
 
-  await checkYellowCardAccumulation(fixtureId);
+  await checkConsecutiveYellowCards(fixtureId);
 }
 
-async function checkYellowCardAccumulation(fixtureId: string): Promise<void> {
+async function checkConsecutiveYellowCards(fixtureId: string): Promise<void> {
   const fixture = await prisma.fixture.findUnique({
     where: { id: fixtureId },
     select: {
       seasonId: true,
       competitionId: true,
       isFriendly: true,
+      homeTeamId: true,
+      awayTeamId: true,
       competition: { select: { type: true, ruleSets: { where: { isActive: true }, orderBy: { version: "desc" }, take: 1 } } },
     },
   });
@@ -995,29 +1001,28 @@ async function checkYellowCardAccumulation(fixtureId: string): Promise<void> {
 
   const threshold = fixture.competition?.ruleSets[0]?.yellowCardThreshold ?? 2;
   const matchBan = fixture.competition?.ruleSets[0]?.yellowSuspensionMatches ?? 1;
-  const allCards = await prisma.card.findMany({
-    where: {
-      player: { seasonId: fixture.seasonId },
-      fixture: {
+  const cards = await prisma.card.findMany({
+    where: { fixtureId, type: "YELLOW" },
+    select: { playerId: true, teamId: true, player: { select: { teamId: true } } },
+  });
+  const teamByPlayer = new Map(cards.map((card) => [card.playerId, card.teamId || card.player.teamId]));
+
+  for (const [playerId, teamId] of teamByPlayer) {
+    if (!teamId || ![fixture.homeTeamId, fixture.awayTeamId].includes(teamId)) continue;
+    const teamFixtures = await prisma.fixture.findMany({
+      where: {
         seasonId: fixture.seasonId,
         competitionId: fixture.competitionId,
         deletedAt: null,
         status: "COMPLETED",
         isFriendly: false,
+        OR: [{ homeTeamId: teamId }, { awayTeamId: teamId }],
       },
-      type: "YELLOW",
-    },
-    select: { playerId: true },
-  });
-
-  const yellowCounts: Record<string, number> = {};
-  for (const c of allCards) {
-    yellowCounts[c.playerId] = (yellowCounts[c.playerId] || 0) + 1;
-  }
-
-  for (const [playerId, count] of Object.entries(yellowCounts)) {
-    const milestone = Math.floor(count / threshold) * threshold;
-    if (milestone > 0) {
+      select: { id: true, cards: { where: { playerId, type: "YELLOW" }, select: { id: true } } },
+      orderBy: [{ matchDate: "asc" }, { kickoffAt: "asc" }, { id: "asc" }],
+    });
+    const milestone = consecutiveYellowMilestone(teamFixtures, fixtureId, threshold);
+    if (milestone !== null && matchBan > 0) {
       const existing = await prisma.suspension.findFirst({
         where: { playerId, seasonId: fixture.seasonId, competitionId: fixture.competitionId, reason: "YELLOW_ACCUMULATION", milestone, deletedAt: null },
       });

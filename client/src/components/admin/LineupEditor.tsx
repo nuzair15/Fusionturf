@@ -8,6 +8,7 @@ import { FormationBadge } from "@/components/league/FormationBadge";
 import { useLineup } from "@/hooks/useLineup";
 import { saveFixtureLineups } from "@/services/lineupApi";
 import { calculateFormation } from "@/lib/lineup";
+import { applySixASideFormation, SIX_A_SIDE_FORMATIONS, type SixASideFormation } from "@/lib/lineup-formations";
 import type { Fixture, Player } from "@/types";
 import type { FixtureLineupPlayer, LineupEntryInput } from "@/types/lineup";
 import { X, Trash2 } from "lucide-react";
@@ -19,6 +20,7 @@ interface TeamPanelProps {
   color: string;
   players: Player[];
   entries: LineupEntryInput[];
+  suspensions: Map<string, LineupSuspension>;
   onSetStatus: (playerId: string, status: "starter" | "sub") => void;
   onUpdate: (playerId: string, patch: Partial<LineupEntryInput>) => void;
   onRemove: (playerId: string) => void;
@@ -33,6 +35,7 @@ function TeamPanel({
   color,
   players,
   entries,
+  suspensions,
   onSetStatus,
   onUpdate,
   onRemove,
@@ -59,6 +62,8 @@ function TeamPanel({
         )}
         {players.map((player) => {
           const entry = entries.find((item) => item.playerId === player.id);
+          const suspension = suspensions.get(player.id);
+          const remaining = suspension ? Math.max(1, suspension.matchBan - suspension.served) : 0;
           const name = `${player.firstName} ${player.lastName}`.trim();
           return (
             <div key={player.id} className="rounded-lg border p-2">
@@ -66,9 +71,11 @@ function TeamPanel({
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">
                   {player.jerseyNumber ? <span className="mr-1 text-muted-foreground">#{player.jerseyNumber}</span> : null}{name}
                 </span>
-                <Button type="button" size="sm" variant={entry?.isStarter ? "default" : "outline"} className="h-8 px-2 text-xs" onClick={() => onSetStatus(player.id, "starter")}>Starter</Button>
-                <Button type="button" size="sm" variant={entry && !entry.isStarter ? "secondary" : "outline"} className="h-8 px-2 text-xs" onClick={() => onSetStatus(player.id, "sub")}>Sub</Button>
+                <Button type="button" size="sm" variant={entry?.isStarter ? "default" : "outline"} className="h-8 px-2 text-xs" disabled={!!suspension} onClick={() => onSetStatus(player.id, "starter")}>Starter</Button>
+                <Button type="button" size="sm" variant={entry && !entry.isStarter ? "secondary" : "outline"} className="h-8 px-2 text-xs" disabled={!!suspension} onClick={() => onSetStatus(player.id, "sub")}>Sub</Button>
               </div>
+
+              {suspension && <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-300" role="status">Suspended for this match: {suspensionLabel(suspension.reason)} ({remaining} match{remaining === 1 ? "" : "es"} remaining)</p>}
 
               {entry && <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
                 <label className="flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 has-[:checked]:border-primary">
@@ -111,27 +118,13 @@ function TeamPanel({
   );
 }
 
-const SIX_A_SIDE_FORMATIONS = ["2-2-1", "1-3-1", "2-1-2", "3-1-1", "1-2-2", "1-1-3", "2-3-0", "3-2-0"] as const;
-type SixASideFormation = (typeof SIX_A_SIDE_FORMATIONS)[number];
+type LineupSuspension = { playerId: string; reason: string; matchBan: number; served: number };
 
-function sixASidePositions(side: "home" | "away", formation: SixASideFormation) {
-  const home = side === "home";
-  const rowCounts: Record<SixASideFormation, number[]> = {
-    "2-2-1": [2, 2, 1], "1-3-1": [1, 3, 1], "2-1-2": [2, 1, 2],
-    "3-1-1": [3, 1, 1], "1-2-2": [1, 2, 2], "1-1-3": [1, 1, 3],
-    "2-3-0": [2, 3], "3-2-0": [3, 2],
-  };
-  const rowY: Record<SixASideFormation, number[]> = {
-    "2-2-1": [84, 72, 60], "1-3-1": [84, 72, 60], "2-1-2": [84, 71, 59],
-    "3-1-1": [84, 70, 58], "1-2-2": [84, 70, 58], "1-1-3": [84, 70, 58],
-    "2-3-0": [84, 68], "3-2-0": [84, 68],
-  };
-  const positions: Array<{ x: number; y: number; goalkeeper?: boolean }> = [{ x: 50, y: home ? 91 : 9, goalkeeper: true }];
-  rowCounts[formation].forEach((count, rowIndex) => {
-    const y = home ? rowY[formation][rowIndex] : 100 - rowY[formation][rowIndex];
-    for (let i = 0; i < count; i += 1) positions.push({ x: ((i + 1) / (count + 1)) * 100, y });
-  });
-  return positions;
+function suspensionLabel(reason: string) {
+  if (reason === "YELLOW_ACCUMULATION") return "yellow cards";
+  if (reason === "SECOND_YELLOW") return "second yellow card";
+  if (reason === "STRAIGHT_RED") return "red card";
+  return reason.toLowerCase().replace(/_/g, " ");
 }
 
 export function LineupEditor({ fixture, onClose, onSaved }: {
@@ -144,6 +137,11 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
   const awayColor = "#38bdf8";
 
   const { data: lineups, isLoading: lineupsLoading } = useLineup(fixture.id);
+  const { data: eligibility, isLoading: eligibilityLoading } = useQuery({
+    queryKey: ["fixture-lineup-eligibility", fixture.id],
+    queryFn: () => api.get<{ suspensions: LineupSuspension[] }>(`/admin/fixtures/${fixture.id}/lineup-eligibility`),
+    staleTime: 0,
+  });
 
   const { data: homePlayersData } = useQuery({
     queryKey: ["admin-team-players", fixture.homeTeamId],
@@ -156,6 +154,7 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
 
   const homePlayers = homePlayersData?.data || [];
   const awayPlayers = awayPlayersData?.data || [];
+  const suspensions = useMemo(() => new Map((eligibility?.suspensions || []).map((item) => [item.playerId, item])), [eligibility]);
 
   const [homeEntries, setHomeEntries] = useState<LineupEntryInput[]>([]);
   const [awayEntries, setAwayEntries] = useState<LineupEntryInput[]>([]);
@@ -167,6 +166,7 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
   const [awayFormationChoice, setAwayFormationChoice] = useState<SixASideFormation>("2-2-1");
   const [selectedSwapPlayer, setSelectedSwapPlayer] = useState<string | null>(null);
   const initialized = useRef(false);
+  const suspendedSelected = [...homeEntries, ...awayEntries].filter((entry) => suspensions.has(entry.playerId));
 
   useEffect(() => {
     if (initialized.current || !lineups) return;
@@ -295,43 +295,23 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
     );
   };
 
-  const applySixASideFormation = (side: "home" | "away", formation: SixASideFormation) => {
+  const handleFormationChange = (side: "home" | "away", formation: SixASideFormation) => {
     const entries = side === "home" ? homeEntries : awayEntries;
-    const players = side === "home" ? homePlayers : awayPlayers;
     const setter = side === "home" ? setHomeEntries : setAwayEntries;
-    const positions = sixASidePositions(side, formation);
-    const selected = entries.filter((entry) => entry.isStarter).slice(0, 6);
-    const selectedIds = new Set(selected.map((entry) => entry.playerId));
-    const benchEntries = entries.filter((entry) => !entry.isStarter && !selectedIds.has(entry.playerId));
-    const added: LineupEntryInput[] = [...benchEntries, ...players.filter((player) => !selectedIds.has(player.id) && !benchEntries.some((entry) => entry.playerId === player.id)).map((player) => ({
-      playerId: player.id,
-      isStarter: true,
-      isCaptain: false,
-      isGoalkeeper: false,
-      role: null,
-      xPosition: 50,
-      yPosition: 50,
-    }))].slice(0, Math.max(0, 6 - selected.length));
-    const starters: LineupEntryInput[] = [...selected, ...added].slice(0, 6);
-    if (starters.length < 6) {
-      setError(`${side === "home" ? "Home" : "Away"} needs six players for a 6-a-side formation.`);
+    const next = applySixASideFormation(entries, side, formation);
+    if (!next) {
+      setError(`Select exactly six ${side} starters before applying a 6-a-side formation.`);
       return;
     }
-    const keeperIndex = Math.max(0, starters.findIndex((entry) => entry.isGoalkeeper));
-    const orderedStarters = keeperIndex > 0 ? [starters[keeperIndex], ...starters.filter((_, index) => index !== keeperIndex)] : starters;
-    const next = orderedStarters.map((entry, index) => ({
-      ...entry,
-      isStarter: true,
-      isGoalkeeper: index === 0,
-      role: index === 0 ? "GK" : entry.role ?? null,
-      xPosition: positions[index].x,
-      yPosition: positions[index].y,
-    }));
-    const bench = entries.filter((entry) => !next.some((starter) => starter.playerId === entry.playerId)).map((entry) => ({ ...entry, isStarter: false }));
-    setter([...next, ...bench]);
+    setError("");
+    setter(next);
   };
 
   const handleSave = async () => {
+    if (suspendedSelected.length) {
+      setError("Remove suspended players from the lineup before saving.");
+      return;
+    }
     if (fixture.status === "COMPLETED" && !correctionReason.trim()) {
       setError("Add a reason before saving a completed fixture correction.");
       return;
@@ -393,10 +373,16 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
           </div>
         )}
 
-        {lineupsLoading ? (
+        {lineupsLoading || eligibilityLoading ? (
           <div className="flex h-64 items-center justify-center text-muted-foreground">Loading lineups…</div>
         ) : (
           <>
+            {eligibility?.suspensions.length ? (
+              <div className="mb-4 rounded-lg border border-amber-400/50 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200" role="status">
+                {eligibility.suspensions.length} player{eligibility.suspensions.length === 1 ? " is" : "s are"} suspended for this fixture. They cannot be added as starters or substitutes.
+              </div>
+            ) : null}
+            {suspendedSelected.length > 0 && <p className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">Remove {suspendedSelected.length} suspended player{suspendedSelected.length === 1 ? "" : "s"} from the saved lineup before updating it.</p>}
             {/* Team headers */}
             <div className="mb-2 flex items-center justify-between gap-2">
               <div className="flex min-w-0 items-center gap-2">
@@ -425,13 +411,14 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
                 return (
                   <div key={side} className="flex items-center gap-2">
                     <span className="min-w-14 text-xs font-medium">{side === "home" ? "Home" : "Away"}</span>
-                    <Select value={choice} onChange={(e) => { const value = e.target.value as SixASideFormation; setChoice(value); applySixASideFormation(side, value); }} aria-label={`${side} 6-a-side formation`}>
+                    <Select value={choice} onChange={(e) => setChoice(e.target.value as SixASideFormation)} aria-label={`${side} 6-a-side formation`}>
                       {SIX_A_SIDE_FORMATIONS.map((formation) => <option key={formation} value={formation}>{formation}</option>)}
                     </Select>
+                    <Button type="button" size="sm" variant="outline" onClick={() => handleFormationChange(side, choice)} aria-label={`Apply ${side} formation`}>Apply</Button>
                   </div>
                 );
               })}
-              <p className="text-[11px] text-muted-foreground sm:col-span-2">Choose a shape, then drag players or tap two players to swap their positions.</p>
+              <p className="text-[11px] text-muted-foreground sm:col-span-2">Select six starters, choose a shape, then press Apply. This only moves those starters; it never adds or removes players.</p>
             </div>
 
             <FootballPitch
@@ -454,6 +441,7 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
                 color={homeColor}
                 players={homePlayers}
                 entries={homeEntries}
+                suspensions={suspensions}
                 onSetStatus={(id, status) => setPlayerStatus("home", id, status)}
                 onUpdate={(id, patch) => updateEntry("home", id, patch)}
                 onRemove={(id) => removePlayer("home", id)}
@@ -467,6 +455,7 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
                 color={awayColor}
                 players={awayPlayers}
                 entries={awayEntries}
+                suspensions={suspensions}
                 onSetStatus={(id, status) => setPlayerStatus("away", id, status)}
                 onUpdate={(id, patch) => updateEntry("away", id, patch)}
                 onRemove={(id) => removePlayer("away", id)}
@@ -477,7 +466,7 @@ export function LineupEditor({ fixture, onClose, onSaved }: {
 
             <div className="mt-4 flex items-center justify-end gap-2">
               <Button variant="ghost" onClick={onClose}>Cancel</Button>
-              <Button onClick={handleSave} disabled={saving || (fixture.status === "COMPLETED" && !correctionReason.trim())}>
+              <Button onClick={handleSave} disabled={saving || eligibilityLoading || suspendedSelected.length > 0 || (fixture.status === "COMPLETED" && !correctionReason.trim())}>
                 {saving ? "Saving…" : fixture.status === "COMPLETED" ? "Save Correction" : "Save Lineups"}
               </Button>
             </div>
