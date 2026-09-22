@@ -6,6 +6,7 @@ Connect to the EC2 host by SSH, go to the repository directory, and run this blo
 
 ```bash
 set -euo pipefail
+umask 077
 cd /path/to/Fusionturf
 git status --short
 git pull --ff-only origin main
