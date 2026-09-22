@@ -1,4 +1,4 @@
-import { MatchStatus } from "@prisma/client";
+import { MatchStatus, Prisma } from "@prisma/client";
 import prisma from "../config/database.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { legacyDateOnly, localDateTimeRange, localNow } from "../utils/time.js";
@@ -16,40 +16,41 @@ function addMinutes(time: string, minutes: number) {
   return `${String(Math.floor((total % 1440) / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
 
-async function turfForFixture(venueId?: string | null) {
+async function turfForFixture(db: Prisma.TransactionClient | typeof prisma, venueId?: string | null) {
   if (venueId) {
-    const turf = await prisma.turf.findFirst({ where: { venueId, isActive: true, deletedAt: null }, orderBy: { createdAt: "asc" }, include: { venue: { select: { timezone: true } } } });
+    const turf = await db.turf.findFirst({ where: { venueId, isActive: true, deletedAt: null }, orderBy: { createdAt: "asc" }, include: { venue: { select: { timezone: true } } } });
     if (turf) return turf;
   }
-  const turfs = await prisma.turf.findMany({ where: { isActive: true, deletedAt: null }, take: 2, orderBy: { createdAt: "asc" }, include: { venue: { select: { timezone: true } } } });
+  const turfs = await db.turf.findMany({ where: { isActive: true, deletedAt: null }, take: 2, orderBy: { createdAt: "asc" }, include: { venue: { select: { timezone: true } } } });
   if (turfs.length === 1) return turfs[0];
   if (!turfs.length) throw new AppError("Cannot reserve this fixture because there is no active turf", 409);
   throw new AppError("Cannot reserve this fixture automatically because multiple turfs are active. Assign a venue first.", 409);
 }
 
 /** Creates or updates the no-cost reservation which blocks a league match slot. */
-export async function syncFixtureBooking(fixtureId: string) {
-  const fixture = await prisma.fixture.findUnique({ where: { id: fixtureId }, select: { id: true, venueId: true, scheduledDate: true, kickoffTime: true, status: true, deletedAt: true } });
+export async function syncFixtureBooking(fixtureId: string, db: Prisma.TransactionClient | typeof prisma = prisma) {
+  const fixture = await db.fixture.findUnique({ where: { id: fixtureId }, select: { id: true, venueId: true, scheduledDate: true, kickoffTime: true, status: true, deletedAt: true, season: { select: { lifecycle: true } } } });
   if (!fixture) throw new AppError("Fixture not found", 404);
+  if (fixture.season.lifecycle === "DRAFT") return null;
   const key = reservationKey(fixture.id);
-  const existing = await prisma.booking.findUnique({ where: { idempotencyKey: key } });
+  const existing = await db.booking.findUnique({ where: { idempotencyKey: key } });
 
   // A fixture created historically does not need a retroactive customer-slot
   // reservation. Scheduled fixtures receive one at creation/backfill time.
   if (fixture.status === MatchStatus.COMPLETED && !existing) return null;
 
   if (fixture.deletedAt || fixture.status === MatchStatus.CANCELLED || fixture.status === MatchStatus.POSTPONED) {
-    if (existing) await prisma.booking.update({ where: { id: existing.id }, data: { status: "CANCELLED", blocksAvailability: false, cancellationReason: "Fixture cancelled or postponed" } });
+    if (existing) await db.booking.update({ where: { id: existing.id }, data: { status: "CANCELLED", blocksAvailability: false, cancellationReason: "Fixture cancelled or postponed" } });
     return existing;
   }
   if (!fixture.scheduledDate || !fixture.kickoffTime) throw new AppError("Fixture needs a date and kickoff time before its turf can be reserved", 409);
 
-  const turf = await turfForFixture(fixture.venueId);
+  const turf = await turfForFixture(db, fixture.venueId);
   const startTime = fixture.kickoffTime;
   const endTime = addMinutes(startTime, MATCH_DURATION_MINUTES);
   const timezone = turf.venue?.timezone || "Asia/Kolkata";
   const range = localDateTimeRange(fixture.scheduledDate, startTime, endTime, timezone);
-  const conflict = await prisma.booking.findFirst({
+  const conflict = await db.booking.findFirst({
     where: { turfId: turf.id, deletedAt: null, blocksAvailability: true, startAt: { lt: range.endAt }, endAt: { gt: range.startAt }, ...(existing ? { id: { not: existing.id } } : {}) },
     select: { bookingNumber: true },
   });
@@ -62,7 +63,7 @@ export async function syncFixtureBooking(fixtureId: string) {
     status: "CONFIRMED" as const, blocksAvailability: true,
     notes: `Automatic league match reservation for fixture ${fixture.id}`,
   };
-  return prisma.booking.upsert({ where: { idempotencyKey: key }, create: { ...data, bookingNumber: `LEAGUE-${fixture.id.slice(0, 8).toUpperCase()}`, idempotencyKey: key }, update: data });
+  return db.booking.upsert({ where: { idempotencyKey: key }, create: { ...data, bookingNumber: `LEAGUE-${fixture.id.slice(0, 8).toUpperCase()}`, idempotencyKey: key }, update: data });
 }
 
 export async function syncUpcomingFixtureBookings() {

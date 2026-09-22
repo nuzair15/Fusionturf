@@ -21,8 +21,8 @@ export class AppError extends Error {
 export const sendError = (req: Request, res: Response, status: number, code: string, message: string, details?: unknown) => {
   const v2 = (req.originalUrl || req.url || "").startsWith("/api/v2/");
   return res.status(status).json(v2
-    ? { code, message, ...(details !== undefined ? { details } : {}), requestId: res.locals.requestId }
-    : { error: message, ...(details !== undefined ? { details } : {}), requestId: res.locals.requestId });
+    ? { code, message, ...(details !== undefined ? { details } : {}), requestId: res.locals?.requestId }
+    : { error: message, ...(details !== undefined ? { details } : {}), requestId: res.locals?.requestId });
 };
 
 export const errorHandler = (err: Error, req: Request, res: Response, _next: NextFunction) => {
@@ -39,6 +39,7 @@ export const errorHandler = (err: Error, req: Request, res: Response, _next: Nex
   }
 
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    if (err.code === "P2034") return respond(409, "CONCURRENT_CHANGE", "Another administrator changed this data. Refresh and retry; a completed draft will not be duplicated.");
     if (err.code === "P2002") {
       return respond(409, "RESOURCE_EXISTS", "Resource already exists");
     }
@@ -50,7 +51,7 @@ export const errorHandler = (err: Error, req: Request, res: Response, _next: Nex
     }
   }
 
-  console.error(`Unhandled error [${res.locals.requestId || "unknown"}] ${req.method} ${req.originalUrl}:`, err);
+  console.error(`Unhandled error [${res.locals?.requestId || "unknown"}] ${req.method} ${req.originalUrl}:`, err);
 
   return respond(500, "INTERNAL_ERROR", "Internal server error");
 };

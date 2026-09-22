@@ -1,3 +1,5 @@
+import { aggregatePlayerTotals } from "../utils/player-totals.js";
+import { rebuildHistoricalPlayerStats } from "./historical-player-stats.js";
 import prisma from "../config/database.js";
 import { Prisma } from "@prisma/client";
 import { generateRoundRobinPairings, normalizeFixtureDays, planFixtureSchedule, type WeekPlan } from "../utils/roundRobin.js";
@@ -370,6 +372,7 @@ export async function createFixtureSchedulePreview(competitionId: string, rawOpt
     include: { season: true },
   });
   if (!competition) throw new AppError("Competition not found", 404);
+  if (competition.season.lifecycle === "COMPLETED") throw new AppError("Completed seasons are read-only", 409);
   if (competition.type !== "LEAGUE") throw new AppError("Round-robin schedule previews currently support league competitions", 400);
   const options = { ...rawOptions, preview: true };
   const preview = await generateSeasonFixtures(competition.seasonId, options);
@@ -444,6 +447,9 @@ export async function publishFixtureSchedulePreview(batchId: string) {
       return { batchId: batch.id, published: true, generated: await tx.fixture.count({ where: { generationBatchId: batch.id } }), collisions: [] };
     }
     if (batch.status !== "DRAFT") throw new AppError("Only a feasible draft preview can be published", 409);
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`season-roster:${batch.seasonId}`}))`;
+    const season = await tx.season.findUnique({ where: { id: batch.seasonId } });
+    if (!season || season.deletedAt || season.lifecycle === "COMPLETED") throw new AppError("The season is unavailable or completed", 409);
     if (batch.expiresAt && batch.expiresAt < new Date()) {
       await tx.fixtureGenerationBatch.update({ where: { id: batch.id }, data: { status: "EXPIRED" } });
       throw new AppError("Schedule preview has expired; create a new preview", 409);
@@ -886,6 +892,7 @@ export async function generatePostSeasonFixtures(seasonId: string): Promise<void
 }
 
 export async function openTransferWindow(seasonId: string, days: number = 7): Promise<void> {
+  if (!Number.isInteger(days) || days < 1 || days > 90) throw new AppError("Transfer window must be between 1 and 90 days", 400);
   const now = new Date();
   const end = new Date(now);
   end.setDate(end.getDate() + days);
@@ -900,130 +907,6 @@ export async function closeTransferWindow(seasonId: string): Promise<void> {
     where: { id: seasonId },
     data: { transferWindowOpen: false, transferWindowStartsAt: null, transferWindowEndsAt: null },
   });
-}
-
-export interface SeasonRolloverOptions {
-  relegatedClubId?: string;
-  promotedClubId?: string;
-}
-
-export async function createNextSeason(
-  currentSeasonId: string,
-  newSeasonName: string,
-  newStartDate: Date,
-  newEndDate: Date,
-  options: SeasonRolloverOptions = {},
-): Promise<string> {
-  if (!newSeasonName.trim() || Number.isNaN(newStartDate.getTime()) || Number.isNaN(newEndDate.getTime()) || newStartDate >= newEndDate) {
-    throw new AppError("A valid name and date range are required", 400);
-  }
-  if (!!options.relegatedClubId !== !!options.promotedClubId) {
-    throw new AppError("Relegation and promotion clubs must be supplied together", 400, "INCOMPLETE_PROMOTION");
-  }
-  const currentSeason = await prisma.season.findUnique({
-    where: { id: currentSeasonId },
-    include: {
-      teams: { where: { isActive: true, deletedAt: null }, include: { players: { where: { isActive: true, deletedAt: null } }, club: true } },
-      competitions: { where: { type: "LEAGUE", deletedAt: null }, include: { ruleSets: { where: { isActive: true }, orderBy: { version: "desc" }, take: 1 } } },
-    },
-  });
-  if (!currentSeason) throw new AppError("Current season not found", 404);
-  const slug = newSeasonName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || `season-${Date.now()}`;
-  return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`season-rollover:${currentSeasonId}`}))`;
-    await tx.season.update({ where: { id: currentSeasonId }, data: { isCurrent: false } });
-    const newSeason = await tx.season.create({ data: {
-      name: newSeasonName.trim(), slug, startDate: newStartDate, endDate: newEndDate,
-      isActive: true, isCurrent: true, leagueWeeks: currentSeason.leagueWeeks,
-      fixtureDays: currentSeason.fixtureDays, transferWindowOpen: false,
-    } });
-    const previousLeague = currentSeason.competitions[0];
-    const competition = await tx.competition.create({ data: {
-      seasonId: newSeason.id,
-      name: previousLeague?.name || `${newSeasonName} League`,
-      slug: previousLeague?.slug || "league",
-      type: "LEAGUE",
-      timezone: previousLeague?.timezone || "Asia/Kolkata",
-      isActive: true,
-    } });
-    const previousRules = previousLeague?.ruleSets[0];
-    await tx.competitionRuleSet.create({ data: {
-      competitionId: competition.id, version: 1, isActive: true,
-      ...(previousRules ? {
-        format: previousRules.format, legs: previousRules.legs, teamSize: previousRules.teamSize,
-        starterLimit: previousRules.starterLimit, substituteLimit: previousRules.substituteLimit,
-        substitutionLimit: previousRules.substitutionLimit, matchDurationMinutes: previousRules.matchDurationMinutes,
-        extraTimeEnabled: previousRules.extraTimeEnabled, extraTimeMinutes: previousRules.extraTimeMinutes,
-        penaltiesEnabled: previousRules.penaltiesEnabled, pointsForWin: previousRules.pointsForWin,
-        pointsForDraw: previousRules.pointsForDraw, pointsForLoss: previousRules.pointsForLoss,
-        tieBreakers: previousRules.tieBreakers, yellowCardThreshold: previousRules.yellowCardThreshold,
-        yellowSuspensionMatches: previousRules.yellowSuspensionMatches, suspensionScope: previousRules.suspensionScope,
-        minimumRestHours: previousRules.minimumRestHours, postseasonRules: previousRules.postseasonRules,
-      } : {}),
-    } as Prisma.CompetitionRuleSetUncheckedCreateInput });
-
-    const sourceTeams = currentSeason.teams.filter((team) => team.clubId !== options.relegatedClubId);
-    if (options.promotedClubId) {
-      const promoted = await tx.club.findFirst({ where: { id: options.promotedClubId, deletedAt: null, isActive: true } });
-      if (!promoted) throw new AppError("Promoted club not found", 404);
-      if (sourceTeams.some((team) => team.clubId === promoted.id)) throw new AppError("Promoted club already participates in this season", 409);
-      sourceTeams.push({
-        id: "", seasonId: currentSeasonId, clubId: promoted.id, club: promoted,
-        name: promoted.name, slug: promoted.slug, shortName: promoted.shortName, logoUrl: promoted.logoUrl,
-        coverUrl: promoted.coverUrl, city: promoted.city, foundedYear: promoted.foundedYear,
-        homeStadium: promoted.homeStadium, description: promoted.description, history: promoted.history,
-        achievements: promoted.achievements, website: promoted.website, socialLinks: promoted.socialLinks,
-        status: "active", isActive: true, managedById: null, createdAt: new Date(), updatedAt: new Date(),
-        deletedAt: null, deletedById: null, deleteReason: null, players: [],
-      });
-    }
-
-    for (const source of sourceTeams) {
-      const club = source.club || await tx.club.create({ data: {
-        name: source.name,
-        slug: `${source.slug}-${source.id.slice(0, 8)}`,
-        shortName: source.shortName, logoUrl: source.logoUrl, coverUrl: source.coverUrl,
-        city: source.city, foundedYear: source.foundedYear, homeStadium: source.homeStadium,
-        description: source.description, history: source.history, achievements: source.achievements ?? undefined,
-        website: source.website, socialLinks: source.socialLinks ?? undefined,
-      } });
-      const team = await tx.team.create({ data: {
-        seasonId: newSeason.id, clubId: club.id, name: club.name, slug: `${club.slug}-${slug}`,
-        shortName: club.shortName, logoUrl: club.logoUrl, coverUrl: club.coverUrl, city: club.city,
-        foundedYear: club.foundedYear, homeStadium: club.homeStadium, description: club.description,
-        isActive: true,
-      } });
-      await tx.seasonClub.create({ data: { seasonId: newSeason.id, clubId: club.id, teamId: team.id } });
-      await tx.competitionEntry.create({ data: { competitionId: competition.id, clubId: club.id, teamId: team.id } });
-
-      for (const player of source.players) {
-        let profileId = player.profileId;
-        if (!profileId) {
-          const profile = await tx.playerProfile.create({ data: {
-            slug: `${player.slug}-${player.id.slice(0, 8)}`,
-            firstName: player.firstName, lastName: player.lastName, nationality: player.nationality,
-            dateOfBirth: player.dateOfBirth, height: player.height, weight: player.weight,
-            preferredFoot: player.preferredFoot, photoUrl: player.photoUrl, biography: player.biography,
-          } });
-          profileId = profile.id;
-        }
-        const legacyPlayer = await tx.player.create({ data: {
-          seasonId: newSeason.id, teamId: team.id, profileId,
-          firstName: player.firstName, lastName: player.lastName, slug: `${player.slug}-${slug}`,
-          nationality: player.nationality, dateOfBirth: player.dateOfBirth, age: player.age,
-          height: player.height, weight: player.weight, preferredFoot: player.preferredFoot,
-          position: player.position, jerseyNumber: player.jerseyNumber, photoUrl: player.photoUrl,
-          biography: player.biography, squadType: player.squadType, isActive: true,
-        } });
-        await tx.playerRegistration.create({ data: {
-          playerProfileId: profileId, seasonId: newSeason.id, competitionId: competition.id,
-          clubId: club.id, teamId: team.id, validFrom: newStartDate,
-          jerseyNumber: legacyPlayer.jerseyNumber, position: legacyPlayer.position,
-        } });
-      }
-    }
-    return newSeason.id;
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 });
 }
 
 export async function validateSquad(teamId: string, seasonId: string): Promise<{ valid: boolean; starters: number; subs: number; reserves: number; total: number }> {
@@ -1196,181 +1079,10 @@ export async function serveSuspension(fixtureId: string): Promise<void> {
 }
 
 export async function recalculatePlayerStats(seasonId: string): Promise<void> {
-  const players = await prisma.player.findMany({ where: { seasonId, isActive: true, deletedAt: null } });
-  if (players.length === 0) {
-    await prisma.playerStat.deleteMany({ where: { seasonId } });
-    return;
-  }
-
-  const playerIds = players.map((player) => player.id);
-  const teamIds = [...new Set(players.map((player) => player.teamId).filter((id): id is string => !!id))];
-  const [goals, assists, cards, shots, fixtures, appearances, substitutions, lineups, squadEntries] = await Promise.all([
-    prisma.goal.groupBy({ by: ["playerId"], where: { playerId: { in: playerIds }, isOwnGoal: false, fixture: countedFixturesWhere(seasonId) }, _count: { _all: true } }),
-    prisma.assist.groupBy({ by: ["playerId"], where: { playerId: { in: playerIds }, fixture: countedFixturesWhere(seasonId) }, _count: { _all: true } }),
-    prisma.card.groupBy({ by: ["playerId", "type"], where: { playerId: { in: playerIds }, fixture: countedFixturesWhere(seasonId) }, _count: { _all: true } }),
-    prisma.matchShot.groupBy({ by: ["playerId", "outcome"], where: { playerId: { in: playerIds }, fixture: countedFixturesWhere(seasonId) }, _count: { _all: true } }),
-    prisma.fixture.findMany({
-      where: { ...countedFixturesWhere(seasonId), AND: [{ OR: [{ homeTeamId: { in: teamIds } }, { awayTeamId: { in: teamIds } }] }] },
-      select: { id: true, homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, homeShotsOnTarget: true, awayShotsOnTarget: true, matchClockSeconds: true },
-    }),
-    prisma.matchAppearance.findMany({ where: { playerId: { in: playerIds }, fixture: countedFixturesWhere(seasonId) }, select: { playerId: true, fixtureId: true } }),
-    prisma.substitution.findMany({ where: { fixture: countedFixturesWhere(seasonId) }, select: { fixtureId: true, playerOffId: true, playerOnId: true, minute: true } }),
-    prisma.lineup.findMany({
-      where: { fixture: countedFixturesWhere(seasonId) },
-      select: { fixtureId: true, playerId: true, teamId: true, isStarter: true, isGoalkeeper: true, role: true },
-    }),
-    prisma.matchdaySquadEntry.findMany({
-      where: { playerId: { in: playerIds }, isStarter: true, squad: { fixture: countedFixturesWhere(seasonId) } },
-      select: { playerId: true, squad: { select: { fixtureId: true } } },
-    }),
-  ]);
-
-  const goalCounts = new Map(goals.map((row) => [row.playerId, row._count._all]));
-  const assistCounts = new Map(assists.map((row) => [row.playerId, row._count._all]));
-  const cardCounts = new Map<string, { yellow: number; red: number }>();
-  for (const row of cards) {
-    const current = cardCounts.get(row.playerId) || { yellow: 0, red: 0 };
-    if (row.type === "YELLOW") current.yellow += row._count._all;
-    if (row.type === "RED" || row.type === "SECOND_YELLOW") current.red += row._count._all;
-    cardCounts.set(row.playerId, current);
-  }
-
-  const playerAppearances = new Map<string, Set<string>>();
-  const playerMinutes = new Map<string, number>();
-  for (const row of appearances) {
-    const matches = playerAppearances.get(row.playerId) || new Set<string>();
-    matches.add(row.fixtureId);
-    playerAppearances.set(row.playerId, matches);
-  }
-  for (const lineup of lineups) {
-    if (!lineup.isStarter) continue;
-    const matches = playerAppearances.get(lineup.playerId) || new Set<string>();
-    matches.add(lineup.fixtureId);
-    playerAppearances.set(lineup.playerId, matches);
-  }
-  for (const entry of squadEntries) {
-    const matches = playerAppearances.get(entry.playerId) || new Set<string>();
-    matches.add(entry.squad.fixtureId);
-    playerAppearances.set(entry.playerId, matches);
-  }
-  for (const substitution of substitutions) {
-    for (const playerId of [substitution.playerOffId, substitution.playerOnId]) {
-      const matches = playerAppearances.get(playerId) || new Set<string>();
-      matches.add(substitution.fixtureId);
-      playerAppearances.set(playerId, matches);
-    }
-  }
-
-  const fixtureDuration = new Map(fixtures.map((fixture) => [fixture.id, Math.max(1, Math.round((fixture.matchClockSeconds || 60 * 60) / 60))]));
-  const subOn = new Map(substitutions.map((sub) => [`${sub.fixtureId}:${sub.playerOnId}`, sub.minute]));
-  const subOff = new Map(substitutions.map((sub) => [`${sub.fixtureId}:${sub.playerOffId}`, sub.minute]));
-  for (const [playerId, fixtureIds] of playerAppearances) for (const fixtureId of fixtureIds) {
-    const duration = fixtureDuration.get(fixtureId) || 60;
-    const entered = subOn.get(`${fixtureId}:${playerId}`);
-    const left = subOff.get(`${fixtureId}:${playerId}`);
-    const played = entered === undefined ? Math.min(left ?? duration, duration) : Math.max(0, Math.min(left ?? duration, duration) - entered);
-    playerMinutes.set(playerId, (playerMinutes.get(playerId) || 0) + played);
-  }
-
-  const fixtureById = new Map(fixtures.map((fixture) => [fixture.id, fixture]));
-  const goalkeeperStats = new Map<string, { cleanSheets: number; conceded: number; saves: number }>();
-  for (const lineup of lineups.filter((row) => row.isGoalkeeper || row.role === "GK")) {
-    if (!playerAppearances.get(lineup.playerId)?.has(lineup.fixtureId)) continue;
-    const fixture = fixtureById.get(lineup.fixtureId);
-    if (!fixture) continue;
-    const isHomeGoalkeeper = lineup.teamId === fixture.homeTeamId;
-    const isAwayGoalkeeper = lineup.teamId === fixture.awayTeamId;
-    if (!isHomeGoalkeeper && !isAwayGoalkeeper) continue;
-    const conceded = Number(isHomeGoalkeeper ? fixture.awayScore : fixture.homeScore) || 0;
-    const shotsOnTargetAgainst = Number(isHomeGoalkeeper ? fixture.awayShotsOnTarget : fixture.homeShotsOnTarget) || 0;
-    const row = goalkeeperStats.get(lineup.playerId) || { cleanSheets: 0, conceded: 0, saves: 0 };
-    row.conceded += conceded;
-    row.saves += Math.max(0, shotsOnTargetAgainst - conceded);
-    if (conceded === 0) row.cleanSheets += 1;
-    goalkeeperStats.set(lineup.playerId, row);
-  }
-  const shotCounts = new Map<string, { shots: number; shotsOnTarget: number }>();
-  for (const shot of shots) {
-    const entry = shotCounts.get(shot.playerId) || { shots: 0, shotsOnTarget: 0 };
-    entry.shots += shot._count._all;
-    if (shot.outcome === "ON_TARGET") entry.shotsOnTarget += shot._count._all;
-    shotCounts.set(shot.playerId, entry);
-  }
-
-  await prisma.$transaction([prisma.playerStat.deleteMany({ where: { seasonId } }), ...players.filter((player) => player.teamId).map((player) => {
-    const teamId = player.teamId!;
-    const goalkeeper = goalkeeperStats.get(player.id) || { cleanSheets: 0, conceded: 0, saves: 0 };
-    const card = cardCounts.get(player.id) || { yellow: 0, red: 0 };
-    const isGoalkeeper = player.position === "GK";
-    const data = {
-      appearances: playerAppearances.get(player.id)?.size || 0,
-      minutesPlayed: playerMinutes.get(player.id) || 0,
-      goals: goalCounts.get(player.id) || 0,
-      assists: assistCounts.get(player.id) || 0,
-      shots: shotCounts.get(player.id)?.shots || 0,
-      shotsOnTarget: shotCounts.get(player.id)?.shotsOnTarget || 0,
-      yellowCards: card.yellow,
-      redCards: card.red,
-      cleanSheets: isGoalkeeper ? goalkeeper.cleanSheets : null,
-      goalsConceded: isGoalkeeper ? goalkeeper.conceded : null,
-      saves: isGoalkeeper ? goalkeeper.saves : null,
-    };
-    return prisma.playerStat.upsert({
-      where: { seasonId_playerId_teamId: { seasonId, playerId: player.id, teamId } },
-      create: { seasonId, playerId: player.id, teamId, ...data },
-      update: data,
-    });
-  })]);
+  await rebuildHistoricalPlayerStats(seasonId, false);
 }
-
-const friendlyFixturesWhere = (seasonId: string): Prisma.FixtureWhereInput => ({
-  seasonId, deletedAt: null, status: "COMPLETED", OR: [{ isFriendly: true }, { competition: { is: { type: "FRIENDLY" } } }],
-});
-
-// Friendlies deliberately live in their own table: they never feed league
-// standings, awards, competitive stats, or disciplinary accumulation.
 export async function recalculateFriendlyPlayerStats(seasonId: string): Promise<void> {
-  const [appearanceRows, lineups, squadEntries, substitutions, fixtures] = await Promise.all([
-    prisma.matchAppearance.findMany({ where: { fixture: friendlyFixturesWhere(seasonId) }, select: { playerId: true, teamId: true, fixtureId: true } }),
-    prisma.lineup.findMany({ where: { fixture: friendlyFixturesWhere(seasonId) }, select: { playerId: true, teamId: true, fixtureId: true, isStarter: true } }),
-    prisma.matchdaySquadEntry.findMany({ where: { isStarter: true, squad: { fixture: friendlyFixturesWhere(seasonId) } }, select: { playerId: true, squad: { select: { fixtureId: true, teamId: true } } } }),
-    prisma.substitution.findMany({ where: { fixture: friendlyFixturesWhere(seasonId) }, select: { fixtureId: true, teamId: true, playerOffId: true, playerOnId: true, minute: true } }),
-    prisma.fixture.findMany({ where: friendlyFixturesWhere(seasonId), select: { id: true, matchClockSeconds: true } }),
-  ]);
-  const substitutionPlayers = new Set(substitutions.flatMap((row) => [`${row.fixtureId}:${row.playerOffId}`, `${row.fixtureId}:${row.playerOnId}`]));
-  const rows = [
-    ...appearanceRows,
-    ...lineups.filter((row) => row.isStarter || substitutionPlayers.has(`${row.fixtureId}:${row.playerId}`)).map(({ playerId, teamId, fixtureId }) => ({ playerId, teamId, fixtureId })),
-    ...squadEntries.map((row) => ({ playerId: row.playerId, teamId: row.squad.teamId, fixtureId: row.squad.fixtureId })),
-    ...substitutions.flatMap((row) => row.teamId ? [
-      { playerId: row.playerOffId, teamId: row.teamId, fixtureId: row.fixtureId },
-      { playerId: row.playerOnId, teamId: row.teamId, fixtureId: row.fixtureId },
-    ] : []),
-  ];
-  const playerIds = [...new Set(rows.map((row) => row.playerId))];
-  if (!playerIds.length) {
-    await prisma.friendlyPlayerStat.deleteMany({ where: { seasonId } });
-    return;
-  }
-  const [goals, assists, cards, shots] = await Promise.all([
-    prisma.goal.groupBy({ by: ["playerId"], where: { playerId: { in: playerIds }, isOwnGoal: false, fixture: friendlyFixturesWhere(seasonId) }, _count: { _all: true } }),
-    prisma.assist.groupBy({ by: ["playerId"], where: { playerId: { in: playerIds }, fixture: friendlyFixturesWhere(seasonId) }, _count: { _all: true } }),
-    prisma.card.groupBy({ by: ["playerId", "type"], where: { playerId: { in: playerIds }, fixture: friendlyFixturesWhere(seasonId) }, _count: { _all: true } }),
-    prisma.matchShot.groupBy({ by: ["playerId", "outcome"], where: { playerId: { in: playerIds }, fixture: friendlyFixturesWhere(seasonId) }, _count: { _all: true } }),
-  ]);
-  const count = (items: typeof goals) => new Map(items.map((item) => [item.playerId, item._count._all]));
-  const goalMap = count(goals), assistMap = count(assists);
-  const shotMap = new Map<string, { shots: number; shotsOnTarget: number }>();
-  for (const shot of shots) { const entry = shotMap.get(shot.playerId) || { shots: 0, shotsOnTarget: 0 }; entry.shots += shot._count._all; if (shot.outcome === "ON_TARGET") entry.shotsOnTarget += shot._count._all; shotMap.set(shot.playerId, entry); }
-  const cardsByPlayer = new Map<string, { yellowCards: number; redCards: number }>();
-  for (const card of cards) { const entry = cardsByPlayer.get(card.playerId) || { yellowCards: 0, redCards: 0 }; if (card.type === "YELLOW") entry.yellowCards += card._count._all; else entry.redCards += card._count._all; cardsByPlayer.set(card.playerId, entry); }
-  const grouped = new Map<string, { playerId: string; teamId: string; fixtures: Set<string> }>();
-  for (const row of rows) { const key = `${row.playerId}:${row.teamId}`; const entry = grouped.get(key) || { playerId: row.playerId, teamId: row.teamId, fixtures: new Set<string>() }; entry.fixtures.add(row.fixtureId); grouped.set(key, entry); }
-  const duration = new Map(fixtures.map((fixture) => [fixture.id, Math.max(1, Math.round((fixture.matchClockSeconds || 60 * 60) / 60))]));
-  const on = new Map(substitutions.map((sub) => [`${sub.fixtureId}:${sub.playerOnId}`, sub.minute]));
-  const off = new Map(substitutions.map((sub) => [`${sub.fixtureId}:${sub.playerOffId}`, sub.minute]));
-  const minutes = (entry: { playerId: string; fixtures: Set<string> }) => [...entry.fixtures].reduce((total, fixtureId) => { const length = duration.get(fixtureId) || 60; const entered = on.get(`${fixtureId}:${entry.playerId}`); return total + (entered === undefined ? Math.min(off.get(`${fixtureId}:${entry.playerId}`) ?? length, length) : Math.max(0, Math.min(off.get(`${fixtureId}:${entry.playerId}`) ?? length, length) - entered)); }, 0);
-  await prisma.$transaction([prisma.friendlyPlayerStat.deleteMany({ where: { seasonId } }), ...[...grouped.values()].map((entry) => prisma.friendlyPlayerStat.upsert({ where: { seasonId_playerId_teamId: { seasonId, playerId: entry.playerId, teamId: entry.teamId } }, create: { seasonId, playerId: entry.playerId, teamId: entry.teamId, appearances: entry.fixtures.size, minutesPlayed: minutes(entry), goals: goalMap.get(entry.playerId) || 0, assists: assistMap.get(entry.playerId) || 0, shots: shotMap.get(entry.playerId)?.shots || 0, shotsOnTarget: shotMap.get(entry.playerId)?.shotsOnTarget || 0, ...(cardsByPlayer.get(entry.playerId) || {}) }, update: { appearances: entry.fixtures.size, minutesPlayed: minutes(entry), goals: goalMap.get(entry.playerId) || 0, assists: assistMap.get(entry.playerId) || 0, shots: shotMap.get(entry.playerId)?.shots || 0, shotsOnTarget: shotMap.get(entry.playerId)?.shotsOnTarget || 0, ...(cardsByPlayer.get(entry.playerId) || {}) } }))]);
+  await rebuildHistoricalPlayerStats(seasonId, true);
 }
 
 export async function recalculateTeamStats(seasonId: string): Promise<void> {
@@ -1403,10 +1115,10 @@ export async function recalculateTeamStats(seasonId: string): Promise<void> {
 //     leaves it alone — the season is decided for that award; recomputing
 //     over it would silently undo the admin's call.
 export async function autoDetectAwards(seasonId: string): Promise<void> {
-  const stats = await prisma.playerStat.findMany({
+  const stats = aggregatePlayerTotals(await prisma.playerStat.findMany({
     where: { seasonId },
     include: { player: true },
-  });
+  }));
 
   await autoCreateAward(seasonId, "Golden Boot", "Most goals scored", stats, (a, b) => (b.goals - a.goals) || (b.assists - a.assists));
   const goalkeeperStats = stats.filter((s) => s.player?.position === "GK");

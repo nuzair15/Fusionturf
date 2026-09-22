@@ -1,3 +1,4 @@
+import { hideDraftSeasons } from "../utils/public-season-scope.js";
 import { PrismaClient } from "@prisma/client";
 
 // Prisma's connection pool defaults to `num_physical_cpus * 2 + 1`. On the
@@ -36,5 +37,7 @@ const prisma = new PrismaClient({
   // something you want accumulating in production log volume/memory.
   log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
 });
+
+prisma.$use(hideDraftSeasons);
 
 export default prisma;

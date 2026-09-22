@@ -1,3 +1,4 @@
+import { SeasonPicker, useSeasonSelection } from "@/components/league/SeasonPicker";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -23,6 +24,7 @@ async function fetchAllFixturePages(params: Record<string, string>) {
 }
 
 export function FixturesPage() {
+  const { seasonId, setSeasonId, seasonParams } = useSeasonSelection();
   const navigate = useNavigate();
   const today = new Date();
   const [viewMonth, setViewMonth] = useState(today.getMonth());
@@ -32,20 +34,20 @@ export function FixturesPage() {
   const [roundFilter, setRoundFilter] = useState("");
 
   const { data: currentSeason } = useQuery({ queryKey: ["current-season"], queryFn: () => api.get<Season>("/league/seasons/current"), retry: false, refetchOnWindowFocus: true, refetchInterval: 60000 });
-  const { data: teams } = useQuery({ queryKey: ["fixture-teams"], queryFn: () => api.get<any[]>("/league/teams"), refetchOnWindowFocus: true, refetchInterval: 60000 });
+  const { data: teams } = useQuery({ queryKey: ["fixture-teams", seasonId], queryFn: () => api.get<any[]>("/league/teams", seasonParams), refetchOnWindowFocus: true, refetchInterval: 60000 });
   const rangeStart = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-01`;
   const rangeEnd = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${String(new Date(viewYear, viewMonth + 1, 0).getDate()).padStart(2, "0")}`;
-  const fixtureFilters = { scope: "range", from: rangeStart, to: rangeEnd, ...(teamFilter ? { teamId: teamFilter } : {}), ...(statusFilter ? { status: statusFilter } : {}), ...(roundFilter ? { round: roundFilter } : {}) };
+  const fixtureFilters = { ...seasonParams, scope: "range", from: rangeStart, to: rangeEnd, ...(teamFilter ? { teamId: teamFilter } : {}), ...(statusFilter ? { status: statusFilter } : {}), ...(roundFilter ? { round: roundFilter } : {}) };
   const { data: fixtureData, isLoading, isError, refetch } = useQuery({
-    queryKey: ["fixtures-calendar-range", rangeStart, rangeEnd, teamFilter, statusFilter, roundFilter],
+    queryKey: ["fixtures-calendar-range", rangeStart, rangeEnd, teamFilter, statusFilter, roundFilter, seasonId],
     queryFn: () => fetchAllFixturePages(fixtureFilters),
     staleTime: 0,
     refetchOnWindowFocus: true,
     refetchInterval: 15000,
   });
   const { data: liveData } = useQuery({
-    queryKey: ["fixtures-live", teamFilter],
-    queryFn: () => fetchAllFixturePages({ scope: "live", ...(teamFilter ? { teamId: teamFilter } : {}) }),
+    queryKey: ["fixtures-live", teamFilter, seasonId],
+    queryFn: () => fetchAllFixturePages({ ...seasonParams, scope: "live", ...(teamFilter ? { teamId: teamFilter } : {}) }),
     refetchInterval: 15000,
   });
 
@@ -115,10 +117,11 @@ export function FixturesPage() {
   return (
     <div className="space-y-8 pb-8">
       <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
+        <SeasonPicker value={seasonId} onChange={id => { setSeasonId(id); setTeamFilter(""); }} />
         <LeagueHero
           eyebrow={<><Flame className="h-3.5 w-3.5" /> Fixtures</>}
           title="Match calendar and results"
-          subtitle={currentSeason?.name || "Browse live, upcoming, and completed fixtures across the league."}
+          subtitle={seasonId ? "Season history ? choose a month to view results" : currentSeason?.name || "Browse live, upcoming, and completed fixtures across the league."}
           stats={[
             { label: "Live", value: liveFixtures.length },
             { label: "Upcoming", value: upcomingFixtures.length },

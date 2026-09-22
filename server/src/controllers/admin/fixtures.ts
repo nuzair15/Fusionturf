@@ -1,3 +1,4 @@
+import { assertPlayerEligibility } from "../../services/player-eligibility.js";
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
@@ -489,7 +490,7 @@ export const updateFixtureLineups = async (req: Request, res: Response, next: Ne
   try {
     const fixture = await prisma.fixture.findUnique({
       where: { id: req.params.id },
-      select: { id: true, homeTeamId: true, awayTeamId: true, status: true, seasonId: true },
+      select: { id: true, homeTeamId: true, awayTeamId: true, status: true, seasonId: true, matchDate: true, kickoffAt: true, competitionId: true },
     });
     if (!fixture) throw new AppError("Fixture not found", 404);
     const isCompletedCorrection = fixture.status === "COMPLETED";
@@ -521,10 +522,7 @@ export const updateFixtureLineups = async (req: Request, res: Response, next: Ne
       if (players.length !== playerIds.length) {
         throw new AppError("One or more players were not found", 400);
       }
-      const wrongTeam = players.find((p) => p.teamId !== teamId);
-      if (wrongTeam) {
-        throw new AppError("A player does not belong to the selected team", 400);
-      }
+      for (const playerId of playerIds) await assertPlayerEligibility(fixture, playerId, teamId);
 
       const captains = entries.filter((e) => !!e.isCaptain).length;
       const keepers = entries.filter((e) => !!e.isGoalkeeper).length;

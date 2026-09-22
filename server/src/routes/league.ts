@@ -1,3 +1,5 @@
+import { publicSeasonOverview, publicSeasonIndex } from "../controllers/season-overview.js";
+import { publicSeasonScope } from "../utils/public-season-scope.js";
 import { Router } from "express";
 import {
   getSeasons, getCurrentSeason, getTeams, getTeamBySlug,
@@ -12,8 +14,12 @@ import { authenticate, optionalAuth } from "../middleware/auth.js";
 import * as fan from "../controllers/fan.js";
 
 const router = Router();
+router.use(publicSeasonScope);
 
 // Seasons
+router.get("/seasons/index.html", publicSeasonIndex);
+router.get("/seasons/:slug/overview", publicSeasonOverview);
+router.get("/seasons/:slug/overview.html", publicSeasonOverview);
 router.get("/seasons", getSeasons);
 router.get("/seasons/current", getCurrentSeason);
 router.get("/competitions/:id/bracket", getCompetitionBracket);

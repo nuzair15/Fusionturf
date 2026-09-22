@@ -159,7 +159,7 @@ export const recordMatchAppearance = async (req: Request, res: Response, next: N
     if (!fixture) throw new AppError("Fixture not found", 404);
     assertEventMutable(fixture.status, req.body.correctionReason);
     if (![fixture.homeTeamId, fixture.awayTeamId].includes(teamId)) throw new AppError("Team is not part of this fixture", 400);
-    const player = await prisma.player.findFirst({ where: { id: playerId, seasonId: fixture.seasonId, teamId, isActive: true }, select: { id: true } });
+    const player = await prisma.player.findFirst({ where: { id: playerId, seasonId: fixture.seasonId, ...(fixture.status === "COMPLETED" ? {} : { teamId, isActive: true }) }, select: { id: true } });
     if (!player) throw new AppError("Player does not belong to this fixture team", 400);
     const enteredAt = minute == null ? null : Math.max(0, Math.min(150, Number(minute)));
     const appearance = await prisma.$transaction(async (tx) => {
@@ -184,7 +184,7 @@ export const recordMatchShot = async (req: Request, res: Response, next: NextFun
     if (!fixture) throw new AppError("Fixture not found", 404);
     assertEventMutable(fixture.status, req.body.correctionReason);
     if (![fixture.homeTeamId, fixture.awayTeamId].includes(teamId)) throw new AppError("Team is not part of this fixture", 400);
-    const player = await prisma.player.findFirst({ where: { id: playerId, seasonId: fixture.seasonId, teamId, isActive: true }, select: { id: true } });
+    const player = await prisma.player.findFirst({ where: { id: playerId, seasonId: fixture.seasonId, ...(fixture.status === "COMPLETED" ? {} : { teamId, isActive: true }) }, select: { id: true } });
     if (!player) throw new AppError("Shooter does not belong to this fixture team", 400);
     const eventMinute = minute == null ? null : Math.max(0, Math.min(150, Number(minute)));
     const shot = await prisma.$transaction(async (tx) => {
@@ -376,13 +376,13 @@ export const addGoal = async (req: Request, res: Response, next: NextFunction) =
     const eventMinute = Number(minute);
     if (!Number.isInteger(eventMinute) || eventMinute < 0 || eventMinute > 150) throw new AppError("Minute must be an integer between 0 and 150", 400);
     const scorer = await prisma.player.findUnique({ where: { id: scorerId }, select: { teamId: true, seasonId: true, isActive: true } });
-    if (!scorer || !scorer.isActive || scorer.seasonId !== fixture.seasonId || scorer.teamId !== teamId || ![fixture.homeTeamId, fixture.awayTeamId].includes(teamId)) {
+    if (!scorer || (fixture.status !== "COMPLETED" && (!scorer.isActive || scorer.teamId !== teamId)) || scorer.seasonId !== fixture.seasonId || ![fixture.homeTeamId, fixture.awayTeamId].includes(teamId)) {
       throw new AppError("Scorer does not belong to this fixture", 400);
     }
     if (assistId && isOwnGoal) throw new AppError("Own goals cannot have an assist", 400);
     if (assistId) {
       const assister = await prisma.player.findUnique({ where: { id: assistId }, select: { teamId: true, seasonId: true, isActive: true } });
-      if (!assister || !assister.isActive || assister.seasonId !== fixture.seasonId || assister.teamId !== teamId) throw new AppError("Assister must belong to the scoring team", 400);
+      if (!assister || (fixture.status !== "COMPLETED" && (!assister.isActive || assister.teamId !== teamId)) || assister.seasonId !== fixture.seasonId) throw new AppError("Assister must belong to the scoring team", 400);
     }
 
     const goal = await prisma.$transaction(async (tx) => {
@@ -446,7 +446,7 @@ export const updateGoal = async (req: Request, res: Response, next: NextFunction
     const scorer = await prisma.player.findUnique({ where: { id: req.body.scorerId }, select: { id: true, teamId: true, seasonId: true, isActive: true } });
     const teamId = req.body.teamId || goal.teamId || scorer?.teamId;
     if (!teamId || ![fixture.homeTeamId, fixture.awayTeamId].includes(teamId)) throw new AppError("Scorer team must be part of this fixture", 400);
-    if (!scorer || !scorer.isActive || scorer.seasonId !== fixture.seasonId || scorer.teamId !== teamId) throw new AppError("Scorer must belong to the selected team", 400);
+    if (!scorer || (fixture.status !== "COMPLETED" && (!scorer.isActive || scorer.teamId !== teamId)) || scorer.seasonId !== fixture.seasonId) throw new AppError("Scorer must belong to the selected team", 400);
 
     const isOwnGoal = req.body.isOwnGoal === undefined ? goal.isOwnGoal : !!req.body.isOwnGoal;
     const isPenalty = req.body.isPenalty === undefined ? goal.isPenalty : !!req.body.isPenalty;
@@ -457,7 +457,7 @@ export const updateGoal = async (req: Request, res: Response, next: NextFunction
     if (assistId === scorer.id) throw new AppError("Scorer cannot assist their own goal", 400);
     if (assistId) {
       const assister = await prisma.player.findUnique({ where: { id: assistId }, select: { teamId: true, seasonId: true, isActive: true } });
-      if (!assister || !assister.isActive || assister.seasonId !== fixture.seasonId || assister.teamId !== teamId) throw new AppError("Assister must belong to the selected team", 400);
+      if (!assister || (fixture.status !== "COMPLETED" && (!assister.isActive || assister.teamId !== teamId)) || assister.seasonId !== fixture.seasonId) throw new AppError("Assister must belong to the selected team", 400);
     }
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -518,7 +518,7 @@ export const updateCard = async (req: Request, res: Response, next: NextFunction
     const playerId = String(req.body.playerId || card.playerId);
     const player = await prisma.player.findUnique({ where: { id: playerId }, select: { id: true, teamId: true, seasonId: true, isActive: true } });
     const teamId = String(req.body.teamId || card.teamId || player?.teamId || "");
-    if (!player || !player.isActive || player.seasonId !== fixture.seasonId || player.teamId !== teamId || ![fixture.homeTeamId, fixture.awayTeamId].includes(teamId)) {
+    if (!player || (fixture.status !== "COMPLETED" && (!player.isActive || player.teamId !== teamId)) || player.seasonId !== fixture.seasonId || ![fixture.homeTeamId, fixture.awayTeamId].includes(teamId)) {
       throw new AppError("Player does not belong to the selected fixture team", 400);
     }
 
@@ -583,7 +583,7 @@ export const addSubstitution = async (req: Request, res: Response, next: NextFun
     assertEventMutable(fixture.status, req.body.correctionReason);
     const eventMinute = Number(minute);
     if (!Number.isInteger(eventMinute) || eventMinute < 0 || eventMinute > 150) throw new AppError("Minute must be an integer between 0 and 150", 400);
-    const players = await prisma.player.findMany({ where: { id: { in: [playerOffId, playerOnId] }, teamId, seasonId: fixture.seasonId, isActive: true }, select: { id: true } });
+    const players = await prisma.player.findMany({ where: { id: { in: [playerOffId, playerOnId] }, seasonId: fixture.seasonId, ...(fixture.status === "COMPLETED" ? {} : { teamId, isActive: true }) }, select: { id: true } });
     if (players.length !== 2) throw new AppError("Both players must belong to the selected team", 400);
 
     const [lineups, previousSubs, appearances] = await Promise.all([

@@ -1,3 +1,4 @@
+import { previewSeasonTransition, createSeasonDraft, seasonReadiness, activateSeason } from "../../services/season-transition.js";
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
@@ -27,13 +28,14 @@ export const getSeasons = async (_req: Request, res: Response, next: NextFunctio
 
 export const createSeason = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name, slug, startDate, endDate, isActive, isCurrent } = req.body;
+    const { name, slug, startDate, endDate } = req.body;
+    if (req.body.isCurrent) throw new AppError("Create a draft and activate it after reviewing readiness", 400);
     if (!name || !slug || !startDate || !endDate) {
       throw new AppError("name, slug, startDate, endDate are required", 400);
     }
     try {
       const season = await prisma.season.create({
-        data: { name, slug, startDate: new Date(startDate), endDate: new Date(endDate), isActive: !!isActive, isCurrent: !!isCurrent },
+        data: { name, slug, startDate: new Date(startDate), endDate: new Date(endDate), isActive: false, isCurrent: false, lifecycle: "DRAFT" },
       });
       res.status(201).json(season);
     } catch (err: any) {
@@ -47,7 +49,11 @@ export const createSeason = async (req: Request, res: Response, next: NextFuncti
 
 export const updateSeason = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const data = pick(req.body, ["name", "slug", "startDate", "endDate", "isActive", "isCurrent"] as const) as any;
+    const current = await prisma.season.findUnique({ where: { id: req.params.id } });
+    if (!current || current.deletedAt) throw new AppError("Season not found", 404);
+    if (current.lifecycle === "COMPLETED") throw new AppError("Completed seasons are read-only", 409);
+    if (req.body.isCurrent !== undefined && req.body.isCurrent !== current.isCurrent) throw new AppError("Use the season activation action", 400);
+    const data = pick(req.body, ["name", "slug", "startDate", "endDate"] as const) as any;
     if (Object.keys(data).length === 0) return res.status(400).json({ error: "Nothing to update" });
     if (data.startDate) data.startDate = new Date(data.startDate);
     if (data.endDate) data.endDate = new Date(data.endDate);
@@ -93,13 +99,15 @@ export const adminCloseTransferWindow = async (req: Request, res: Response, next
   }
 };
 
+export const adminPreviewNextSeason = async (req: Request, res: Response, next: NextFunction) => {
+  try { res.json(await previewSeasonTransition(req.params.id)); } catch (error) { next(error); }
+};
 export const adminCreateNextSeason = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { name, startDate, endDate, relegatedClubId, promotedClubId } = req.body;
-    if (!name || !startDate || !endDate) throw new AppError("name, startDate, endDate required", 400);
-    const newSeasonId = await leagueSystem.createNextSeason(req.params.id, name, new Date(startDate), new Date(endDate), { relegatedClubId, promotedClubId });
-    res.status(201).json({ id: newSeasonId });
-  } catch (error) {
-    next(error);
-  }
+  try { res.status(201).json(await createSeasonDraft(req.params.id, req.body, req.user?.userId)); } catch (error) { next(error); }
+};
+export const adminSeasonReadiness = async (req: Request, res: Response, next: NextFunction) => {
+  try { res.json(await seasonReadiness(req.params.id)); } catch (error) { next(error); }
+};
+export const adminActivateSeason = async (req: Request, res: Response, next: NextFunction) => {
+  try { res.json(await activateSeason(req.params.id, req.user?.userId)); } catch (error) { next(error); }
 };

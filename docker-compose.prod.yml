@@ -41,13 +41,13 @@ services:
       - "5432"
 
   # Run once per release before starting the API. This uses the Dockerfile's
-  # builder stage, where the Prisma CLI is present; the runtime API image is
+  # build stage, where the Prisma CLI is present; the runtime API image is
   # intentionally pruned of development tooling.
   api-migrate:
     build:
       context: ./server
       dockerfile: Dockerfile
-      target: builder
+      target: build
     command: ["npx", "prisma", "migrate", "deploy"]
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-fusion_league}

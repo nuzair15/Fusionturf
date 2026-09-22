@@ -59,7 +59,7 @@ export async function searchPlayerIds(
   const searchClause = conditions.join(" OR ");
 
   // Optional filters (AND'd — narrow down)
-  const filterParts: string[] = [];
+  const filterParts: string[] = ['p."deletedAt" IS NULL'];
   if (teamId) { filterParts.push(`p."teamId" = $${idx}`); params.push(teamId); idx++; }
   if (seasonId) { filterParts.push(`p."seasonId" = $${idx}`); params.push(seasonId); idx++; }
   if (position) { filterParts.push(`p."position" = $${idx}`); params.push(position); idx++; }

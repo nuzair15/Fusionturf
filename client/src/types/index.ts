@@ -16,6 +16,8 @@ export interface User {
 export type UserRole = "SUPER_ADMIN" | "LEAGUE_ADMIN" | "BOOKING_MANAGER" | "CONTENT_EDITOR" | "REFEREE" | "STATISTICIAN" | "VIEWER" | "CUSTOMER";
 
 export interface Season {
+  lifecycle?: "DRAFT" | "ACTIVE" | "COMPLETED";
+  rolloverReport?: { included: number; excluded: number; players?: Array<{ id: string; name: string; included: boolean; reason: string }> };
   id: string;
   name: string;
   slug: string;
@@ -31,6 +33,7 @@ export interface Season {
 }
 
 export interface Team {
+  seasons?: Array<{ id: string; slug: string; seasonId: string; season: { name: string } }>;
   id: string;
   seasonId: string;
   name: string;
@@ -60,6 +63,12 @@ export interface Team {
 }
 
 export interface Player {
+  isActive?: boolean;
+  profileId?: string;
+  activityReason?: string;
+  careerPlayerIds?: string[];
+  career?: { appearances: number; goals: number; assists: number };
+  seasons?: Array<{ id: string; name: string; slug: string; team?: string; isActive: boolean }>;
   id: string;
   seasonId: string;
   teamId?: string;

@@ -1,3 +1,4 @@
+import { expandFollowIdentities } from "../services/follow-identities.js";
 import { Request, Response, NextFunction } from "express";
 import prisma from "../config/database.js";
 import { AppError } from "../middleware/errorHandler.js";
@@ -8,8 +9,7 @@ export const getFanDashboard = async (req: Request, res: Response, next: NextFun
   try {
     const userId = req.user!.userId;
     const follows = await prisma.userFollow.findMany({ where: { userId }, select: { teamId: true, playerId: true } });
-    const teamIds = follows.flatMap((f) => f.teamId ? [f.teamId] : []);
-    const playerIds = follows.flatMap((f) => f.playerId ? [f.playerId] : []);
+    const { teamIds, playerIds } = await expandFollowIdentities(follows);
     const today = localNow("Asia/Kolkata").date;
     const upcomingRows = await prisma.fixture.findMany({
       where: { deletedAt: null, OR: [{ status: { in: ACTIVE_MATCH_STATUSES } }, { status: "SCHEDULED", scheduledDate: { gte: today } }], AND: [{ OR: [{ homeTeamId: { in: teamIds } }, { awayTeamId: { in: teamIds } }] }] },
@@ -21,7 +21,7 @@ export const getFanDashboard = async (req: Request, res: Response, next: NextFun
       include: { homeTeam: true, awayTeam: true }, orderBy: { matchDate: "desc" }, take: 8,
     });
     const [standings, playerStats, notifications] = await Promise.all([
-      prisma.standing.findMany({ where: { teamId: { in: teamIds }, team: { deletedAt: null } }, include: { team: true }, orderBy: { position: "asc" } }),
+      prisma.standing.findMany({ where: { teamId: { in: teamIds }, team: { deletedAt: null }, season: { isCurrent: true } }, include: { team: true }, orderBy: { position: "asc" } }),
       prisma.playerStat.findMany({ where: { playerId: { in: playerIds } }, include: { player: true, team: true }, orderBy: { season: { startDate: "desc" } } }),
       prisma.notification.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 10 }),
     ]);
@@ -32,10 +32,18 @@ export const getFanDashboard = async (req: Request, res: Response, next: NextFun
 export const getFollows = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const follows = await prisma.userFollow.findMany({ where: { userId: req.user!.userId }, include: { team: true, player: true } });
-    res.json(follows.filter((follow) =>
-      (!follow.teamId || (follow.team?.deletedAt == null && follow.team?.isActive))
-      && (!follow.playerId || (follow.player?.deletedAt == null && follow.player?.isActive))
-    ));
+    const expanded = await expandFollowIdentities(follows);
+    const seen = new Set<string>();
+    res.json(follows.flatMap(f => {
+      const team = f.teamId ? expanded.teams.find(t => t.id === f.teamId || (t.clubId && t.clubId === f.team?.clubId)) : null;
+      const player = f.playerId ? expanded.players.find(p => p.id === f.playerId || (p.profileId && p.profileId === f.player?.profileId)) : null;
+      if (!team && !player) return [];
+      const key = team ? `team:${team.clubId || team.id}` : `player:${player!.profileId || player!.id}`;
+      if (seen.has(key)) return []; seen.add(key);
+      const relatedTeamIds = team ? expanded.teams.filter(t => t.id === team.id || (team.clubId && t.clubId === team.clubId)).map(t => t.id) : [];
+      const relatedPlayerIds = player ? expanded.players.filter(p => p.id === player.id || (player.profileId && p.profileId === player.profileId)).map(p => p.id) : [];
+      return [{ ...f, team, player, teamId: team?.id || null, playerId: player?.id || null, relatedTeamIds, relatedPlayerIds }];
+    }));
   } catch (e) { next(e); }
 };
 
@@ -44,12 +52,13 @@ export const toggleFollow = async (req: Request, res: Response, next: NextFuncti
     const { type, entityId, notify = true } = req.body as { type: "TEAM" | "PLAYER"; entityId: string; notify?: boolean };
     if (!entityId || !["TEAM", "PLAYER"].includes(type)) throw new AppError("Invalid follow target", 400);
     const targetExists = type === "TEAM"
-      ? await prisma.team.findFirst({ where: { id: entityId, isActive: true, deletedAt: null }, select: { id: true } })
-      : await prisma.player.findFirst({ where: { id: entityId, isActive: true, deletedAt: null }, select: { id: true } });
+      ? await prisma.team.findFirst({ where: { id: entityId, deletedAt: null }, select: { id: true } })
+      : await prisma.player.findFirst({ where: { id: entityId, deletedAt: null }, select: { id: true } });
     if (!targetExists) throw new AppError("Follow target not found", 404);
-    const where = type === "TEAM" ? { userId_teamId: { userId: req.user!.userId, teamId: entityId } } : { userId_playerId: { userId: req.user!.userId, playerId: entityId } };
-    const existing = await prisma.userFollow.findUnique({ where });
-    if (existing) { await prisma.userFollow.delete({ where: { id: existing.id } }); return res.json({ following: false }); }
+    const expanded = await expandFollowIdentities([{ teamId: type === "TEAM" ? entityId : null, playerId: type === "PLAYER" ? entityId : null }]);
+    const identityWhere = { userId: req.user!.userId, ...(type === "TEAM" ? { teamId: { in: expanded.teamIds } } : { playerId: { in: expanded.playerIds } }) };
+    const existing = await prisma.userFollow.findFirst({ where: identityWhere });
+    if (existing) { await prisma.userFollow.deleteMany({ where: identityWhere }); return res.json({ following: false }); }
     const created = await prisma.userFollow.create({ data: { userId: req.user!.userId, type, notify, ...(type === "TEAM" ? { teamId: entityId } : { playerId: entityId }) } });
     res.status(201).json({ following: true, follow: created });
   } catch (e) { next(e); }

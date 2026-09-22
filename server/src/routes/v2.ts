@@ -1,3 +1,4 @@
+import { publicSeasonScope } from "../utils/public-season-scope.js";
 import { Router } from "express";
 import { getFixtures } from "../controllers/league.js";
 import { createBooking, getBookingQuote } from "../controllers/booking.js";
@@ -14,8 +15,8 @@ import { streamFixtureEvents } from "../controllers/events.js";
 
 const router = Router();
 
-router.get("/fixtures", getFixtures);
-router.get("/fixtures/:id/events/stream", streamFixtureEvents);
+router.get("/fixtures", publicSeasonScope, getFixtures);
+router.get("/fixtures/:id/events/stream", publicSeasonScope, streamFixtureEvents);
 router.post("/booking/quote", getBookingQuote);
 router.post("/bookings", optionalAuth, (req, res, next) => {
   if (!req.header("Idempotency-Key")?.trim()) return res.status(400).json({ code: "IDEMPOTENCY_KEY_REQUIRED", message: "Idempotency-Key header is required" });

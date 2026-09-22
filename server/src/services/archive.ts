@@ -35,6 +35,17 @@ export const archiveResources = {
 
 export type ArchiveResourceType = keyof typeof archiveResources;
 
+async function protectCompletedSeason(type: ArchiveResourceType, row: Record<string, any>, tx: Prisma.TransactionClient) {
+  let seasonId = type === "season" ? row.id : row.seasonId;
+  if (!seasonId && row.teamId) seasonId = (await tx.team.findUnique({ where: { id: row.teamId } }))?.seasonId;
+  if (!seasonId && row.competitionId) seasonId = (await tx.competition.findUnique({ where: { id: row.competitionId } }))?.seasonId;
+  if (!seasonId) return;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`season-roster:${seasonId}`}))`;
+  const season = await tx.season.findUnique({ where: { id: seasonId } });
+  if (season?.lifecycle === "COMPLETED") throw new AppError("Completed seasons are read-only. Historical records cannot be archived or restored through the recycle bin.", 409);
+  if (type === "season" && season?.isCurrent) throw new AppError("The current season cannot be archived", 409);
+}
+
 function displayName(type: ArchiveResourceType, row: Record<string, any>): string {
   if (type === "fixture") return `${row.homeTeamId} vs ${row.awayTeamId}`;
   if (type === "player" || type === "playerProfile" || type === "staff" || type === "staffProfile") {
@@ -176,6 +187,7 @@ export async function archiveResource(input: {
     const delegate = (tx as any)[delegateName];
     const row = await delegate.findUnique({ where: { id: input.id } });
     if (!row) throw new AppError("Record not found", 404);
+    await protectCompletedSeason(input.type, row, tx);
     if (row.deletedAt) {
       return tx.archiveRecord.findFirstOrThrow({ where: { resourceType: input.type, resourceId: input.id, restoredAt: null } });
     }
@@ -210,6 +222,7 @@ export async function restoreArchiveRecord(archiveRecordId: string, actorId?: st
     const delegate = (tx as any)[delegateName];
     const row = await delegate.findUnique({ where: { id: archive.resourceId } });
     if (!row || !row.deletedAt) throw new AppError("The archived record no longer exists or is already active", 409);
+    await protectCompletedSeason(type, row, tx);
     await assertRestoreDependencies(type, row, tx);
 
     if (type === "booking" && row.blocksAvailability && row.startAt && row.endAt) {

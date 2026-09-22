@@ -1,4 +1,5 @@
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
+export const publicApiUrl = (path: string) => `${API_BASE.replace(/\/$/, "")}${path}`;
 
 class ApiClient {
   private csrfValue = "";

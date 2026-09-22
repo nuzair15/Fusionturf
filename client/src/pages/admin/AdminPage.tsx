@@ -1,3 +1,6 @@
+import { ReturningPlayerForm } from "@/components/admin/ReturningPlayerForm";
+import { SeasonTransitionPanel } from "@/components/admin/SeasonTransitionPanel";
+import { PlayerActivityAction } from "@/components/admin/PlayerActivityAction";
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -52,6 +55,7 @@ interface FixturePreview {
 }
 
 export function AdminPage() {
+  const [playerStatus, setPlayerStatus] = useState("active");
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, isLoading: authLoading, logout } = useAuth();
@@ -179,6 +183,8 @@ export function AdminPage() {
       if (type === "team") {
         queryClient.invalidateQueries({ queryKey: ["admin-teams"] });
         queryClient.invalidateQueries({ queryKey: ["teams"] });
+        queryClient.invalidateQueries({ queryKey: ["team"] });
+        queryClient.invalidateQueries({ queryKey: ["season-overview"] });
         queryClient.invalidateQueries({ queryKey: ["standings"] });
         queryClient.invalidateQueries({ queryKey: ["standings-full"] });
       }
@@ -226,14 +232,14 @@ export function AdminPage() {
   });
 
   const { data: players } = useQuery({
-    queryKey: ["admin-players", selectedSeasonId, playerSearch],
-    queryFn: () => api.get<PaginatedResponse<Player>>("/admin/players", { limit: "100", ...(selectedSeasonId ? { seasonId: selectedSeasonId } : {}), ...(playerSearch ? { search: playerSearch } : {}) }),
+    queryKey: ["admin-players", selectedSeasonId, playerSearch, playerStatus],
+    queryFn: () => api.get<PaginatedResponse<Player>>("/admin/players", { status: playerStatus, limit: "100", ...(selectedSeasonId ? { seasonId: selectedSeasonId } : {}), ...(playerSearch ? { search: playerSearch } : {}) }),
     enabled: tabEnabled("players") || tabEnabled("gallery"),
   });
 
   const { data: selectedPlayer, isLoading: selectedPlayerLoading } = useQuery({
-    queryKey: ["admin-player-detail", selectedPlayerId],
-    queryFn: () => api.get<any>(`/league/players/${selectedPlayerId}`),
+    queryKey: ["admin-player-detail", selectedPlayerId, selectedSeasonId],
+    queryFn: () => api.get<any>(`/admin/players/profile/${selectedPlayerId}`, { seasonId: selectedSeasonId }),
     enabled: !!selectedPlayerId && unlocked,
   });
 
@@ -295,7 +301,7 @@ export function AdminPage() {
 
   useEffect(() => {
     if (showForm !== "generateFixtures") return;
-    const s = (seasons || []).find((x: Season) => x.isCurrent);
+    const s = (seasons || []).find((x: Season) => x.id === selectedSeasonId) || currentSeason;
     if (!s) return;
     let cancelled = false;
     const timer = setTimeout(async () => {
@@ -452,7 +458,7 @@ export function AdminPage() {
                 formatDate(s.endDate),
                 <div className="flex gap-1">
                   {s.isCurrent && <Badge className="bg-primary">Current</Badge>}
-                  {s.isActive ? <Badge variant="default">Active</Badge> : <Badge variant="destructive">Inactive</Badge>}
+                  <Badge variant={s.lifecycle === "ACTIVE" ? "default" : "secondary"}>{s.lifecycle === "DRAFT" ? "Draft" : s.lifecycle === "COMPLETED" ? "Completed" : "Active"}</Badge>
                   {s.transferWindowOpen && <Badge variant="outline" className="border-green-500 text-green-600">Transfer Window Open</Badge>}
                 </div>,
                 s._count?.teams || 0,
@@ -462,11 +468,12 @@ export function AdminPage() {
               onAdd={() => { setEditingItem(null); openForm("season", { name: "", isActive: true, isCurrent: false }); }}
               onEdit={(s) => { setEditingItem(s); openForm("season", { name: s.name, slug: s.slug, startDate: s.startDate, endDate: s.endDate, isActive: s.isActive, isCurrent: s.isCurrent }); }}
             />
+              <SeasonTransitionPanel seasons={seasons || []} selectedId={selectedSeasonId} onSelect={setSelectedSeasonId} />
               <div className="mb-4 rounded-2xl border bg-card p-4 shadow-sm">
               <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">League System Actions</h3>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" onClick={async () => {
-                  const s = (seasons || []).find((s: Season) => s.isCurrent);
+                  const s = (seasons || []).find((s: Season) => s.id === selectedSeasonId) || currentSeason;
                   if (!s) return setActionError("No current season selected");
                   const teams = s._count?.teams || 6;
                   const roundsPerLeg = teams % 2 === 0 ? teams - 1 : teams;
@@ -478,27 +485,21 @@ export function AdminPage() {
                   setShowForm("generateFixtures");
                 }}>Bulk Generate Fixtures</Button>
                 <Button size="sm" variant="outline" onClick={async () => {
-                  const s = (seasons || []).find((s: Season) => s.isCurrent);
+                  const s = (seasons || []).find((s: Season) => s.id === selectedSeasonId) || currentSeason;
                   if (!s) return setActionError("No current season selected");
                   try { setActionError(""); await api.post(`/admin/seasons/${s.id}/postseason`, {}); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); } catch (e: any) { setActionError(e.message); }
                 }}>Generate Post-Season</Button>
                 <Button size="sm" variant="outline" onClick={async () => {
-                  const s = (seasons || []).find((s: Season) => s.isCurrent);
+                  const s = (seasons || []).find((s: Season) => s.id === selectedSeasonId) || currentSeason;
                   if (!s) return setActionError("No current season selected");
                   try { setActionError(""); await api.post(`/admin/seasons/${s.id}/transfer-window/open`, {}); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); } catch (e: any) { setActionError(e.message); }
                 }}>Open Transfer Window</Button>
                 <Button size="sm" variant="outline" onClick={async () => {
-                  const s = (seasons || []).find((s: Season) => s.isCurrent);
+                  const s = (seasons || []).find((s: Season) => s.id === selectedSeasonId) || currentSeason;
                   if (!s) return setActionError("No current season selected");
                   try { setActionError(""); await api.post(`/admin/seasons/${s.id}/transfer-window/close`, {}); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); } catch (e: any) { setActionError(e.message); }
                 }}>Close Transfer Window</Button>
-                <Button size="sm" variant="default" onClick={async () => {
-                  const s = (seasons || []).find((s: Season) => s.isCurrent);
-                  if (!s) return setActionError("No current season selected");
-                  const name = prompt("New season name (e.g. April – June 2026):");
-                  if (!name) return;
-                  try { setActionError(""); await api.post(`/admin/seasons/${s.id}/create-next`, { name, startDate: new Date().toISOString(), endDate: new Date(Date.now() + 120 * 86400000).toISOString() }); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); } catch (e: any) { setActionError(e.message); }
-                }}>Create Next Season</Button>
+
               </div>
               {actionError && <p className="mt-2 text-sm text-destructive">{actionError}</p>}
             </div>
@@ -516,14 +517,7 @@ export function AdminPage() {
                   <Label>End Date</Label>
                   <Input type="date" value={formData.endDate?.split("T")[0] || ""} onChange={(e) => handleFormChange("endDate", new Date(e.target.value).toISOString())} />
                 </div>
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={formData.isActive ?? true} onChange={(e) => handleFormChange("isActive", e.target.checked)} className="rounded" />
-                  Active
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={formData.isCurrent ?? false} onChange={(e) => handleFormChange("isCurrent", e.target.checked)} className="rounded" />
-                  Current Season
-                </label>
+                <p className="text-sm text-muted-foreground">New seasons start as drafts. Use the season transition panel to check readiness and activate.</p>
                 {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                 <Button className="w-full" onClick={() => submitForm("season", "/admin/seasons", "admin-seasons")}
                   disabled={!formData.name || !formData.startDate || !formData.endDate}>{editingItem ? "Update Season" : "Create Season"}</Button>
@@ -621,7 +615,7 @@ export function AdminPage() {
                 )}
                 {actionError && <p className="text-sm text-destructive">{actionError}</p>}
                 <Button className="w-full" disabled={generating || !fixturePreviewBatchId || (!!fixturePreview && !fixturePreview.feasible)} onClick={async () => {
-                  const s = (seasons || []).find((x: Season) => x.isCurrent);
+                  const s = (seasons || []).find((x: Season) => x.id === selectedSeasonId) || currentSeason;
                   if (!s) return setActionError("No current season selected");
                   if (!window.confirm("Publish this preview? Only missing, non-conflicting fixtures will be added. Existing fixtures will not be changed or removed.")) return;
                   setGenerating(true);
@@ -651,7 +645,7 @@ export function AdminPage() {
               keyExtractor={(t) => t.id}
               onSearch={setTeamSearch}
               onAdd={() => { setEditingItem(null); openForm("team", { name: "", shortName: "", city: "", seasonId: selectedSeasonId || currentSeason?.id || "", status: "active" }); }}
-              onEdit={(t) => { setEditingItem(t); openForm("team", { name: t.name, slug: t.slug, shortName: t.shortName || "", city: t.city || "", seasonId: t.seasonId, logoUrl: t.logoUrl || "", status: t.status || "active" }); }}
+              onEdit={(t) => { setEditingItem(t); openForm("team", { name: t.name, slug: t.slug, shortName: t.shortName || "", city: t.city || "", seasonId: t.seasonId, logoUrl: t.logoUrl || "", coverUrl: t.coverUrl || "", status: t.status || "active" }); }}
             />
             <Dialog open={showForm === "team"} onClose={() => { setShowForm(null); setEditingItem(null); }} title={editingItem ? "Edit Team" : "Add Team"}>
               <div className="space-y-4">
@@ -687,6 +681,8 @@ export function AdminPage() {
                   </Select>
                 </div>
                 <ImageUploadField label="Logo" value={formData.logoUrl || ""} onChange={(value) => handleFormChange("logoUrl", value)} />
+                <ImageUpload label="Team hero banner" wide value={formData.coverUrl || ""} onChange={(value) => handleFormChange("coverUrl", value)} />
+                <p className="text-xs text-muted-foreground">Use a wide team photo, ideally 1800 × 600. It appears in the club directory and at the top of the team page, and carries into the next season.</p>
                 {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                 <Button className="w-full" onClick={() => submitForm("team", "/admin/teams", "admin-teams")}
                   disabled={!formData.name || !formData.seasonId}>{editingItem ? "Update Team" : "Create Team"}</Button>
@@ -705,17 +701,9 @@ export function AdminPage() {
                   <option key={s.id} value={s.id}>{s.name} {s.isCurrent ? "(Current)" : ""}</option>
                 ))}
               </Select>
-              {(() => {
-                const sorted = (seasons || []).slice().sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
-                const idx = sorted.findIndex((s) => s.id === selectedSeasonId);
-                const prevSeason = idx > 0 ? sorted[idx - 1] : null;
-                return prevSeason ? (
-                  <Button size="sm" variant="outline" onClick={async () => {
-                    if (!confirm(`Copy all players from "${prevSeason.name}" to this season?`)) return;
-                    try { setActionError(""); await api.post(`/admin/seasons/${selectedSeasonId}/copy-players-from/${prevSeason.id}`, {}); queryClient.invalidateQueries({ queryKey: ["admin-players"] }); } catch (e: any) { setActionError(e.message); }
-                  }}>Copy from {prevSeason.name}</Button>
-                ) : null;
-              })()}
+              <ReturningPlayerForm teams={teams || []} />
+              <Select aria-label="Player activity" value={playerStatus} onChange={e => setPlayerStatus(e.target.value)} className="w-40"><option value="active">Active</option><option value="inactive">Inactive</option><option value="all">All players</option></Select>
+
             </div>
             <DataTable<Player>
               title="Players"
@@ -723,9 +711,10 @@ export function AdminPage() {
                 { key: "photo", label: "Photo", render: (p) => <img src={p.photoUrl || "/placeholder.svg"} alt="" className="h-10 w-10 rounded-xl bg-muted object-cover shadow-sm" /> },
                 { key: "name", label: "Name", sortable: true, sortValue: (p) => `${p.firstName} ${p.lastName}`, render: (p) => <span className="font-medium">{p.firstName} {p.lastName}</span> },
                 { key: "team", label: "Team", sortable: true, sortValue: (p) => p.team?.name || "", render: (p) => p.team?.name || "-" },
+                { key: "status", label: "Status", render: (p) => <Badge variant={p.isActive === false ? "secondary" : "default"}>{p.isActive === false ? "Inactive" : "Active"}</Badge> },
                 { key: "position", label: "Position", render: (p) => p.position || "-" },
                 { key: "jersey", label: "Jersey", render: (p) => p.jerseyNumber || "-" },
-                { key: "manage", label: "Manage", render: (p) => <div className="flex gap-1"><Button size="sm" variant="outline" onClick={() => setSelectedPlayerId(p.slug)}><Eye className="mr-1 h-3.5 w-3.5" /> Details</Button><Button size="sm" variant="outline" onClick={() => { setEditingItem(p); openForm("player", { firstName: p.firstName, lastName: p.lastName || "", position: p.position || "", teamId: p.teamId || "", jerseyNumber: p.jerseyNumber || "", squadType: p.squadType || "", photoUrl: p.photoUrl || "", nationality: p.nationality || "", age: p.age || "", height: p.height || "", weight: p.weight || "", preferredFoot: p.preferredFoot || "", biography: p.biography || "" }); }}><Edit2 className="mr-1 h-3.5 w-3.5" /> Edit</Button></div> },
+                { key: "manage", label: "Manage", render: (p) => <div className="flex flex-wrap gap-1"><PlayerActivityAction player={p} /><Button size="sm" variant="outline" onClick={() => setSelectedPlayerId(p.slug)}><Eye className="mr-1 h-3.5 w-3.5" /> Details</Button><Button size="sm" variant="outline" onClick={() => { setEditingItem(p); openForm("player", { firstName: p.firstName, lastName: p.lastName || "", position: p.position || "", teamId: p.teamId || "", jerseyNumber: p.jerseyNumber || "", squadType: p.squadType || "", photoUrl: p.photoUrl || "", nationality: p.nationality || "", age: p.age || "", height: p.height || "", weight: p.weight || "", preferredFoot: p.preferredFoot || "", biography: p.biography || "" }); }}><Edit2 className="mr-1 h-3.5 w-3.5" /> Edit</Button></div> },
               ]}
               data={players?.data || []}
               keyExtractor={(p) => p.id}
@@ -808,14 +797,15 @@ export function AdminPage() {
                 </details>
                 <div className="space-y-1.5">
                   <Label>Team *</Label>
-                  <Select value={formData.teamId || ""} onChange={(e) => handleFormChange("teamId", e.target.value)} disabled={editingItem && !currentSeason?.transferWindowOpen}>
+                  <Select value={formData.teamId || ""} onChange={(e) => handleFormChange("teamId", e.target.value)} disabled={!!editingItem && !(seasons || []).find(s => s.id === editingItem.seasonId)?.transferWindowOpen}>
                     <option value="">Select team...</option>
                     {(teams || []).map((t: Team) => (
                       <option key={t.id} value={t.id}>{t.name}</option>
                     ))}
                   </Select>
-                  {(editingItem && !currentSeason?.transferWindowOpen) && <p className="text-xs text-destructive">Transfer window closed — team cannot be changed</p>}
+                  {(editingItem && !(seasons || []).find(s => s.id === editingItem.seasonId)?.transferWindowOpen) && <p className="text-xs text-destructive">Transfer window closed — team cannot be changed</p>}
                 </div>
+                {editingItem && <div className="space-y-2"><Label>Transfer reason (required when changing teams)</Label><Input value={formData.transferReason || ""} onChange={e => handleFormChange("transferReason", e.target.value)} /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={formData.clearFutureSquads || false} onChange={e => handleFormChange("clearFutureSquads", e.target.checked)} />Remove upcoming squad selections if transferring</label></div>}
                 <ImageUploadField label="Player Photo" value={formData.photoUrl || ""} onChange={(value) => handleFormChange("photoUrl", value)} />
                 {formErrors && <p className="text-sm text-destructive">{formErrors}</p>}
                 <Button className="w-full" onClick={() => submitForm("player", "/admin/players", "admin-players")}

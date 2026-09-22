@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
@@ -11,6 +11,10 @@ COPY prisma ./prisma
 
 RUN npx prisma generate
 RUN npm run build
+
+# Migrations use the build stage while the Prisma CLI is still installed.
+# The running API is copied from the smaller, pruned builder stage below.
+FROM build AS builder
 
 # devDependencies (typescript, prisma CLI, tsx, vitest, @types/*, ...) are
 # only needed to produce dist/ above -- they're dead weight in the running

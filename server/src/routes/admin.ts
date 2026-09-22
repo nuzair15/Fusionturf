@@ -1,3 +1,5 @@
+import { seasonWriteGuard } from "../middleware/season-write-guard.js";
+import { getPlayerBySlug } from "../controllers/league.js";
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { authenticate, authorize } from "../middleware/auth.js";
@@ -24,6 +26,7 @@ const liveStatsReadLimit = rateLimit({
 router.use(authenticate);
 router.use(authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "BOOKING_MANAGER", "CONTENT_EDITOR", "STATISTICIAN", "REFEREE", "VIEWER"));
 router.use(activityLogger);
+router.use(seasonWriteGuard);
 
 // Dashboard
 router.get("/dashboard", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), admin.getDashboardStats);
@@ -47,6 +50,8 @@ router.patch("/teams/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.updat
 router.delete("/teams/:id", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.deleteTeam);
 
 // Players
+router.get("/players/profile/:slug", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN", "VIEWER"), getPlayerBySlug);
+router.get("/player-directory", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.getPlayerDirectory);
 router.get("/players", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN", "REFEREE", "VIEWER"), admin.getPlayers);
 router.get("/players/search", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN", "REFEREE", "VIEWER"), admin.searchPlayers);
 router.post("/players", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.createPlayer);
@@ -156,6 +161,9 @@ router.post("/seasons/:id/postseason", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"),
 router.post("/seasons/:id/transfer-window/open", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.adminOpenTransferWindow);
 router.post("/seasons/:id/transfer-window/close", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.adminCloseTransferWindow);
 router.post("/seasons/:id/copy-players-from/:fromSeasonId", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.copyPlayersFromSeason);
+router.get("/seasons/:id/next-preview", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.adminPreviewNextSeason);
+router.get("/seasons/:id/readiness", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.adminSeasonReadiness);
+router.post("/seasons/:id/activate", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.adminActivateSeason);
 router.post("/seasons/:id/create-next", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.adminCreateNextSeason);
 router.post("/fixtures/:id/squad", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.adminSelectMatchdaySquad);
 router.get("/teams/:id/validate-squad", authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN"), admin.adminValidateSquad);

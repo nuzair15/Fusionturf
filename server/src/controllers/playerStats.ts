@@ -4,15 +4,15 @@ import { AppError } from "../middleware/errorHandler.js";
 
 const numericFields = ["goals", "assists", "minutesPlayed", "shots", "shotsOnTarget", "yellowCards", "redCards"] as const;
 
-async function eligibleAppearances(playerId: string, seasonId: string, friendly: boolean) {
+async function eligibleAppearances(playerId: string, seasonId: string, teamId: string, friendly: boolean) {
   const fixtures = await prisma.fixture.findMany({ where: { seasonId, deletedAt: null, status: { in: ["COMPLETED", "LIVE", "HALF_TIME", "PAUSED", "EXTRA_TIME", "PENALTIES"] }, ...(friendly ? { OR: [{ isFriendly: true }, { competition: { is: { type: "FRIENDLY" } } }] } : { isFriendly: false }) }, select: { id: true } });
   if (!fixtures.length) return 0;
   const fixtureIds = fixtures.map((f) => f.id);
   const [lineups, appearances, squadEntries, substitutions] = await Promise.all([
-    prisma.lineup.findMany({ where: { playerId, fixtureId: { in: fixtureIds }, isStarter: true }, select: { fixtureId: true } }),
-    prisma.matchAppearance.findMany({ where: { playerId, fixtureId: { in: fixtureIds } }, select: { fixtureId: true } }),
-    prisma.matchdaySquadEntry.findMany({ where: { playerId, isStarter: true, squad: { fixtureId: { in: fixtureIds } } }, select: { squad: { select: { fixtureId: true } } } }),
-    prisma.substitution.findMany({ where: { fixtureId: { in: fixtureIds }, OR: [{ playerOnId: playerId }, { playerOffId: playerId }] }, select: { fixtureId: true } }),
+    prisma.lineup.findMany({ where: { playerId, teamId, fixtureId: { in: fixtureIds }, isStarter: true }, select: { fixtureId: true } }),
+    prisma.matchAppearance.findMany({ where: { playerId, teamId, fixtureId: { in: fixtureIds } }, select: { fixtureId: true } }),
+    prisma.matchdaySquadEntry.findMany({ where: { playerId, isStarter: true, squad: { teamId, fixtureId: { in: fixtureIds } } }, select: { squad: { select: { fixtureId: true } } } }),
+    prisma.substitution.findMany({ where: { teamId, fixtureId: { in: fixtureIds }, OR: [{ playerOnId: playerId }, { playerOffId: playerId }] }, select: { fixtureId: true } }),
   ]);
   return new Set([...lineups, ...appearances, ...substitutions].map((row) => row.fixtureId).concat(squadEntries.map((row) => row.squad.fixtureId))).size;
 }
@@ -24,14 +24,14 @@ export const getAdminPlayerStats = async (req: Request, res: Response, next: Nex
     if (!seasonId) throw new AppError("seasonId is required", 400);
     const stats = friendly
       ? await prisma.player.findMany({
-          where: { seasonId, isActive: true, deletedAt: null, teamId: { not: null }, team: { deletedAt: null } },
+          where: { seasonId, deletedAt: null, teamId: { not: null }, team: { deletedAt: null } },
           include: { team: true, friendlyStats: { where: { seasonId } } },
           orderBy: { firstName: "asc" },
-        }).then((players) => players.map((player) => ({
-          ...(player.friendlyStats[0] || { id: `friendly-${player.id}`, seasonId, playerId: player.id, teamId: player.teamId, appearances: 0, goals: 0, assists: 0, minutesPlayed: 0, shots: 0, shotsOnTarget: 0, yellowCards: 0, redCards: 0, averageRating: null }),
+        }).then((players) => players.flatMap((player) => (player.friendlyStats.length ? player.friendlyStats : [{ id: `friendly-${player.id}`, seasonId, playerId: player.id, teamId: player.teamId, appearances: 0, goals: 0, assists: 0, minutesPlayed: 0, shots: 0, shotsOnTarget: 0, yellowCards: 0, redCards: 0, averageRating: null }]).map(stat => ({
+          ...stat,
           player,
           team: player.team,
-        })))
+        }))))
       : await prisma.playerStat.findMany({ where: { seasonId, player: { deletedAt: null }, team: { deletedAt: null } }, include: { player: true, team: true }, orderBy: { player: { firstName: "asc" } } });
     res.json(stats);
   } catch (e) { next(e); }
@@ -42,12 +42,19 @@ export const updateAdminPlayerStats = async (req: Request, res: Response, next: 
     const { seasonId, teamId, friendly = false } = req.body;
     const playerId = req.params.playerId;
     if (!seasonId || !teamId) throw new AppError("seasonId and teamId are required", 400);
-    const player = await prisma.player.findFirst({ where: { id: playerId, deletedAt: null }, select: { id: true, teamId: true } });
+    const player = await prisma.player.findFirst({ where: { id: playerId, deletedAt: null }, select: { id: true, teamId: true, seasonId: true } });
     if (!player) throw new AppError("Player not found", 404);
-    const appearancesAllowed = await eligibleAppearances(playerId, seasonId, !!friendly);
-    const data: any = { appearances: Math.min(Math.max(0, Number(req.body.appearances) || 0), appearancesAllowed) };
+    const team = await prisma.team.findFirst({ where: { id: teamId, seasonId, deletedAt: null } });
+    if (!team || player.seasonId !== seasonId) throw new AppError("Player and team must belong to the selected season", 400);
+    const appearancesAllowed = await eligibleAppearances(playerId, seasonId, teamId, !!friendly);
+    const data: any = {};
+    if (req.body.appearances !== undefined) data.appearances = Math.min(Math.max(0, Number(req.body.appearances) || 0), appearancesAllowed);
     for (const field of numericFields) if (req.body[field] !== undefined) data[field] = Math.max(0, Number(req.body[field]) || 0);
     if (req.body.averageRating !== undefined) data.averageRating = req.body.averageRating === "" ? null : Math.max(0, Math.min(10, Number(req.body.averageRating)));
+    const prior = friendly
+      ? await prisma.friendlyPlayerStat.findUnique({ where: { seasonId_playerId_teamId: { seasonId, playerId, teamId } } })
+      : await prisma.playerStat.findUnique({ where: { seasonId_playerId_teamId: { seasonId, playerId, teamId } } });
+    data.manualOverrides = { ...((prior?.manualOverrides as object) || {}), ...data };
     const stats = friendly
       ? await prisma.friendlyPlayerStat.upsert({ where: { seasonId_playerId_teamId: { seasonId, playerId, teamId } }, create: { seasonId, playerId, teamId, ...data }, update: data })
       : await prisma.playerStat.upsert({ where: { seasonId_playerId_teamId: { seasonId, playerId, teamId } }, create: { seasonId, playerId, teamId, ...data }, update: data });

@@ -106,6 +106,7 @@ enum FixtureCompetition {
 // while data is backfilled into the permanent-identity/event-stream model.
 enum RegistrationStatus {
   ACTIVE
+  INACTIVE
   SUSPENDED
   RELEASED
   EXPIRED
@@ -583,6 +584,11 @@ model VenueGallery {
 
 model Season {
   id                     String    @id @default(uuid())
+  lifecycle              String    @default("DRAFT")
+  sourceSeasonId         String?   @unique
+  rolloverKey            String?   @unique
+  rolloverReport         Json?
+  activatedAt            DateTime?
   name                   String
   slug                   String    @unique
   startDate              DateTime
@@ -958,6 +964,8 @@ model Player {
   biography     String?
   squadType     SquadType? // STARTER, SUBSTITUTE, RESERVE
   isActive      Boolean        @default(true)
+  activityReason String?
+  activityChangedAt DateTime?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   deletedAt     DateTime?
@@ -1637,6 +1645,7 @@ model PlayerStat {
   goalsConceded   Int?     @default(0)
   averageRating   Float?
   distanceCovered Float?
+  manualOverrides Json?
   passes          Int?
   keyPasses       Int?
   dribbles        Int?
@@ -1664,6 +1673,7 @@ model FriendlyPlayerStat {
   yellowCards   Int      @default(0)
   redCards      Int      @default(0)
   averageRating Float?
+  manualOverrides Json?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

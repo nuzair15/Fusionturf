@@ -12,6 +12,7 @@ const HomePage = lazy(() => import("@/pages/home/HomePage").then((m) => ({ defau
 const BookingPage = lazy(() => import("@/pages/booking/BookingPage").then((m) => ({ default: m.BookingPage })));
 const VenueDetailPage = lazy(() => import("@/pages/booking/VenueDetailPage").then((m) => ({ default: m.VenueDetailPage })));
 const GuestBookingPage = lazy(() => import("@/pages/booking/GuestBookingPage").then((m) => ({ default: m.GuestBookingPage })));
+const SeasonOverviewPage = lazy(() => import("@/pages/league/SeasonOverviewPage").then(m => ({ default: m.SeasonOverviewPage })));
 const LeaguePage = lazy(() => import("@/pages/league/LeaguePage").then((m) => ({ default: m.LeaguePage })));
 const FixturesPage = lazy(() => import("@/pages/league/FixturesPage").then((m) => ({ default: m.FixturesPage })));
 const TeamDetailPage = lazy(() => import("@/pages/league/TeamDetailPage").then((m) => ({ default: m.TeamDetailPage })));
@@ -55,6 +56,8 @@ export default function App() {
                     <Route path="/booking" element={<BookingPage />} />
                     <Route path="/booking/manage" element={<GuestBookingPage />} />
                     <Route path="/booking/:slug" element={<VenueDetailPage />} />
+                    <Route path="/league/seasons" element={<SeasonOverviewPage />} />
+                    <Route path="/league/seasons/:slug" element={<SeasonOverviewPage />} />
                     <Route path="/league" element={<LeaguePage />} />
                     <Route path="/league/fixtures" element={<FixturesPage />} />
                     <Route path="/league/standings" element={<StandingsPage />} />
