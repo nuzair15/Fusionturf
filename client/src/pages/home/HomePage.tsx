@@ -28,6 +28,7 @@ export function HomePage() {
     refetchOnWindowFocus: true,
     refetchInterval: 15000,
   });
+  const { data: leagueFinal } = useQuery({ queryKey: ["fixtures", "home", "league-final"], queryFn: () => api.get<PaginatedResponse<Fixture>>("/v2/fixtures", { limit: 1, grandFinal: "true" }), staleTime: 0, refetchOnWindowFocus: true, refetchInterval: 15000 });
   const { data: standings } = useQuery({ queryKey: ["standings"], queryFn: () => api.get<Standing[]>("/league/standings"), staleTime: 60_000, refetchOnWindowFocus: false });
   const { data: venues } = useQuery({ queryKey: ["venues", { limit: 4 }], queryFn: () => api.get<PaginatedResponse<Venue>>("/bookings/venues", { limit: 4 }), refetchOnWindowFocus: true, refetchInterval: 60000 });
   const { data: news } = useQuery({ queryKey: ["home-news"], queryFn: () => api.get<PaginatedResponse<News>>("/league/news?limit=4"), refetchOnWindowFocus: true, refetchInterval: 60000 });
@@ -39,11 +40,26 @@ export function HomePage() {
   const recentList = recentFixtures?.data || [];
   // Keep a match visible when it moves from live to completed: live matches
   // come first, followed by recent results and then future fixtures.
-  const itemList = [
+  const fixtureCandidates = [
+    ...(leagueFinal?.data || []),
     ...upcomingList.filter((fixture) => ACTIVE_MATCH_STATUSES.includes(fixture.status)),
     ...recentList,
     ...upcomingList.filter((fixture) => fixture.status === "SCHEDULED"),
   ];
+  const itemList = Array.from(new Map(fixtureCandidates.map((fixture) => [fixture.id, fixture])).values())
+    .sort((a, b) => Number(!!b.isGrandFinal) - Number(!!a.isGrandFinal));
+  const finalFixture = itemList.find((fixture) => fixture.isGrandFinal);
+  const champion = finalFixture?.status === "COMPLETED"
+    ? finalFixture.winnerTeamId === finalFixture.homeTeamId
+      ? finalFixture.homeTeam
+      : finalFixture.winnerTeamId === finalFixture.awayTeamId
+        ? finalFixture.awayTeam
+        : (finalFixture.homeScore ?? 0) > (finalFixture.awayScore ?? 0)
+          ? finalFixture.homeTeam
+          : (finalFixture.awayScore ?? 0) > (finalFixture.homeScore ?? 0)
+            ? finalFixture.awayTeam
+            : null
+    : null;
   const standingsList = standings || [];
   const venueList = venues?.data || [];
   const newsList = news?.data || [];
@@ -66,6 +82,23 @@ export function HomePage() {
           )}
         />
       </div>
+
+      {champion && finalFixture && (
+        <section className="mx-auto w-full max-w-7xl px-4 sm:px-6">
+          <button type="button" onClick={() => navigate(`/league/fixtures/${finalFixture.id}`)} className="grid w-full gap-5 overflow-hidden rounded-2xl border border-amber-300/40 bg-[linear-gradient(135deg,#422006,#92400e,#d97706)] p-6 text-left text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl sm:grid-cols-[auto_1fr_auto] sm:items-center sm:p-8">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/25"><Trophy className="h-9 w-9 text-amber-200" /></div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-amber-200">League champions</p>
+              <div className="mt-2 flex items-center gap-3">
+                <img src={champion.logoUrl || "/placeholder.svg"} alt="" className="h-12 w-12 rounded-full bg-white/10 object-cover" />
+                <h2 className="text-2xl font-bold sm:text-3xl">{champion.name}</h2>
+              </div>
+              <p className="mt-2 text-sm text-amber-50/80">Winners of {currentSeason?.name || "the league final"}</p>
+            </div>
+            <span className="inline-flex items-center gap-2 text-sm font-semibold">View final <ArrowUpRight className="h-4 w-4" /></span>
+          </button>
+        </section>
+      )}
 
       {/* Available Turfs */}
       {venueList.length > 0 && (
@@ -108,8 +141,9 @@ export function HomePage() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <Badge variant="outline">{fixture.status}</Badge>
+                      {fixture.isGrandFinal && <Badge className="bg-amber-500 text-slate-950 hover:bg-amber-500">League Final</Badge>}
                       {fixture.isFriendly && <Badge variant="secondary" className="text-violet-600 dark:text-violet-400">Friendly</Badge>}
-                      {!fixture.isFriendly && fixture.competition?.name && <Badge variant="secondary">{fixture.competition.name}</Badge>}
+                      {!fixture.isFriendly && !fixture.isGrandFinal && fixture.competition?.name && <Badge variant="secondary">{fixture.competition.name}</Badge>}
                     </div>
                     <span className="text-xs text-muted-foreground">{formatDate(fixtureDateKey(fixture))} {fixture.kickoffTime ? `· ${formatTime(fixture.kickoffTime)}` : ""}</span>
                   </div>
@@ -122,7 +156,7 @@ export function HomePage() {
                       <p className="text-2xl font-bold tabular-nums">
                         {fixtureScoreLabel(fixture)}
                       </p>
-                      {fixture.round ? <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Round {fixture.round}</p> : null}
+                      {fixture.isGrandFinal ? <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-300">Championship final</p> : fixture.round ? <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Round {fixture.round}</p> : null}
                     </div>
                     <div className="flex flex-col items-center gap-2 text-center">
                       <img src={fixture.awayTeam.logoUrl || "/placeholder.svg"} alt="" className="h-11 w-11 rounded-full bg-muted object-cover" />

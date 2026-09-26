@@ -7,7 +7,7 @@ import rateLimit from "express-rate-limit";
 import multer from "multer";
 import cloudinary from "./lib/cloudinary.js";
 import { config } from "./config/index.js";
-import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
+import { AppError, errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import { authenticate, authorize } from "./middleware/auth.js";
 import routes from "./routes/index.js";
 import prisma from "./config/database.js";
@@ -43,12 +43,22 @@ function detectImageType(buffer: Buffer): string | null {
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const ext = "." + file.originalname.toLowerCase().split(".").pop();
     cb(null, ALLOWED_IMAGE_EXTENSIONS.includes(ext));
   },
 });
+
+const receiveImage = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  upload.single("file")(req, res, (error) => {
+    if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ error: "Image is too large. The maximum size is 10 MB." });
+    }
+    if (error) return next(error);
+    next();
+  });
+};
 
 const app = express();
 
@@ -127,11 +137,15 @@ app.use("/api/auth/register", authRateLimit);
 app.use("/api/auth/mfa", authRateLimit);
 
 // Upload endpoint
-app.post("/api/upload", authenticate, authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "CONTENT_EDITOR"), upload.single("file"), async (req, res, next) => {
+app.post("/api/upload", authenticate, authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "CONTENT_EDITOR"), receiveImage, async (req, res, next) => {
   try {
-    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    if (!req.file) return res.status(400).json({ error: "Choose a JPG, PNG, GIF, or WebP image." });
     if (!detectImageType(req.file.buffer)) {
       return res.status(400).json({ error: "File content does not match a supported image format" });
+    }
+    const cloudinaryConfig = cloudinary.config();
+    if (!cloudinaryConfig.cloud_name || !cloudinaryConfig.api_key || !cloudinaryConfig.api_secret) {
+      throw new AppError("Image uploads are unavailable because Cloudinary is not configured", 503, "CLOUDINARY_NOT_CONFIGURED");
     }
     const result = await new Promise<any>((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
@@ -145,6 +159,10 @@ app.post("/api/upload", authenticate, authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "
     });
     res.json({ url: result.secure_url });
   } catch (error) {
+    if (!(error instanceof AppError)) {
+      console.error(`Cloudinary upload failed [${res.locals?.requestId || "unknown"}]:`, error);
+      return next(new AppError("Cloudinary could not upload this image. Verify the Cloudinary credentials and try again.", 502, "CLOUDINARY_UPLOAD_FAILED"));
+    }
     next(error);
   }
 });

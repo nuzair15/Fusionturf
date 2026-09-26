@@ -10,6 +10,7 @@ vi.hoisted(() => {
 });
 import prisma from "../config/database.js";
 import { previewLeagueFinal, setLeagueFinal } from "./league-final.js";
+import { processMatchResult } from "./league-system.js";
 
 describe.skipIf(!process.env.SEASON_TEST_DATABASE_URL)("league final on PostgreSQL", () => {
   afterAll(async () => { await prisma.$disconnect(); });
@@ -46,5 +47,10 @@ describe.skipIf(!process.env.SEASON_TEST_DATABASE_URL)("league final on PostgreS
     const revised = await setLeagueFinal(season.id, input);
     expect(revised.id).toBe(final.id);
     expect(revised.awayTeamId).toBe(byName.B.id);
+
+    await expect(processMatchResult(revised.id, 1, 1)).rejects.toMatchObject({ statusCode: 400 });
+    await processMatchResult(revised.id, 1, 1, revised.awayTeamId);
+    expect(await prisma.fixture.findUnique({ where: { id: revised.id }, select: { winnerTeamId: true } })).toEqual({ winnerTeamId: revised.awayTeamId });
+    expect(await prisma.award.findFirst({ where: { seasonId: season.id, slug: "league-champion" }, select: { type: true, winnerTeamId: true } })).toEqual({ type: "TEAM", winnerTeamId: revised.awayTeamId });
   }, 30_000);
 });

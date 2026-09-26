@@ -145,11 +145,28 @@ class ApiClient {
     this.csrfValue = response.csrfToken;
   }
 
-  async uploadImage(file: File, uploadUrl = `${API_BASE}/upload`) {
+  async uploadImage(file: File, uploadUrl = `${API_BASE}/upload`, retried = false): Promise<{ url: string }> {
+    if (file.size > 10 * 1024 * 1024) throw new Error("Image is too large. The maximum size is 10 MB.");
     const form = new FormData();
     form.append("file", file);
     const response = await fetch(uploadUrl, { method: "POST", body: form, credentials: "include", headers: { "X-XSRF-TOKEN": this.csrfToken() } });
     const data = await response.json().catch(() => ({}));
+    if (!response.ok && !retried && response.status === 401) {
+      const refreshed = await fetch(`${API_BASE}/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "X-XSRF-TOKEN": this.csrfToken() },
+      });
+      if (refreshed.ok) {
+        const session = await refreshed.json().catch(() => ({}));
+        if (session.csrfToken) this.csrfValue = session.csrfToken;
+        return this.uploadImage(file, uploadUrl, true);
+      }
+    }
+    if (!response.ok && !retried && response.status === 403 && (data.error === "Invalid CSRF token" || data.code === "INVALID_CSRF_TOKEN")) {
+      await this.bootstrapCsrf();
+      return this.uploadImage(file, uploadUrl, true);
+    }
     if (!response.ok) throw new Error(data.message || data.error || "Upload failed");
     return data as { url: string };
   }

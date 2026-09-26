@@ -659,10 +659,11 @@ export async function processMatchResult(
   if (!fixture) throw new AppError("Fixture not found", 404);
   if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore) || homeScore < 0 || awayScore < 0) throw new AppError("Scores must be non-negative integers", 400);
   if (fixture.status === "CANCELLED" || fixture.status === "POSTPONED") throw new AppError("Cancelled or postponed fixtures cannot be completed", 400);
-  const validKnockoutWinner = fixture.bracketMatch && knockoutWinnerTeamId && [fixture.homeTeamId, fixture.awayTeamId].includes(knockoutWinnerTeamId);
-  if (fixture.bracketMatch && homeScore === awayScore && !validKnockoutWinner) throw new AppError("Knockout matches require a winner; provide the penalty winner team", 400);
-  if (fixture.bracketMatch && homeScore !== awayScore && knockoutWinnerTeamId && knockoutWinnerTeamId !== (homeScore > awayScore ? fixture.homeTeamId : fixture.awayTeamId)) throw new AppError("Knockout winner does not match the score", 400);
-  const resolvedWinner = fixture.bracketMatch
+  const requiresWinner = !!fixture.bracketMatch || fixture.isGrandFinal;
+  const validSelectedWinner = !!knockoutWinnerTeamId && [fixture.homeTeamId, fixture.awayTeamId].includes(knockoutWinnerTeamId);
+  if (requiresWinner && homeScore === awayScore && !validSelectedWinner) throw new AppError("Final and knockout matches require a winner; provide the penalty winner team", 400);
+  if (requiresWinner && homeScore !== awayScore && knockoutWinnerTeamId && knockoutWinnerTeamId !== (homeScore > awayScore ? fixture.homeTeamId : fixture.awayTeamId)) throw new AppError("Selected winner does not match the score", 400);
+  const resolvedWinner = requiresWinner
     ? (knockoutWinnerTeamId || (homeScore > awayScore ? fixture.homeTeamId : fixture.awayTeamId))
     : undefined;
   if (fixture.bracketMatch && resolvedWinner) await assertBracketCorrectionSafe(fixtureId, resolvedWinner);
@@ -1087,19 +1088,21 @@ async function autoCreateAward(seasonId: string, name: string, description: stri
   const existing = await prisma.award.findFirst({ where: { seasonId, slug } });
   if (existing?.winnerAnnounced) return;
 
-  let winnerId: string | undefined;
+  let winnerId: string | null | undefined;
+  let winnerTeamId: string | null | undefined;
   if (sorter && Array.isArray(data) && data.length > 0) {
     data.sort(sorter);
     winnerId = data[0].playerId;
+    winnerTeamId = null;
   } else if (data?.teamId) {
-    const teamPlayers = await prisma.player.findFirst({ where: { teamId: data.teamId, seasonId, isActive: true } });
-    if (teamPlayers) winnerId = teamPlayers.id;
+    winnerId = null;
+    winnerTeamId = data.teamId;
   }
 
   if (existing) {
     // Leave a manually-edited name/description alone; only refresh the
     // current-leader pointer, and never touch winnerAnnounced here.
-    await prisma.award.update({ where: { id: existing.id }, data: { winnerId } });
+    await prisma.award.update({ where: { id: existing.id }, data: { winnerId, winnerTeamId, ...(winnerTeamId ? { type: "TEAM" } : {}) } });
     return;
   }
 
@@ -1111,14 +1114,28 @@ async function autoCreateAward(seasonId: string, name: string, description: stri
       description,
       winnerAnnounced: false,
       winnerId,
+      winnerTeamId,
+      type: winnerTeamId ? "TEAM" : "PLAYER",
     },
   });
 }
 
 async function getChampionTeam(seasonId: string) {
+  const final = await prisma.fixture.findFirst({
+    where: { seasonId, isGrandFinal: true, status: "COMPLETED", deletedAt: null, winnerTeamId: { not: null } },
+    select: { winnerTeamId: true },
+    orderBy: { finalizedAt: "desc" },
+  });
+  if (final?.winnerTeamId) return { teamId: final.winnerTeamId };
   return prisma.standing.findFirst({ where: { seasonId, position: 1 } });
 }
 
 async function getRunnerUpTeam(seasonId: string) {
+  const final = await prisma.fixture.findFirst({
+    where: { seasonId, isGrandFinal: true, status: "COMPLETED", deletedAt: null, winnerTeamId: { not: null } },
+    select: { homeTeamId: true, awayTeamId: true, winnerTeamId: true },
+    orderBy: { finalizedAt: "desc" },
+  });
+  if (final?.winnerTeamId) return { teamId: final.winnerTeamId === final.homeTeamId ? final.awayTeamId : final.homeTeamId };
   return prisma.standing.findFirst({ where: { seasonId, position: 2 } });
 }

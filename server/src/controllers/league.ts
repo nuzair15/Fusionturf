@@ -414,6 +414,7 @@ export const getFixtures = async (req: Request, res: Response, next: NextFunctio
     if (req.query.competitionId) baseWhere.competitionId = req.query.competitionId;
     if (req.query.venueId) baseWhere.venueId = req.query.venueId;
     if (req.query.round) baseWhere.round = Number(req.query.round);
+    if (req.query.grandFinal === "true") baseWhere.isGrandFinal = true;
     if (req.query.date) {
       const date = String(req.query.date);
       if (!isValidDateOnly(date)) throw new AppError("date must use YYYY-MM-DD", 400);

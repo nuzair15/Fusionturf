@@ -31,6 +31,7 @@ export function ImageUpload({ value, onChange, label = "Image", uploadUrl = `${A
       setUploadError(error.message || "Upload failed");
     } finally {
       setUploading(false);
+      e.target.value = "";
     }
   };
 

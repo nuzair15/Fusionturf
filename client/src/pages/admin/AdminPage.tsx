@@ -1023,7 +1023,7 @@ export function AdminPage() {
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Penalty winner (knockout ties only)</Label>
+                  <Label>Penalty winner (final or knockout ties)</Label>
                   <Select value={formData.winnerTeamId || ""} onChange={(e) => handleFormChange("winnerTeamId", e.target.value)}>
                     <option value="">Not applicable</option>
                     {formData.homeTeamId && <option value={formData.homeTeamId}>{formData.homeTeamName || "Home team"}</option>}
