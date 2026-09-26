@@ -212,6 +212,7 @@ export function FixturesPage() {
                         </div>
                         <div className="text-center">
                           <TrendBadge><span className={`inline-block h-2 w-2 rounded-full ${fixture.status === "COMPLETED" ? "bg-emerald-500" : fixture.status === "LIVE" ? "bg-rose-500" : "bg-slate-400"}`} />{fixture.status === "COMPLETED" ? "Full time" : fixture.status}</TrendBadge>
+                          {fixture.isGrandFinal && <p className="mt-1 text-xs font-bold uppercase tracking-wide text-amber-600 dark:text-amber-300">League Final</p>}
                           <p className="mt-2 text-xl font-bold tabular-nums">
                             {fixtureScoreLabel(fixture)}
                           </p>

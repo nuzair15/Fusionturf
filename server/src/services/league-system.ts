@@ -586,7 +586,6 @@ export async function recalculateStandings(seasonId: string): Promise<void> {
     stats,
     fixtures,
     Object.fromEntries(teams.map((team) => [team.id, team.name])),
-    points,
   );
 
   const standingsData = sorted.map((teamId, idx) => {
@@ -839,57 +838,6 @@ export async function advanceBracketWinner(fixtureId: string, knockoutWinnerTeam
       data: { homeTeamId: updated.homeTeamId, awayTeamId: updated.awayTeamId, version: { increment: 1 } },
     });
   }
-}
-
-export async function generatePostSeasonFixtures(seasonId: string): Promise<void> {
-  const standings = await prisma.standing.findMany({
-    where: { seasonId },
-    orderBy: { position: "asc" },
-    include: { team: true },
-  });
-
-  if (standings.length < 6) throw new AppError("Need at least 6 teams for post-season", 400);
-
-  const firstPlace = standings[0].team;
-  const secondPlace = standings[1].team;
-  const fifthPlace = standings[4].team;
-  const sixthPlace = standings[5].team;
-
-  const season = await prisma.season.findUnique({ where: { id: seasonId } });
-  if (!season) throw new AppError("Season not found", 404);
-  const seasonEnd = new Date(season.endDate);
-
-  const grandFinalDate = new Date(seasonEnd);
-  grandFinalDate.setDate(grandFinalDate.getDate() + 7);
-
-  await prisma.fixture.create({
-    data: {
-      seasonId,
-      homeTeamId: firstPlace.id,
-      awayTeamId: secondPlace.id,
-      matchDate: grandFinalDate,
-      leagueWeek: 8,
-      round: 99,
-      isGrandFinal: true,
-      status: "SCHEDULED",
-    },
-  });
-
-  const playoffDate = new Date(grandFinalDate);
-  playoffDate.setDate(playoffDate.getDate() + 3);
-
-  await prisma.fixture.create({
-    data: {
-      seasonId,
-      homeTeamId: fifthPlace.id,
-      awayTeamId: sixthPlace.id,
-      matchDate: playoffDate,
-      leagueWeek: 8,
-      round: 99,
-      isRelegationPlayoff: true,
-      status: "SCHEDULED",
-    },
-  });
 }
 
 export async function openTransferWindow(seasonId: string, days: number = 7): Promise<void> {

@@ -158,6 +158,8 @@ router.delete("/turfs/:id", authorize("SUPER_ADMIN", "BOOKING_MANAGER"), admin.d
 
 // League System Operations
 router.post("/seasons/:id/generate-fixtures", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.generateFixtures);
+router.get("/seasons/:id/final-preview", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.getFinalPreview);
+router.post("/seasons/:id/final", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.generatePostSeason);
 router.post("/seasons/:id/postseason", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.generatePostSeason);
 router.post("/seasons/:id/transfer-window/open", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.adminOpenTransferWindow);
 router.post("/seasons/:id/transfer-window/close", authorize("SUPER_ADMIN", "LEAGUE_ADMIN"), admin.adminCloseTransferWindow);

@@ -1,5 +1,6 @@
 import { ReturningPlayerForm } from "@/components/admin/ReturningPlayerForm";
 import { SeasonTransitionPanel } from "@/components/admin/SeasonTransitionPanel";
+import { FinalMatchPanel } from "@/components/admin/FinalMatchPanel";
 import { PlayerActivityAction } from "@/components/admin/PlayerActivityAction";
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -469,6 +470,7 @@ export function AdminPage() {
               onEdit={(s) => { setEditingItem(s); openForm("season", { name: s.name, slug: s.slug, startDate: s.startDate, endDate: s.endDate, isActive: s.isActive, isCurrent: s.isCurrent }); }}
             />
               <SeasonTransitionPanel seasons={seasons || []} selectedId={selectedSeasonId} onSelect={setSelectedSeasonId} />
+              {(user?.role === "SUPER_ADMIN" || user?.role === "LEAGUE_ADMIN") && <FinalMatchPanel seasonId={selectedSeasonId} onSaved={() => { queryClient.invalidateQueries({ queryKey: ["admin-fixtures"] }); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); }} />}
               <div className="mb-4 rounded-2xl border bg-card p-4 shadow-sm">
               <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">League System Actions</h3>
               <div className="flex flex-wrap gap-2">
@@ -484,11 +486,6 @@ export function AdminPage() {
                   setFixturePreview(null);
                   setShowForm("generateFixtures");
                 }}>Bulk Generate Fixtures</Button>
-                <Button size="sm" variant="outline" onClick={async () => {
-                  const s = (seasons || []).find((s: Season) => s.id === selectedSeasonId) || currentSeason;
-                  if (!s) return setActionError("No current season selected");
-                  try { setActionError(""); await api.post(`/admin/seasons/${s.id}/postseason`, {}); queryClient.invalidateQueries({ queryKey: ["admin-seasons"] }); } catch (e: any) { setActionError(e.message); }
-                }}>Generate Post-Season</Button>
                 <Button size="sm" variant="outline" onClick={async () => {
                   const s = (seasons || []).find((s: Season) => s.id === selectedSeasonId) || currentSeason;
                   if (!s) return setActionError("No current season selected");
@@ -902,7 +899,7 @@ export function AdminPage() {
                 { key: "away", label: "Away", sortable: true, sortValue: (f) => f.awayTeam?.name || "", render: (f) => <span className="font-medium">{f.awayTeam?.name || "?"}</span> },
                 { key: "date", label: "Date", sortable: true, sortValue: (f) => f.scheduledDate || f.matchDate, render: (f) => <span className="text-muted-foreground">{formatDate(f.scheduledDate || f.matchDate)}</span> },
                 { key: "status", label: "Status", render: (f) => <Badge variant="secondary">{f.status}</Badge> },
-                { key: "type", label: "Type", render: (f) => <Badge variant={f.isFriendly ? "outline" : "secondary"}>{f.isFriendly ? "Friendly" : "League"}</Badge> },
+                { key: "type", label: "Type", render: (f) => <Badge variant={f.isFriendly ? "outline" : "secondary"}>{f.isGrandFinal ? "League Final" : f.isFriendly ? "Friendly" : "League"}</Badge> },
                 { key: "manage", label: "Manage", render: (f) => (
                   <div className="flex items-center justify-end gap-1">
                     <Button size="sm" variant="outline" onClick={() => setLineupFixture(f)}>

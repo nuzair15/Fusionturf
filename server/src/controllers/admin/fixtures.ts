@@ -14,6 +14,7 @@ import { ACTIVE_MATCH_STATUSES, fixtureScheduleFields, fixtureTimeDto } from "..
 import { canTransitionMatch } from "../../utils/match-state.js";
 import { localNow } from "../../utils/time.js";
 import { appendMatchEvent } from "../../services/match-events.js";
+import { previewLeagueFinal, setLeagueFinal } from "../../services/league-final.js";
 
 async function resolveFixtureTimezone(competitionId?: string | null, venueId?: string | null) {
   if (competitionId) {
@@ -163,6 +164,7 @@ export const getFixtures = async (req: Request, res: Response, next: NextFunctio
 export const createFixture = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = pick(req.body, FIXTURE_WRITABLE_FIELDS);
+    if (data.isGrandFinal) throw new AppError("Use Set final match to select the finalists automatically", 400);
     if (!data.seasonId || !data.homeTeamId || !data.awayTeamId || !data.matchDate) {
       throw new AppError("seasonId, homeTeamId, awayTeamId, and matchDate are required", 400);
     }
@@ -183,9 +185,11 @@ export const updateFixture = async (req: Request, res: Response, next: NextFunct
     if (data.matchDate) data.matchDate = new Date(data.matchDate);
     const existing = await prisma.fixture.findUnique({
       where: { id: req.params.id },
-      select: { id: true, seasonId: true, status: true, isFriendly: true, homeTeamId: true, awayTeamId: true, competitionId: true, matchDate: true, kickoffTime: true, venueId: true },
+      select: { id: true, seasonId: true, status: true, isFriendly: true, isGrandFinal: true, homeTeamId: true, awayTeamId: true, competitionId: true, matchDate: true, kickoffTime: true, venueId: true },
     });
     if (!existing) throw new AppError("Fixture not found", 404);
+    if (data.isGrandFinal !== undefined && data.isGrandFinal !== existing.isGrandFinal) throw new AppError("Use Set final match to manage the final", 400);
+    if (existing.isGrandFinal && ((data.homeTeamId && data.homeTeamId !== existing.homeTeamId) || (data.awayTeamId && data.awayTeamId !== existing.awayTeamId))) throw new AppError("Finalists are selected from the league table. Use Set final match to refresh them.", 400);
     await validateFixtureReferences({ ...existing, ...data }, existing.id);
     const merged = { ...existing, ...data };
     const schedule = fixtureScheduleFields(merged.matchDate, merged.kickoffTime, await resolveFixtureTimezone(merged.competitionId, merged.venueId));
@@ -661,11 +665,16 @@ export const publishSchedulePreview = async (req: Request, res: Response, next: 
 
 export const generatePostSeason = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await leagueSystem.generatePostSeasonFixtures(req.params.id);
-    res.json({ message: "Post-season fixtures created" });
+    const fixture = await setLeagueFinal(req.params.id, req.body || {});
+    res.json({ fixture });
   } catch (error) {
     next(error);
   }
+};
+
+export const getFinalPreview = async (req: Request, res: Response, next: NextFunction) => {
+  try { res.json(await previewLeagueFinal(req.params.id)); }
+  catch (error) { next(error); }
 };
 
 export const adminProcessMatchResult = async (req: Request, res: Response, next: NextFunction) => {

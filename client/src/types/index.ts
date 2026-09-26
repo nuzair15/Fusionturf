@@ -211,6 +211,7 @@ export interface Fixture {
   season?: Season;
   competition?: { name: string };
   isFriendly?: boolean;
+  isGrandFinal?: boolean;
 }
 
 export type MatchStatus = "SCHEDULED" | "LIVE" | "PAUSED" | "HALF_TIME" | "EXTRA_TIME" | "PENALTIES" | "POSTPONED" | "CANCELLED" | "COMPLETED";

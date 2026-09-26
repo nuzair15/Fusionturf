@@ -162,6 +162,7 @@ export function FixtureDetailPage() {
               {fixture.status}
             </Badge>
             {fixture.isFriendly && <Badge className="bg-violet-500/90 hover:bg-violet-500/90">Friendly</Badge>}
+            {fixture.isGrandFinal && <Badge className="bg-amber-500 text-slate-950 hover:bg-amber-500">League Final</Badge>}
             {!fixture.isFriendly && fixture.competition?.name && <Badge className="bg-white/10 text-white hover:bg-white/10">{fixture.competition.name}</Badge>}
           </div>
           <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
