@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { businessDateKey, fixtureDisplayComparator } from "./fixtures";
+import { businessDateKey, fixtureDisplayComparator, fixtureScoreLabel } from "./fixtures";
 
 const fixture = (id: string, status: string, scheduledDate: string, kickoffAt: string | null = null) => ({ id, status, scheduledDate, kickoffAt, matchDate: `${scheduledDate}T00:00:00.000Z` }) as any;
 
@@ -22,5 +22,11 @@ describe("fixtureDisplayComparator", () => {
     const rows = [fixture("old", "COMPLETED", "2020-01-01"), fixture("scheduled", "SCHEDULED", "2099-01-01"), fixture("new", "COMPLETED", "2021-01-01")];
     rows.sort(fixtureDisplayComparator("Asia/Kolkata"));
     expect(rows.map((row) => row.id)).toEqual(["scheduled", "new", "old"]);
+  });
+});
+
+describe("fixtureScoreLabel", () => {
+  it("shows the shootout score alongside the tied match score", () => {
+    expect(fixtureScoreLabel({ status: "COMPLETED", homeScore: 2, awayScore: 2, penaltiesHomeScore: 5, penaltiesAwayScore: 4 } as any)).toBe("2-2 (5-4 pens)");
   });
 });

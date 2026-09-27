@@ -45,6 +45,7 @@ export const getLiveStats = async (req: Request, res: Response, next: NextFuncti
         homeTeam: { select: { id: true, name: true, shortName: true, logoUrl: true } },
         awayTeam: { select: { id: true, name: true, shortName: true, logoUrl: true } },
         competition: { select: { name: true } },
+        bracketMatch: { select: { id: true } },
       },
     });
     if (!fixture) throw new AppError("Fixture not found", 404);
@@ -123,6 +124,8 @@ export const getLiveStats = async (req: Request, res: Response, next: NextFuncti
         round: fixture.round,
         stadium: fixture.stadium,
         competition: fixture.competition,
+        isGrandFinal: fixture.isGrandFinal,
+        hasKnockoutBracket: !!fixture.bracketMatch,
         manOfTheMatchId: fixture.manOfTheMatchId,
         matchPlayerRatings: Object.fromEntries(ratings.map((r) => [r.playerId, r.rating])),
         homeScore: fixture.homeScore,

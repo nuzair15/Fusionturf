@@ -22,6 +22,7 @@ import { ManOfTheMatchDialog } from "./ManOfTheMatchDialog";
 import { AwardedGoalDialog } from "./AwardedGoalDialog";
 import { EditGoalDialog, type GoalUpdatePayload } from "./EditGoalDialog";
 import { EditCardDialog, type CardUpdatePayload } from "./EditCardDialog";
+import { PenaltyShootoutDialog } from "./PenaltyShootoutDialog";
 import type { MatchStatus } from "@/types";
 import { eventMinuteFromClock } from "@/lib/matchClock";
 
@@ -60,6 +61,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
   const [correctionReason, setCorrectionReason] = useState("");
   const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
   const [draftHydrated, setDraftHydrated] = useState(false);
+  const [shootoutDialogOpen, setShootoutDialogOpen] = useState(false);
   const fetchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const teamStatValues = useRef<Record<string, number>>({});
   const pendingTeamStats = useRef<Record<string, number>>({});
@@ -221,6 +223,9 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
       case "resume": setStatus("LIVE"); break;
       case "pause": setStatus("PAUSED"); break;
       case "half-time": setStatus("HALF_TIME"); break;
+      case "extra-time": setStatus("EXTRA_TIME"); break;
+      case "shootout": setConfirm({ title: "Start the penalty shootout?", description: "The match will remain live in penalty-shootout mode until you enter the shootout result.", onConfirm: () => setStatus("PENALTIES") }); break;
+      case "finish-shootout": setShootoutDialogOpen(true); break;
       case "full-time":
         setConfirm({ title: "End the match?", description: "The final result will be processed and standings/player stats updated.", destructive: true, onConfirm: () => setStatus("COMPLETED") });
         break;
@@ -457,7 +462,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
         </div>
 
         <div className="mt-4 rounded-xl border bg-card/40 p-3 sm:p-4">
-          <QuickActions status={data.fixture.status} onAction={onQuickAction} disabled={busy} />
+          <QuickActions status={data.fixture.status} onAction={onQuickAction} disabled={busy} allowsDecider={!!data.fixture.isGrandFinal || !!data.fixture.hasKnockoutBracket} />
         </div>
 
         {data.fixture.status === "COMPLETED" && <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 sm:p-4">
@@ -505,6 +510,21 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
       </div>
 
       {/* Dialogs */}
+      <PenaltyShootoutDialog
+        open={shootoutDialogOpen}
+        home={homeTeam}
+        away={awayTeam}
+        busy={busy}
+        onClose={() => setShootoutDialogOpen(false)}
+        onConfirm={async (result) => {
+          const saved = await runAction(() => liveMatchApi.completePenaltyShootout(fixtureId, {
+            homeScore: data.fixture.homeScore ?? 0,
+            awayScore: data.fixture.awayScore ?? 0,
+            ...result,
+          }), "Penalty shootout result saved");
+          if (saved) setShootoutDialogOpen(false);
+        }}
+      />
       <GoalDialog
         open={dialog === "goal" || dialog === "own-goal" || dialog === "penalty"}
         goalType={(dialog === "own-goal" ? "own-goal" : dialog === "penalty" ? "penalty" : "goal") as GoalType}

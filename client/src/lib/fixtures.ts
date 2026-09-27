@@ -57,8 +57,9 @@ export function sortedFixtures(fixtures: Fixture[], timezone = "Asia/Kolkata"): 
 }
 
 export function fixtureScoreLabel(fixture: Fixture): string {
-  return fixture.status === "COMPLETED" || isActiveMatch(fixture.status)
-    ? `${fixture.homeScore ?? 0}-${fixture.awayScore ?? 0}`
-    : "VS";
+  if (fixture.status !== "COMPLETED" && !isActiveMatch(fixture.status)) return "VS";
+  const score = `${fixture.homeScore ?? 0}-${fixture.awayScore ?? 0}`;
+  return fixture.penaltiesHomeScore != null && fixture.penaltiesAwayScore != null
+    ? `${score} (${fixture.penaltiesHomeScore}-${fixture.penaltiesAwayScore} pens)`
+    : score;
 }
-

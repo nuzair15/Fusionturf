@@ -101,6 +101,7 @@ export const getFixtures = async (req: Request, res: Response, next: NextFunctio
       awayTeam: { select: { name: true, slug: true, logoUrl: true } },
       season: { select: { name: true } },
       competition: { select: { timezone: true } },
+      bracketMatch: { select: { id: true } },
     } as const;
     const buckets: any[] = where.status ? [{
       where: { ...where },
@@ -396,8 +397,20 @@ export const updateFixtureScore = async (req: Request, res: Response, next: Next
     if ((hasExtraTime && (!Number.isInteger(extraTimeHomeScore) || !Number.isInteger(extraTimeAwayScore))) || (hasPenalties && (!Number.isInteger(penaltiesHomeScore) || !Number.isInteger(penaltiesAwayScore)))) {
       throw new AppError("Extra-time and penalty scores must be supplied as complete integer pairs", 400);
     }
-    const existing = await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { status: true } });
+    if ((hasExtraTime && (extraTimeHomeScore < 0 || extraTimeAwayScore < 0)) || (hasPenalties && (penaltiesHomeScore < 0 || penaltiesAwayScore < 0))) {
+      throw new AppError("Extra-time and penalty scores must be non-negative integers", 400);
+    }
+    const existing = await prisma.fixture.findUnique({ where: { id: req.params.id }, select: { status: true, isGrandFinal: true, homeTeamId: true, awayTeamId: true, bracketMatch: { select: { id: true } } } });
     if (!existing) throw new AppError("Fixture not found", 404);
+    if (hasPenalties) {
+      if (!existing.isGrandFinal && !existing.bracketMatch) throw new AppError("Only final or knockout matches can be decided by penalties", 400);
+      if (penaltiesHomeScore === penaltiesAwayScore) throw new AppError("A penalty shootout must have a winner", 400);
+      const shootoutWinnerId = penaltiesHomeScore > penaltiesAwayScore ? existing.homeTeamId : existing.awayTeamId;
+      if (winnerTeamId !== shootoutWinnerId) throw new AppError("Penalty winner does not match the shootout score", 400);
+    }
+    if (existing.isGrandFinal && homeScore === awayScore && !hasPenalties && !hasExtraTime) {
+      throw new AppError("A tied league final requires extra-time or penalty-shootout details", 400);
+    }
     if (existing.status === "COMPLETED" && (typeof reason !== "string" || !reason.trim())) {
       throw new AppError("Completed result corrections require a reason", 400);
     }

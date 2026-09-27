@@ -87,6 +87,8 @@ export interface LiveFixtureInfo {
   matchClockSeconds?: number;
   kickoffTime?: string;
   competition?: { name: string };
+  isGrandFinal?: boolean;
+  hasKnockoutBracket?: boolean;
   round?: number;
   stadium?: string;
   homeScore?: number;

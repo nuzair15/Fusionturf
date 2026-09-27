@@ -15,13 +15,17 @@ export type QuickAction =
   | "pause"
   | "resume"
   | "half-time"
+  | "extra-time"
+  | "shootout"
+  | "finish-shootout"
   | "full-time"
   | "undo";
 
-export function QuickActions({ status, onAction, disabled }: {
+export function QuickActions({ status, onAction, disabled, allowsDecider = false }: {
   status: MatchStatus;
   onAction: (action: QuickAction) => void;
   disabled?: boolean;
+  allowsDecider?: boolean;
 }) {
   const isLive = status === "LIVE";
 
@@ -37,11 +41,14 @@ export function QuickActions({ status, onAction, disabled }: {
   ];
 
   const matchCards: { action: QuickAction; icon: React.ReactNode; label: string; desc: string; shortcut?: string; tone: string; hidden?: boolean }[] = [
-    { action: "start", icon: <Play className="h-5 w-5" />, label: "Start", desc: "Kick off", shortcut: "Space", tone: "bg-emerald-600 text-white hover:bg-emerald-700", hidden: isLive || status === "COMPLETED" },
+    { action: "start", icon: <Play className="h-5 w-5" />, label: "Start", desc: "Kick off", shortcut: "Space", tone: "bg-emerald-600 text-white hover:bg-emerald-700", hidden: status !== "SCHEDULED" },
     { action: "pause", icon: <Pause className="h-5 w-5" />, label: "Pause", desc: "Hold the match", tone: "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20", hidden: !isLive },
-    { action: "resume", icon: <Play className="h-5 w-5" />, label: "Resume", desc: "Back to live", tone: "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20", hidden: status !== "PAUSED" },
+    { action: "resume", icon: <Play className="h-5 w-5" />, label: "Resume", desc: "Back to live", tone: "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20", hidden: status !== "PAUSED" && status !== "HALF_TIME" },
     { action: "half-time", icon: <Clock3 className="h-5 w-5" />, label: "Half Time", desc: "End first half", tone: "bg-orange-500/10 text-orange-600 hover:bg-orange-500/20", hidden: !isLive },
-    { action: "full-time", icon: <Flag className="h-5 w-5" />, label: "Full Time", desc: "Finish match", tone: "bg-red-500/10 text-red-600 hover:bg-red-500/20", hidden: status === "COMPLETED" },
+    { action: "extra-time", icon: <Clock3 className="h-5 w-5" />, label: "Extra Time", desc: "Start extra time", tone: "bg-violet-500/10 text-violet-600 hover:bg-violet-500/20", hidden: !allowsDecider || !["LIVE", "PAUSED", "HALF_TIME"].includes(status) },
+    { action: "shootout", icon: <GoalIcon className="h-5 w-5" />, label: "Penalty Shootout", desc: "Start shootout", tone: "bg-amber-500/10 text-amber-700 hover:bg-amber-500/20", hidden: !allowsDecider || !["LIVE", "PAUSED", "EXTRA_TIME"].includes(status) },
+    { action: "finish-shootout", icon: <Flag className="h-5 w-5" />, label: "Finish Shootout", desc: "Record score and winner", tone: "bg-amber-600 text-white hover:bg-amber-700", hidden: status !== "PENALTIES" },
+    { action: "full-time", icon: <Flag className="h-5 w-5" />, label: "Full Time", desc: "Finish match", tone: "bg-red-500/10 text-red-600 hover:bg-red-500/20", hidden: status === "COMPLETED" || status === "PENALTIES" },
   ];
 
   return (
@@ -51,7 +58,7 @@ export function QuickActions({ status, onAction, disabled }: {
           <button
             key={c.action}
             onClick={() => onAction(c.action)}
-            disabled={disabled || (status === "COMPLETED" && c.action !== "motm")}
+            disabled={disabled || status === "PENALTIES" || (status === "COMPLETED" && c.action !== "motm")}
             title={`${c.label} — ${c.desc}`}
             className={cn(
               "group relative flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3 text-center transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.97] disabled:opacity-40",

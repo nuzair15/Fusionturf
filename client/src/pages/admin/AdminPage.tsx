@@ -17,6 +17,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { buildBookingMessage } from "@/lib/bookingMessage";
+import { fixtureScoreLabel } from "@/lib/fixtures";
 import { bookingCustomerName, bookingCustomerPhone } from "@/lib/bookingCustomer";
 import { MatchControlCenter } from "@/components/live/MatchControlCenter";
 import { LineupEditor } from "@/components/admin/LineupEditor";
@@ -896,7 +897,7 @@ export function AdminPage() {
               filters={<><Select value={fixtureTypeFilter} onChange={(e) => { setFixtureTypeFilter(e.target.value as typeof fixtureTypeFilter); setFixturePage(1); }} className="w-40"><option value="all">All matches</option><option value="league">League only</option><option value="friendly">Friendly only</option></Select><Select value={fixtureStatusFilter} onChange={(e) => { setFixtureStatusFilter(e.target.value); setFixturePage(1); }} className="w-44"><option value="all">All statuses</option><option value="SCHEDULED">Scheduled</option><option value="LIVE">Live</option><option value="COMPLETED">Completed / old</option><option value="POSTPONED">Postponed</option><option value="CANCELLED">Cancelled</option></Select></>}
               columns={[
                 { key: "home", label: "Home", sortable: true, sortValue: (f) => f.homeTeam?.name || "", render: (f) => <span className="font-medium">{f.homeTeam?.name || "?"}</span> },
-                { key: "score", label: "Score", render: (f) => <span className="font-bold">{f.status === "COMPLETED" ? `${f.homeScore ?? 0} - ${f.awayScore ?? 0}` : "vs"}</span> },
+                { key: "score", label: "Score", render: (f) => <span className="font-bold">{fixtureScoreLabel(f)}</span> },
                 { key: "away", label: "Away", sortable: true, sortValue: (f) => f.awayTeam?.name || "", render: (f) => <span className="font-medium">{f.awayTeam?.name || "?"}</span> },
                 { key: "date", label: "Date", sortable: true, sortValue: (f) => f.scheduledDate || f.matchDate, render: (f) => <span className="text-muted-foreground">{formatDate(f.scheduledDate || f.matchDate)}</span> },
                 { key: "status", label: "Status", render: (f) => <Badge variant="secondary">{f.status}</Badge> },
@@ -920,6 +921,11 @@ export function AdminPage() {
                         homeTeamName: f.homeTeam?.name || "Home team",
                         awayTeamName: f.awayTeam?.name || "Away team",
                         winnerTeamId: f.winnerTeamId || "",
+                        isGrandFinal: !!f.isGrandFinal,
+                        allowsDecider: !!f.isGrandFinal || !!(f as any).bracketMatch,
+                        decidedByPenalties: f.outcome === "PENALTIES" || f.penaltiesHomeScore != null || (f.isGrandFinal && f.status === "COMPLETED" && f.homeScore === f.awayScore),
+                        penaltiesHomeScore: f.penaltiesHomeScore ?? "",
+                        penaltiesAwayScore: f.penaltiesAwayScore ?? "",
                         version: f.version,
                         isCompleted: f.status === "COMPLETED",
                         correctionReason: "",
@@ -976,6 +982,17 @@ export function AdminPage() {
                     <Input type="time" value={formData.kickoffTime || ""} onChange={(e) => handleFormChange("kickoffTime", e.target.value)} />
                   </div>
                 </div>
+                {(formData.allowsDecider || formData.decidedByPenalties) && <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={!!formData.decidedByPenalties} onChange={(e) => handleFormChange("decidedByPenalties", e.target.checked)} />
+                  Decided by penalty shootout
+                </label>}
+                {formData.decidedByPenalties && <div className="space-y-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+                  <p className="text-sm font-medium">Penalty shootout score</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5"><Label>{formData.homeTeamName || "Home team"}</Label><Input type="number" min={0} value={formData.penaltiesHomeScore} onChange={(e) => handleFormChange("penaltiesHomeScore", e.target.value === "" ? "" : Number(e.target.value))} /></div>
+                    <div className="space-y-1.5"><Label>{formData.awayTeamName || "Away team"}</Label><Input type="number" min={0} value={formData.penaltiesAwayScore} onChange={(e) => handleFormChange("penaltiesAwayScore", e.target.value === "" ? "" : Number(e.target.value))} /></div>
+                  </div>
+                </div>}
                 <div className="space-y-1.5">
                   <Label>Season</Label>
                   <Select value={formData.seasonId || ""} onChange={(e) => handleFormChange("seasonId", e.target.value)}>
@@ -1040,10 +1057,18 @@ export function AdminPage() {
                 <Button className="w-full" disabled={formData.isCompleted && !formData.correctionReason?.trim()} onClick={async () => {
                   try {
                     setFormErrors("");
+                    let selectedWinner = formData.winnerTeamId || undefined;
+                    if (formData.decidedByPenalties) {
+                      if (!Number.isInteger(formData.penaltiesHomeScore) || !Number.isInteger(formData.penaltiesAwayScore)) throw new Error("Enter both penalty shootout scores.");
+                      if (formData.penaltiesHomeScore === formData.penaltiesAwayScore) throw new Error("The penalty shootout must have a winner.");
+                      selectedWinner = formData.penaltiesHomeScore > formData.penaltiesAwayScore ? formData.homeTeamId : formData.awayTeamId;
+                    }
                     await api.patch(`/admin/fixtures/${formData.fixtureId}/score`, {
                       homeScore: formData.homeScore,
                       awayScore: formData.awayScore,
-                      winnerTeamId: formData.winnerTeamId || undefined,
+                      winnerTeamId: selectedWinner,
+                      penaltiesHomeScore: formData.decidedByPenalties ? formData.penaltiesHomeScore : undefined,
+                      penaltiesAwayScore: formData.decidedByPenalties ? formData.penaltiesAwayScore : undefined,
                       reason: formData.correctionReason || undefined,
                       version: formData.version,
                     });

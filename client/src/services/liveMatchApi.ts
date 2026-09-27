@@ -12,6 +12,9 @@ export const liveMatchApi = {
     api.patch(`/admin/fixtures/${fixtureId}/status`, { status }),
   resetClock: (fixtureId: string) => api.post(`/admin/fixtures/${fixtureId}/live-stats/reset-clock`),
 
+  completePenaltyShootout: (fixtureId: string, body: { homeScore: number; awayScore: number; penaltiesHomeScore: number; penaltiesAwayScore: number; winnerTeamId: string }) =>
+    api.patch(`/admin/fixtures/${fixtureId}/score`, body),
+
   updateLiveStat: (fixtureId: string, body: { playerId: string; statType: StatType; teamId: string; action: "increment" | "decrement"; minute?: number } & Correction) =>
     api.post(`/admin/fixtures/${fixtureId}/live-stats/update`, body),
 
