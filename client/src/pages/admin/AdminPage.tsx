@@ -114,6 +114,7 @@ export function AdminPage() {
   const [winnerLoading, setWinnerLoading] = useState(false);
   const [selectedWinner, setSelectedWinner] = useState<any>(null);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [bookingTimingEditId, setBookingTimingEditId] = useState<string | null>(null);
   const [copiedBookingId, setCopiedBookingId] = useState<string | null>(null);
   const [teamSearch, setTeamSearch] = useState("");
   const [playerSearch, setPlayerSearch] = useState("");
@@ -1635,6 +1636,20 @@ export function AdminPage() {
                 { key: "time", label: "Time", render: (b) => <>{b.startTime} - {b.endTime}</> },
                 { key: "amount", label: "Amount", sortable: true, sortValue: (b) => b.totalAmount, render: (b) => <>₹{(b.totalAmount / 100).toFixed(2)}</> },
                 { key: "status", label: "Status", render: (b) => <Badge variant={b.status === "CONFIRMED" ? "default" : b.status === "CANCELLED" ? "destructive" : "secondary"}>{b.status}</Badge> },
+                { key: "reschedule", label: "", render: (b) => (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={b.status === "CANCELLED" || b.status === "COMPLETED"}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setBookingTimingEditId(b.id);
+                      setSelectedBooking(b);
+                    }}
+                  >
+                    <Edit2 className="mr-1.5 h-3.5 w-3.5" /> Reschedule
+                  </Button>
+                ) },
                 { key: "whatsapp", label: "", render: (b) => {
                   const phone = bookingCustomerPhone(b).replace(/[^0-9]/g, "");
                   const msg = buildBookingMessage(b);
@@ -1676,7 +1691,7 @@ export function AdminPage() {
               keyExtractor={(b) => b.id}
               total={bookings?.meta?.total}
               onSearch={setBookingSearch}
-              onView={(b) => setSelectedBooking(b)}
+              onView={(b) => { setBookingTimingEditId(null); setSelectedBooking(b); }}
               bulkActions={[
                 { label: "Confirm", onClick: async (ids) => { for (const id of ids) { try { await api.patch(`/admin/bookings/${id}/status`, { status: "CONFIRMED" }); } catch {} } queryClient.invalidateQueries({ queryKey: ["admin-bookings"] }); }, icon: <CheckCircle2 className="h-4 w-4" /> },
                 { label: "Cancel", onClick: async (ids) => { for (const id of ids) { try { await api.patch(`/admin/bookings/${id}/status`, { status: "CANCELLED" }); } catch {} } queryClient.invalidateQueries({ queryKey: ["admin-bookings"] }); }, icon: <XCircle className="h-4 w-4" />, variant: "destructive" },
@@ -2296,7 +2311,7 @@ export function AdminPage() {
         />
       )}
       <AnimatePresence>
-        {selectedBooking && <BookingDrawer booking={selectedBooking} settings={settings || {}} onClose={() => setSelectedBooking(null)} />}
+        {selectedBooking && <BookingDrawer booking={selectedBooking} settings={settings || {}} startInTimeEdit={bookingTimingEditId === selectedBooking.id} onClose={() => { setSelectedBooking(null); setBookingTimingEditId(null); }} />}
       </AnimatePresence>
         </main>
       </div>

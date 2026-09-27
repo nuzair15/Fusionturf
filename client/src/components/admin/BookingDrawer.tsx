@@ -30,7 +30,7 @@ function relativeTime(dateStr: string): string {
   return formatDate(dateStr);
 }
 
-export function BookingDrawer({ booking, settings, onClose }: { booking: Booking; settings?: Record<string, string>; onClose: () => void }) {
+export function BookingDrawer({ booking, settings, onClose, startInTimeEdit = false }: { booking: Booking; settings?: Record<string, string>; onClose: () => void; startInTimeEdit?: boolean }) {
   const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("CASH");
@@ -39,11 +39,12 @@ export function BookingDrawer({ booking, settings, onClose }: { booking: Booking
   const [discountAmount, setDiscountAmount] = useState(booking.discountAmount || 0);
   const [discountInput, setDiscountInput] = useState(String((booking.discountAmount || 0) / 100 || ""));
   const [savingDiscount, setSavingDiscount] = useState(false);
-  const [editingTime, setEditingTime] = useState(false);
+  const [editingTime, setEditingTime] = useState(startInTimeEdit);
   const [editDate, setEditDate] = useState(booking.date.split("T")[0]);
   const [editStart, setEditStart] = useState(booking.startTime);
   const [editEnd, setEditEnd] = useState(booking.endTime);
   const [savingTime, setSavingTime] = useState(false);
+  const [timingError, setTimingError] = useState("");
   const statusColor = booking.status === "CONFIRMED" ? "bg-blue-500" :
     booking.status === "COMPLETED" ? "bg-green-500" :
     booking.status === "CANCELLED" ? "bg-red-500" :
@@ -85,13 +86,22 @@ export function BookingDrawer({ booking, settings, onClose }: { booking: Booking
   };
 
   const saveTiming = async () => {
+    if (!editDate || !editStart || !editEnd) {
+      setTimingError("Choose a date, start time, and end time.");
+      return;
+    }
     setSavingTime(true);
+    setTimingError("");
     try {
       await api.patch(`/admin/bookings/${booking.id}`, { date: editDate, startTime: editStart, endTime: editEnd });
       queryClient.invalidateQueries({ queryKey: ["admin-bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-calendar"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-bookings-analytics"] });
       setEditingTime(false);
       onClose();
-    } catch {} finally {
+    } catch (error: any) {
+      setTimingError(error.message || "The booking could not be rescheduled.");
+    } finally {
       setSavingTime(false);
     }
   };
@@ -149,7 +159,7 @@ export function BookingDrawer({ booking, settings, onClose }: { booking: Booking
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">Duration: {booking.duration} min • {booking.numPlayers} players</p>
               {(booking.status === "PENDING" || booking.status === "CONFIRMED" || booking.status === "RESCHEDULED") && !editingTime && (
-                <Button size="sm" variant="outline" className="mt-3" onClick={() => setEditingTime(true)}>
+                <Button size="sm" variant="outline" className="mt-3" onClick={() => { setTimingError(""); setEditingTime(true); }}>
                   <Edit2 className="mr-1.5 h-3.5 w-3.5" /> Edit date & time
                 </Button>
               )}
@@ -161,9 +171,10 @@ export function BookingDrawer({ booking, settings, onClose }: { booking: Booking
                     <Input type="time" value={editEnd} onChange={(e) => setEditEnd(e.target.value)} />
                   </div>
                   <div className="flex gap-2">
-                    <Button size="sm" onClick={saveTiming} disabled={savingTime}>Save timing</Button>
-                    <Button size="sm" variant="ghost" onClick={() => setEditingTime(false)} disabled={savingTime}>Cancel</Button>
+                    <Button size="sm" onClick={saveTiming} disabled={savingTime}>{savingTime ? "Saving…" : "Save timing"}</Button>
+                    <Button size="sm" variant="ghost" onClick={() => { setTimingError(""); setEditingTime(false); }} disabled={savingTime}>Cancel</Button>
                   </div>
+                  {timingError && <p role="alert" className="text-xs text-destructive">{timingError}</p>}
                   <p className="text-xs text-muted-foreground">Venue hours, price, and overlapping bookings will be checked automatically.</p>
                 </div>
               )}
@@ -333,12 +344,12 @@ export function BookingDrawer({ booking, settings, onClose }: { booking: Booking
               </div>
             )}
             <div className="grid grid-cols-2 gap-2">
-              {booking.status === "PENDING" && (
+              {(booking.status === "PENDING" || booking.status === "RESCHEDULED") && (
                 <Button onClick={() => handleAction("confirm")} className="bg-green-600 hover:bg-green-700">
-                  <CheckCircle2 className="mr-1.5 h-4 w-4" /> Confirm
+                  <CheckCircle2 className="mr-1.5 h-4 w-4" /> {booking.status === "RESCHEDULED" ? "Confirm new time" : "Confirm"}
                 </Button>
               )}
-              {(booking.status === "PENDING" || booking.status === "CONFIRMED") && (
+              {(booking.status === "PENDING" || booking.status === "CONFIRMED" || booking.status === "RESCHEDULED") && (
                 <Button variant="destructive" onClick={() => handleAction("cancel")}>
                   <Ban className="mr-1.5 h-4 w-4" /> Cancel
                 </Button>

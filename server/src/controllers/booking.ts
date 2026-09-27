@@ -942,6 +942,10 @@ export const adminUpdateBooking = async (req: Request, res: Response, next: Next
     const nextDate = typeof date === "string" ? date : current.date.toISOString().slice(0, 10);
     const nextStart = typeof startTime === "string" ? startTime : current.startTime;
     const nextEnd = typeof endTime === "string" ? endTime : current.endTime;
+    const currentDate = current.date.toISOString().slice(0, 10);
+    if (nextDate === currentDate && nextStart === current.startTime && nextEnd === current.endTime) {
+      throw new AppError("Change the booking date or time before saving", 400);
+    }
     const quoteInput: BookingInput = {
       turfId: current.turfId,
       date: nextDate,
@@ -967,7 +971,13 @@ export const adminUpdateBooking = async (req: Request, res: Response, next: Next
       });
       if (overlap) throw new AppError("This time slot is already booked. Please choose a different time.", 409);
       const discount = Math.min(current.discountAmount || 0, quote.totalAmount);
-      const totalAmount = quote.totalAmount - discount;
+      const settledPayments = await tx.payment.count({
+        where: { bookingId: current.id, status: { in: ["PAID", "PARTIALLY_REFUNDED", "REFUNDED"] } },
+      });
+      // A reschedule must not rewrite an amount that has already entered the
+      // payment ledger. Unsettled bookings are repriced for the new slot;
+      // settled bookings retain the agreed total while their time changes.
+      const totalAmount = settledPayments ? current.totalAmount : quote.totalAmount - discount;
       const changed = await tx.booking.updateMany({
         where: { id: current.id, updatedAt: current.updatedAt },
         data: {
@@ -983,13 +993,17 @@ export const adminUpdateBooking = async (req: Request, res: Response, next: Next
         },
       });
       if (changed.count !== 1) throw new AppError("Booking changed concurrently; retry the request", 409);
-      await tx.payment.updateMany({ where: { bookingId: current.id, status: "PENDING" }, data: { amount: totalAmount } });
+      if (!settledPayments) await tx.payment.updateMany({ where: { bookingId: current.id, status: "PENDING" }, data: { amount: totalAmount } });
       await tx.outboxEvent.create({
         data: {
           aggregateType: "BOOKING",
           aggregateId: current.id,
           eventType: "BOOKING_RESCHEDULED",
-          payload: { bookingId: current.id, date: nextDate, startTime: nextStart, endTime: nextEnd },
+          payload: {
+            bookingId: current.id,
+            previous: { date: currentDate, startTime: current.startTime, endTime: current.endTime, status: current.status, totalAmount: current.totalAmount },
+            next: { date: nextDate, startTime: nextStart, endTime: nextEnd, status: "RESCHEDULED", totalAmount },
+          },
           idempotencyKey: `booking:${current.id}:reschedule:${quote.startAt.toISOString()}:${quote.endAt.toISOString()}`,
         },
       });
