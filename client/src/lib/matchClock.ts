@@ -7,11 +7,12 @@ export function eventMinuteFromClock(seconds: number): number {
   return Math.max(0, Math.min(150, Math.floor(seconds / 60)));
 }
 
-export function matchPeriodClock(seconds: number, status: MatchStatus): { label: string; seconds: number } {
+export function matchPeriodClock(seconds: number, status: MatchStatus, halfLengthMinutes = 30): { label: string; seconds: number } {
   const elapsed = Math.max(0, Math.floor(seconds));
+  const halfSeconds = Math.max(1, halfLengthMinutes) * 60;
   if (status === "EXTRA_TIME") return { label: "EXTRA TIME", seconds: elapsed };
   if (status === "PENALTIES") return { label: "PENALTIES", seconds: elapsed };
   if (status === "HALF_TIME") return { label: "HALF TIME", seconds: elapsed };
-  if (elapsed >= HALF_SECONDS) return { label: "2ND HALF", seconds: elapsed - HALF_SECONDS };
+  if (elapsed >= halfSeconds) return { label: "2ND HALF", seconds: elapsed - halfSeconds };
   return { label: "1ST HALF", seconds: elapsed };
 }

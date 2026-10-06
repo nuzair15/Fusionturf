@@ -10,23 +10,24 @@ export function formatMatchClock(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-export function MatchTimer({ running, seconds, status, onTogglePause, onReset }: {
+export function MatchTimer({ running, seconds, status, halfLengthMinutes = 30, onTogglePause, onReset }: {
   running: boolean;
   seconds: number;
   status: MatchStatus;
+  halfLengthMinutes?: number;
   onTogglePause: () => void;
   onReset: () => void;
 }) {
   // The server owns elapsed time; the parent interpolates between polls so the
   // display stays smooth while multiple operators remain synchronized.
-  const period = matchPeriodClock(seconds, status);
+  const period = matchPeriodClock(seconds, status, halfLengthMinutes);
   const mins = Math.floor(period.seconds / 60);
   const secs = period.seconds % 60;
 
   return (
     <div className="flex items-center gap-2">
       <div className="flex flex-col items-center">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-emerald-100/75">{period.label} · 30 MIN</span>
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-emerald-100/75">{period.label} · {halfLengthMinutes} MIN</span>
         <motion.span
           key={seconds}
           initial={{ opacity: 0.4 }}

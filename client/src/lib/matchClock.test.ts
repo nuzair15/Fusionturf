@@ -7,6 +7,7 @@ describe("30 + 30 match clock", () => {
     expect(matchPeriodClock(30 * 60, "HALF_TIME")).toEqual({ label: "HALF TIME", seconds: 1800 });
     expect(matchPeriodClock(30 * 60, "LIVE")).toEqual({ label: "2ND HALF", seconds: 0 });
     expect(matchPeriodClock(60 * 60, "LIVE")).toEqual({ label: "2ND HALF", seconds: 1800 });
+    expect(matchPeriodClock(20 * 60, "LIVE", 20)).toEqual({ label: "2ND HALF", seconds: 0 });
   });
 
   it("keeps the event minute aligned with cumulative elapsed time", () => {

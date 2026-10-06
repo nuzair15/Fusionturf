@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { LiveMatchData, TimelineEvent } from "@/types/live";
 import { liveMatchApi, type StatType } from "@/services/liveMatchApi";
 import { buildTimeline } from "@/lib/liveTimeline";
@@ -43,7 +44,7 @@ type DialogKind = "goal" | "own-goal" | "penalty" | "awarded-goal" | "yellow" | 
 
 let activityId = 1;
 
-export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; onClose: () => void }) {
+export function MatchControlCenter({ fixtureId, onClose, apiClient = liveMatchApi }: { fixtureId: string; onClose: () => void; apiClient?: typeof liveMatchApi }) {
   const [data, setData] = useState<LiveMatchData | null>(null);
   const [loading, setLoading] = useState(true);
   const [minute, setMinute] = useState(0);
@@ -63,6 +64,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
   const [draftHydrated, setDraftHydrated] = useState(false);
   const [shootoutDialogOpen, setShootoutDialogOpen] = useState(false);
   const fetchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const correctionInputRef = useRef<HTMLInputElement>(null);
   const teamStatValues = useRef<Record<string, number>>({});
   const pendingTeamStats = useRef<Record<string, number>>({});
   const teamStatsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -79,13 +81,13 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
   const fetchStats = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const res = await liveMatchApi.fetchLiveStats(fixtureId);
+      const res = await apiClient.fetchLiveStats(fixtureId);
       for (const [key, value] of Object.entries(res.fixture)) {
         if (typeof value === "number" && pendingTeamStats.current[key] === undefined) teamStatValues.current[key] = value;
       }
       setData(res);
       const serverSeconds = res.fixture.matchClockSeconds || 0;
-      const networkSeconds = res.fixture.status === "LIVE" && res.fixture.matchClockServerTime
+      const networkSeconds = (res.fixture.status === "LIVE" || res.fixture.status === "EXTRA_TIME") && res.fixture.matchClockServerTime
         ? Math.max(0, Math.floor((Date.now() - new Date(res.fixture.matchClockServerTime).getTime()) / 1000))
         : 0;
       setClockSeconds(serverSeconds + networkSeconds);
@@ -134,13 +136,13 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
   // Poll for updates while mounted. The server calculates elapsed time from
   // matchClockStartedAt; polling keeps every operator's display aligned.
   useEffect(() => {
-    const id = setInterval(() => fetchStats(true), data?.fixture.status === "LIVE" ? 2000 : 5000);
+    const id = setInterval(() => fetchStats(true), data?.fixture.status === "LIVE" || data?.fixture.status === "EXTRA_TIME" ? 2000 : 5000);
     return () => clearInterval(id);
   }, [fetchStats, data?.fixture.status]);
 
   // Keep timer running only while status is LIVE.
   useEffect(() => {
-    setTimerRunning(data?.fixture.status === "LIVE");
+    setTimerRunning(data?.fixture.status === "LIVE" || data?.fixture.status === "EXTRA_TIME");
   }, [data?.fixture.status]);
 
   // Smoothly interpolate the server-owned clock between polls and use its
@@ -188,7 +190,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
   }, [fetchStats, pushActivity]);
 
   const setStatus = useCallback((status: MatchStatus) => {
-    return runAction(() => liveMatchApi.setStatus(fixtureId, status), `Match ${status === "LIVE" ? "started/resumed" : status.toLowerCase().replace("_", " ")}`);
+    return runAction(() => apiClient.setStatus(fixtureId, status), `Match ${status === "LIVE" ? "started/resumed" : status.toLowerCase().replace("_", " ")}`);
   }, [fixtureId, runAction]);
 
   const subbedOffIds = useMemo(() => {
@@ -205,7 +207,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
       title: `Undo "${last.label}"?`,
       description: "The event will be removed and the score/timeline/player stats restored.",
       destructive: true,
-      onConfirm: () => runAction(() => liveMatchApi.removeEvent(fixtureId, last.type, last.id, correction()), "Event undone", undefined).then(() => setUndoStack((x) => x.slice(1))),
+      onConfirm: () => runAction(() => apiClient.removeEvent(fixtureId, last.type, last.id, correction()), "Event undone", undefined).then(() => setUndoStack((x) => x.slice(1))),
     });
   }, [correction, undoStack, fixtureId, runAction]);
 
@@ -220,7 +222,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
       case "motm": setDialog("motm"); break;
       case "missed-penalty": setDialog("missed-penalty"); break;
       case "start": setStatus("LIVE"); break;
-      case "resume": setStatus("LIVE"); break;
+      case "resume": setStatus(data?.fixture.halfLengthMinutes && clockSeconds >= data.fixture.halfLengthMinutes * 120 ? "EXTRA_TIME" : "LIVE"); break;
       case "pause": setStatus("PAUSED"); break;
       case "half-time": setStatus("HALF_TIME"); break;
       case "extra-time": setStatus("EXTRA_TIME"); break;
@@ -231,12 +233,12 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
         break;
       case "undo": undoLast(); break;
     }
-  }, [setStatus, undoLast]);
+  }, [clockSeconds, data?.fixture.halfLengthMinutes, setStatus, undoLast]);
 
   const handleGoal = useCallback(async (payload: { teamId: string; scorerId: string; assistId?: string; minute: number; isOwnGoal: boolean; isPenalty: boolean }) => {
     const label = payload.isOwnGoal ? "Own goal added" : payload.isPenalty ? "Penalty goal added" : "Goal added";
     const result = await runAction(
-      () => liveMatchApi.addGoal(fixtureId, { ...payload, correctionReason: correction() }),
+      () => apiClient.addGoal(fixtureId, { ...payload, correctionReason: correction() }),
       "Goal Added Successfully",
       { type: "goal", label }
     );
@@ -245,7 +247,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
 
   const handleAwardedGoal = useCallback(async (teamId: string) => {
     const result = await runAction(
-      () => liveMatchApi.addAwardedGoal(fixtureId, { teamId, minute, correctionReason: correction() }),
+      () => apiClient.addAwardedGoal(fixtureId, { teamId, minute, correctionReason: correction() }),
       "Awarded team goal added",
       { type: "note", label: "Awarded team goal" },
     );
@@ -254,7 +256,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
 
   const handleUpdateGoal = useCallback(async (goalId: string, payload: GoalUpdatePayload) => {
     const result = await runAction(
-      () => liveMatchApi.updateGoal(fixtureId, goalId, { ...payload, correctionReason: correction() }),
+      () => apiClient.updateGoal(fixtureId, goalId, { ...payload, correctionReason: correction() }),
       "Goal updated",
     );
     return Boolean(result);
@@ -264,7 +266,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
     const statType: StatType = payload.cardType === "yellow" ? "yellowCard" : "redCard";
     const label = payload.cardType === "yellow" ? "Yellow card added" : "Red card added";
     const result = await runAction(
-      () => liveMatchApi.updateLiveStat(fixtureId, { playerId: payload.playerId, statType, teamId: payload.teamId, action: "increment", minute: payload.minute, correctionReason: correction() }),
+      () => apiClient.updateLiveStat(fixtureId, { playerId: payload.playerId, statType, teamId: payload.teamId, action: "increment", minute: payload.minute, correctionReason: correction() }),
       payload.cardType === "yellow" ? "Yellow card given" : "Red card given",
       { type: "card", label }
     );
@@ -273,7 +275,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
 
   const handleUpdateCard = useCallback(async (cardId: string, payload: CardUpdatePayload) => {
     const result = await runAction(
-      () => liveMatchApi.updateCard(fixtureId, cardId, { ...payload, correctionReason: correction() }),
+      () => apiClient.updateCard(fixtureId, cardId, { ...payload, correctionReason: correction() }),
       "Card updated",
     );
     return Boolean(result);
@@ -282,7 +284,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
   const handleNote = useCallback(async (payload: { teamId?: string; playerId?: string; type: "VAR" | "MISSED_PENALTY"; minute: number; note?: string }) => {
     const label = payload.type === "VAR" ? "VAR review logged" : "Missed penalty logged";
     await runAction(
-      () => liveMatchApi.addNote(fixtureId, { ...payload, correctionReason: correction() }),
+      () => apiClient.addNote(fixtureId, { ...payload, correctionReason: correction() }),
       payload.type === "VAR" ? "VAR review logged" : "Missed penalty logged",
       { type: "note", label }
     );
@@ -312,7 +314,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
       const body = { ...pendingTeamStats.current, correctionReason: correction() || "" };
       pendingTeamStats.current = {};
       try {
-        await liveMatchApi.updateTeamStats(fixtureId, body);
+        await apiClient.updateTeamStats(fixtureId, body);
         await fetchStats(true);
         toast("Team stats saved", undefined, "success");
       } catch (error: any) {
@@ -324,7 +326,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
 
   const handleAppearance = useCallback((teamId: string, player: LiveMatchData["homeTeam"]["players"][number]) => {
     return runAction(
-      () => liveMatchApi.recordAppearance(fixtureId, { playerId: player.id, teamId, minute, isStarter: player.isStarter === true, correctionReason: correction() }),
+      () => apiClient.recordAppearance(fixtureId, { playerId: player.id, teamId, minute, isStarter: player.isStarter === true, correctionReason: correction() }),
       `${player.firstName} ${player.lastName} marked as appeared`,
       undefined,
     );
@@ -341,13 +343,19 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
       if (key === "g") { e.preventDefault(); setDialog("goal"); }
       else if (key === "y") { e.preventDefault(); setDialog("yellow"); }
       else if (key === "r") { e.preventDefault(); setDialog("red"); }
-      else if (key === " ") { e.preventDefault(); setStatus(data?.fixture.status === "LIVE" ? "PAUSED" : "LIVE"); }
+      else if (key === " ") { e.preventDefault(); setStatus(data?.fixture.status === "LIVE" || data?.fixture.status === "EXTRA_TIME" ? "PAUSED" : data?.fixture.halfLengthMinutes && clockSeconds >= data.fixture.halfLengthMinutes * 120 ? "EXTRA_TIME" : "LIVE"); }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [dialog, data?.fixture.status, undoLast, setStatus]);
+  }, [clockSeconds, dialog, data?.fixture.status, data?.fixture.halfLengthMinutes, undoLast, setStatus]);
 
   const handleDeleteEvent = useCallback((event: TimelineEvent) => {
+    if (data?.fixture.status === "COMPLETED" && !correction()) {
+      toast("Correction reason required", "Enter a reason above before deleting the goal.", "warning");
+      correctionInputRef.current?.focus();
+      correctionInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
     const typeMap: Record<string, "goal" | "assist" | "card" | "substitution" | "note"> = {
       "goal": "goal", "own-goal": "goal", "penalty": "goal", "awarded-goal": "note",
       "yellow": "card", "red": "card",
@@ -359,9 +367,9 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
       title: `Delete ${event.kind.replace("-", " ")}?`,
       description: "This permanently removes the event from the match.",
       destructive: true,
-      onConfirm: () => runAction(() => liveMatchApi.removeEvent(fixtureId, type, event.id, correction()), "Event deleted", undefined),
+      onConfirm: () => runAction(() => apiClient.removeEvent(fixtureId, type, event.id, correction()), "Event deleted", undefined),
     });
-  }, [correction, fixtureId, runAction]);
+  }, [correction, data?.fixture.status, fixtureId, runAction]);
 
   const handleUndoEvent = useCallback((event: TimelineEvent) => {
     const typeMap: Record<string, "goal" | "assist" | "card" | "substitution" | "note"> = {
@@ -375,7 +383,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
       title: `Undo ${event.kind.replace("-", " ")}?`,
       description: "The event will be removed and the score/timeline/player stats restored.",
       destructive: true,
-      onConfirm: () => runAction(() => liveMatchApi.removeEvent(fixtureId, type, event.id, correction()), "Event undone", undefined),
+      onConfirm: () => runAction(() => apiClient.removeEvent(fixtureId, type, event.id, correction()), "Event undone", undefined),
     });
   }, [correction, fixtureId, runAction]);
 
@@ -388,7 +396,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
     const target = editingPlayer;
     if (!target) return;
     return runAction(
-      () => liveMatchApi.updateLiveStat(fixtureId, { playerId: target.playerId, statType, teamId: target.teamId, action, minute, correctionReason: correction() }),
+      () => apiClient.updateLiveStat(fixtureId, { playerId: target.playerId, statType, teamId: target.teamId, action, minute, correctionReason: correction() }),
       `${statType} ${action === "increment" ? "increased" : "decreased"}`,
       action === "increment" ? { type: statType === "goal" ? "goal" : statType === "assist" ? "assist" : "card", label: `${statType} updated` } : undefined
     );
@@ -398,7 +406,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
     const target = editingPlayer;
     if (!target) return;
     return runAction(
-      () => liveMatchApi.setMatchRating(fixtureId, { playerId: target.playerId, rating, correctionReason: correction() }),
+      () => apiClient.setMatchRating(fixtureId, { playerId: target.playerId, rating, correctionReason: correction() }),
       `Rating set to ${rating.toFixed(1)}`,
       undefined
     );
@@ -406,7 +414,7 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
 
   const handleSetMotm = useCallback((playerId: string | null) => {
     return runAction(
-      () => liveMatchApi.setManOfTheMatch(fixtureId, { playerId: playerId || undefined, correctionReason: correction() }),
+      () => apiClient.setManOfTheMatch(fixtureId, { playerId: playerId || undefined, correctionReason: correction() }),
       playerId ? "Man of the Match set" : "Man of the Match cleared",
       undefined
     );
@@ -443,11 +451,14 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
           data={data}
           minute={minute}
           onClose={closeConsole}
-          onTogglePause={() => setStatus(data.fixture.status === "LIVE" ? "PAUSED" : "LIVE")}
-          onResetTimer={() => runAction(() => liveMatchApi.resetClock(fixtureId), "Match clock reset").then(() => { setMinute(0); setClockSeconds(0); })}
+          onTogglePause={() => setStatus(data.fixture.status === "LIVE" || data.fixture.status === "EXTRA_TIME" ? "PAUSED" : data.fixture.halfLengthMinutes && clockSeconds >= data.fixture.halfLengthMinutes * 120 ? "EXTRA_TIME" : "LIVE")}
+          onResetTimer={() => runAction(() => apiClient.resetClock(fixtureId), "Match clock reset").then(() => { setMinute(0); setClockSeconds(0); })}
           clockSeconds={clockSeconds}
           timerRunning={timerRunning}
         />
+        {data.fixture.halfLengthMinutes && <p className="mt-2 rounded-lg border bg-card px-3 py-2 text-center text-xs text-muted-foreground">
+          {data.fixture.lineupSize} a side · Half time at {data.fixture.halfLengthMinutes}' · Full time at {data.fixture.halfLengthMinutes * 2}' · {data.fixture.halftimeBreakMinutes} minute break
+        </p>}
 
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {[
@@ -466,9 +477,24 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
         </div>
 
         {data.fixture.status === "COMPLETED" && <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 sm:p-4">
-          <label className="block text-sm font-medium" htmlFor="fixture-correction-reason">Historical correction reason</label>
-          <input id="fixture-correction-reason" className="mt-2 flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm" value={correctionReason} onChange={(e) => setCorrectionReason(e.target.value)} placeholder="Required for changes to a completed match" />
-          <p className="mt-1 text-xs text-muted-foreground">Changes are audited and standings/player statistics are recalculated.</p>
+          <p className="text-sm font-bold">Correct completed match</p>
+          <p className="mt-1 text-xs text-muted-foreground">1. Enter a reason. 2. Open the incorrect goal's three-dot menu in the timeline and delete it. 3. Once the score is tied, save the penalty score below.</p>
+          <label className="mt-3 block text-sm font-medium" htmlFor="fixture-correction-reason">Correction reason</label>
+          <input ref={correctionInputRef} id="fixture-correction-reason" className="mt-2 flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm" value={correctionReason} onChange={(e) => setCorrectionReason(e.target.value)} placeholder="Example: Incorrect goal recorded after full time" />
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            {(data.fixture.isGrandFinal || data.fixture.hasKnockoutBracket) && (
+              <Button
+                type="button"
+                disabled={busy || !correction() || data.fixture.homeScore !== data.fixture.awayScore}
+                onClick={() => setShootoutDialogOpen(true)}
+              >
+                Set / correct penalty result
+              </Button>
+            )}
+            {data.fixture.homeScore !== data.fixture.awayScore && <p className="text-xs font-medium text-amber-800">Delete the incorrect goal first so the match score is tied.</p>}
+            {!correction() && <p className="text-xs font-medium text-amber-800">A correction reason is required.</p>}
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">Every correction is audited, and standings, player statistics, the champion, and public match result are recalculated.</p>
         </div>}
 
         <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)]">
@@ -515,11 +541,16 @@ export function MatchControlCenter({ fixtureId, onClose }: { fixtureId: string; 
         home={homeTeam}
         away={awayTeam}
         busy={busy}
+        initialHomeScore={data.fixture.penaltiesHomeScore ?? 0}
+        initialAwayScore={data.fixture.penaltiesAwayScore ?? 0}
+        correction={data.fixture.status === "COMPLETED"}
         onClose={() => setShootoutDialogOpen(false)}
         onConfirm={async (result) => {
-          const saved = await runAction(() => liveMatchApi.completePenaltyShootout(fixtureId, {
+          const saved = await runAction(() => apiClient.completePenaltyShootout(fixtureId, {
             homeScore: data.fixture.homeScore ?? 0,
             awayScore: data.fixture.awayScore ?? 0,
+            reason: correction(),
+            version: data.fixture.version,
             ...result,
           }), "Penalty shootout result saved");
           if (saved) setShootoutDialogOpen(false);

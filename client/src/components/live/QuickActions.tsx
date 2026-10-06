@@ -27,7 +27,7 @@ export function QuickActions({ status, onAction, disabled, allowsDecider = false
   disabled?: boolean;
   allowsDecider?: boolean;
 }) {
-  const isLive = status === "LIVE";
+  const isLive = status === "LIVE" || status === "EXTRA_TIME";
 
   const eventCards: { action: QuickAction; icon: React.ReactNode; label: string; desc: string; shortcut: string; tone: string }[] = [
     { action: "goal", icon: <GoalIcon className="h-5 w-5" />, label: "Goal", desc: "Scorer + assist", shortcut: "G", tone: "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20" },

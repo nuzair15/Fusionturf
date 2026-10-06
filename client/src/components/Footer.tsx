@@ -4,6 +4,7 @@ const footerLinks = {
   Explore: [
     { label: "Book Turf", to: "/booking" },
     { label: "League", to: "/league" },
+    { label: "Tournaments", to: "/tournaments" },
     { label: "Fixtures", to: "/league/fixtures" },
     { label: "Standings", to: "/league/standings" },
     { label: "Statistics", to: "/league/stats" },

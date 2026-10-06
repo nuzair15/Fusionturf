@@ -6,6 +6,7 @@ const links = [
   { to: "/", label: "Home", icon: Home },
   { to: "/booking", label: "Book", icon: Calendar },
   { to: "/league", label: "League", icon: Trophy },
+  { to: "/tournaments", label: "Tournaments", icon: Trophy },
 ];
 
 export function BottomNav() {

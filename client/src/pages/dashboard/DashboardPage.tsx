@@ -11,6 +11,8 @@ import type { Booking, DashboardStats } from "@/types";
 import { Calendar, Clock, MapPin, CreditCard, User, Settings, ArrowRight, Bell, Heart, Trophy, BarChart3 } from "lucide-react";
 import { fixtureDateKey, sortedFixtures } from "@/lib/fixtures";
 import { PlayerLeaderboard } from "@/components/league/PlayerLeaderboard";
+import type { Tournament } from "@/types/tournament";
+import { isTournamentOngoing } from "@/lib/tournamentTime";
 
 export function DashboardPage() {
   const { user, logout } = useAuth();
@@ -29,6 +31,12 @@ export function DashboardPage() {
     queryFn: () => api.get<any>("/league/fan/dashboard"),
     enabled: !!user,
   });
+  const { data: tournaments } = useQuery({
+    queryKey: ["tournaments"],
+    queryFn: () => api.get<Tournament[]>("/tournaments"),
+    enabled: !!user,
+  });
+  const ongoingTournaments = (tournaments || []).filter(t => isTournamentOngoing(t));
 
   const { data: topScorers } = useQuery({
     queryKey: ["dashboard-top-scorers"],
@@ -97,6 +105,8 @@ export function DashboardPage() {
           <Card className="overflow-hidden"><CardHeader className="flex flex-row items-center justify-between"><CardTitle className="flex items-center gap-2"><Trophy className="h-4 w-4 text-amber-500" /> Top scorers</CardTitle><Button variant="ghost" size="sm" onClick={() => navigate("/league/stats")}>All stats</Button></CardHeader><CardContent className="p-3"><PlayerLeaderboard rows={topScorers || []} stat="goals" compact /></CardContent></Card>
           <Card className="overflow-hidden"><CardHeader className="flex flex-row items-center justify-between"><CardTitle className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-sky-500" /> Top assisters</CardTitle><Button variant="ghost" size="sm" onClick={() => navigate("/league/stats")}>All stats</Button></CardHeader><CardContent className="p-3"><PlayerLeaderboard rows={topAssisters || []} stat="assists" compact /></CardContent></Card>
         </div>
+
+        {ongoingTournaments.length > 0 && <Card className="mt-6"><CardHeader className="flex flex-row items-center justify-between"><CardTitle className="flex items-center gap-2"><Trophy className="h-4 w-4 text-amber-500" /> Tournaments happening now</CardTitle><Button variant="ghost" size="sm" onClick={() => navigate("/tournaments")}>All tournaments</Button></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{ongoingTournaments.map(t => <button key={t.id} onClick={() => navigate(`/tournaments/${t.slug}`)} className="flex items-center gap-3 rounded-xl border p-3 text-left transition hover:border-primary/40 hover:bg-muted/30">{t.logoUrl ? <img src={t.logoUrl} alt="" className="h-10 w-10 rounded object-contain" /> : <Trophy className="h-10 w-10 rounded bg-muted p-2" />}<span><span className="block font-semibold">{t.name}</span><span className="text-xs text-muted-foreground">{t._count?.teams || 0} teams · {t.lineupSize} a side</span></span></button>)}</CardContent></Card>}
 
         <div className="grid gap-6 md:grid-cols-3">
           {/* Quick Stats */}

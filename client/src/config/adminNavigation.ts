@@ -17,6 +17,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   ] },
   { label: "Football", items: [
     { id: "seasons", label: "League", icon: Trophy },
+    { id: "tournaments", label: "Tournaments", icon: Trophy },
     { id: "competitions", label: "Competitions", icon: Trophy },
     { id: "fixtures", label: "Fixtures", icon: Activity },
     { id: "teams", label: "Teams", icon: Users },
@@ -46,7 +47,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
 export const ADMIN_TABS = ADMIN_NAV_GROUPS.flatMap((group) => group.items);
 export const ADMIN_ROLE_TABS: Record<string, string[]> = {
   SUPER_ADMIN: ADMIN_TABS.map((tab) => tab.id),
-  LEAGUE_ADMIN: ["seasons", "competitions", "fixtures", "teams", "players", "player-stats", "awards", "suspensions", "recycle-bin", "gallery", "sponsors", "news"],
+  LEAGUE_ADMIN: ["seasons", "tournaments", "competitions", "fixtures", "teams", "players", "player-stats", "awards", "suspensions", "recycle-bin", "gallery", "sponsors", "news"],
   BOOKING_MANAGER: ["overview", "bookings", "calendar", "analytics", "venues", "coupons", "reviews"],
   BOOKING_ADMIN: ["bookings", "calendar", "analytics"],
   CONTENT_EDITOR: ["news", "gallery", "sponsors", "ads", "faqs"],

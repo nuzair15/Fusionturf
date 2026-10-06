@@ -1,6 +1,6 @@
 # EC2 release commands for the existing PM2 deployment
 
-The live site runs under PM2. The API process is `fusionturf-api`; Nginx serves `/opt/fusionturf/client/dist` and proxies the API to port 5000. Use these commands on that EC2 host as `ubuntu`, which owns the PM2 process. Do not start the repository's Docker Compose stack. These steps update the code, apply the additive season migration, and restart the existing API process. Creating and activating Season 2 remains a separate admin action.
+The live site runs under PM2. The API process is `fusionturf-api`; Nginx serves `/opt/fusionturf/client/dist` and proxies the API to port 5000. Use these commands on that EC2 host as `ubuntu`, which owns the PM2 process. Do not start the repository's Docker Compose stack. These steps update the code, apply pending migrations (including the independent tournament tables), and restart the existing API process.
 
 First confirm that PM2 still points to this checkout:
 
@@ -20,6 +20,7 @@ set -euo pipefail
 umask 022
 cd /opt/fusionturf
 git status --short
+test -z "$(git status --porcelain)"
 git pull --ff-only origin main
 git rev-parse --short HEAD
 test -f server/.env || test -n "${DATABASE_URL:-}"
@@ -34,9 +35,9 @@ npm ci --include=dev --prefix client
 ( cd server && node -r dotenv/config -e 'const u = new URL(process.env.DATABASE_URL); console.log(`Database target: ${u.hostname}:${u.port || "5432"}${u.pathname}`)' )
 
 install -d -m 700 "$HOME/fusion-league-backups"
-SEASON_BACKUP="$HOME/fusion-league-backups/fusion_league_$(date -u +%Y%m%dT%H%M%SZ).dump"
-( umask 077; cd server && node scripts/backup-database.mjs "$SEASON_BACKUP" )
-pg_restore --list "$SEASON_BACKUP" > /dev/null
+RELEASE_BACKUP="$HOME/fusion-league-backups/fusion_league_$(date -u +%Y%m%dT%H%M%SZ).dump"
+( umask 077; cd server && node scripts/backup-database.mjs "$RELEASE_BACKUP" )
+pg_restore --list "$RELEASE_BACKUP" > /dev/null
 ```
 
 Read the `Database target` line and confirm it names the production database used by PM2. Confirm the backup path exists and is nonempty. Run the next block in the same SSH shell; it still resets the working directory and error handling so a later paste from `~` cannot run npm in `/home/ubuntu`:
@@ -48,7 +49,7 @@ cd /opt/fusionturf
 test -f server/package.json
 npm run db:migrate --prefix server
 pm2 restart fusionturf-api --update-env
-curl -fsS --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:5000/api/league/seasons -o /dev/null
+curl -fsS --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:5000/api/health -o /dev/null
 pm2 describe fusionturf-api
 pm2 logs fusionturf-api --lines 80 --nostream
 
@@ -64,12 +65,13 @@ The backup helper reads `DATABASE_URL` without printing it or passing its passwo
 
 The frontend is built outside Nginx's live `/opt/fusionturf/client/dist` root. Its assets are copied first, then `index.html` is replaced by a single rename so the live site is not cleared during the build. No Nginx reload or frontend PM2 restart is needed. Check the configuration and public routes after publication:
 
-`VITE_API_URL` is baked into the frontend build. Preserve the production value already supplied by the EC2 environment or `client/.env.production`, and confirm it points to the existing API route. Preserve `CORS_ORIGIN`, `FRONTEND_URL`, and `CLOUDINARY_*` in the API's environment; the new team-banner upload uses the existing Cloudinary integration. Check the public site and API after the frontend is published:
+`VITE_API_URL` is baked into the frontend build. Preserve the production value already supplied by the EC2 environment or `client/.env.production`, and confirm it points to the existing API route. Preserve `CORS_ORIGIN`, `FRONTEND_URL`, and `CLOUDINARY_*` in the API's environment; tournament logos use the existing image upload integration. Check the public site and API after the frontend is published:
 
 ```bash
 sudo nginx -t
 curl -f https://www.fusionturf.in/llms.txt
-curl -f https://www.fusionturf.in/api/league/seasons/index.html -o /dev/null
+curl -f https://www.fusionturf.in/api/health -o /dev/null
+curl -f https://www.fusionturf.in/api/tournaments -o /dev/null
 ```
 
 A successful `pg_restore --list` verifies that the dump is readable; rehearse a real restore in staging before relying on it as a recovery plan. Do not restore this dump over an active production database after new bookings or payments have occurred.

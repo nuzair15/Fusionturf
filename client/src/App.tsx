@@ -23,6 +23,9 @@ const StatsPage = lazy(() => import("@/pages/league/StatsPage").then((m) => ({ d
 const AwardsPage = lazy(() => import("@/pages/league/AwardsPage").then((m) => ({ default: m.AwardsPage })));
 const DashboardPage = lazy(() => import("@/pages/dashboard/DashboardPage").then((m) => ({ default: m.DashboardPage })));
 const AdminPage = lazy(() => import("@/pages/admin/AdminPage").then((m) => ({ default: m.AdminPage })));
+const TournamentListPage = lazy(() => import("@/pages/tournaments/TournamentPages").then((m) => ({ default: m.TournamentListPage })));
+const TournamentDetailPage = lazy(() => import("@/pages/tournaments/TournamentPages").then((m) => ({ default: m.TournamentDetailPage })));
+const TournamentFixturePage = lazy(() => import("@/pages/tournaments/TournamentPages").then((m) => ({ default: m.TournamentFixturePage })));
 const NewsPage = lazy(() => import("@/pages/league/NewsPage").then((m) => ({ default: m.NewsPage })));
 const SearchPage = lazy(() => import("@/pages/search/SearchPage").then((m) => ({ default: m.SearchPage })));
 const AuthPage = lazy(() => import("@/pages/auth/AuthPage").then((m) => ({ default: m.AuthPage })));
@@ -67,6 +70,9 @@ export default function App() {
                     <Route path="/league/teams/:slug" element={<TeamDetailPage />} />
                     <Route path="/league/players/:slug" element={<PlayerDetailPage />} />
                     <Route path="/league/fixtures/:id" element={<FixtureDetailPage />} />
+                    <Route path="/tournaments" element={<TournamentListPage />} />
+                    <Route path="/tournaments/:slug" element={<TournamentDetailPage />} />
+                    <Route path="/tournaments/:slug/fixtures/:fixtureId" element={<TournamentFixturePage />} />
                     <Route path="/search" element={<SearchPage />} />
                     <Route path="/auth" element={<AuthPage />} />
                     <Route path="/dashboard" element={<DashboardPage />} />

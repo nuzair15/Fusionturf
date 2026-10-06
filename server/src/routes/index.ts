@@ -6,6 +6,7 @@ import adminRoutes from "./admin.js";
 import * as adminController from "../controllers/admin.js";
 import v2Routes from "./v2.js";
 import prisma from "../config/database.js";
+import { tournamentPublicRoutes, tournamentAdminRoutes } from "./tournaments.js";
 
 const router = Router();
 
@@ -14,6 +15,8 @@ router.use("/v2", v2Routes);
 router.use("/auth", authRoutes);
 router.use("/bookings", bookingRoutes);
 router.use("/league", leagueRoutes);
+router.use("/tournaments", tournamentPublicRoutes);
+router.use("/admin/tournaments", tournamentAdminRoutes);
 
 // Public settings endpoint (no auth required)
 router.get("/settings", adminController.getPublicSettings);

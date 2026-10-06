@@ -5,11 +5,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { LiveTeam } from "@/types/live";
 
-export function PenaltyShootoutDialog({ open, home, away, busy, onClose, onConfirm }: {
+export function PenaltyShootoutDialog({ open, home, away, busy, initialHomeScore = 0, initialAwayScore = 0, correction = false, onClose, onConfirm }: {
   open: boolean;
   home: LiveTeam;
   away: LiveTeam;
   busy: boolean;
+  initialHomeScore?: number;
+  initialAwayScore?: number;
+  correction?: boolean;
   onClose: () => void;
   onConfirm: (result: { penaltiesHomeScore: number; penaltiesAwayScore: number; winnerTeamId: string }) => Promise<void>;
 }) {
@@ -18,8 +21,8 @@ export function PenaltyShootoutDialog({ open, home, away, busy, onClose, onConfi
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (open) { setHomeScore(0); setAwayScore(0); setError(""); }
-  }, [open]);
+    if (open) { setHomeScore(initialHomeScore); setAwayScore(initialAwayScore); setError(""); }
+  }, [initialAwayScore, initialHomeScore, open]);
 
   const submit = async () => {
     if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore) || homeScore < 0 || awayScore < 0) {
@@ -38,7 +41,7 @@ export function PenaltyShootoutDialog({ open, home, away, busy, onClose, onConfi
     });
   };
 
-  return <Dialog open={open} onClose={() => { if (!busy) onClose(); }} title="Finish penalty shootout">
+  return <Dialog open={open} onClose={() => { if (!busy) onClose(); }} title={correction ? "Correct penalty shootout result" : "Finish penalty shootout"}>
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">Enter the completed shootout score. The winner is selected automatically.</p>
       <div className="grid grid-cols-2 gap-4">
@@ -46,7 +49,7 @@ export function PenaltyShootoutDialog({ open, home, away, busy, onClose, onConfi
         <div className="space-y-1.5"><Label>{away.name}</Label><Input type="number" min={0} value={awayScore} onChange={(event) => setAwayScore(Number(event.target.value))} /></div>
       </div>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      <div className="flex justify-end gap-2"><Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button><Button disabled={busy} onClick={submit}>{busy ? "Saving…" : "Complete match"}</Button></div>
+      <div className="flex justify-end gap-2"><Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button><Button disabled={busy} onClick={submit}>{busy ? "Saving…" : correction ? "Save corrected result" : "Complete match"}</Button></div>
     </div>
   </Dialog>;
 }

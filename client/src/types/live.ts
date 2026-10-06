@@ -84,6 +84,9 @@ export interface LiveFixtureInfo {
   id: string;
   matchDate: string;
   status: MatchStatus;
+  halfLengthMinutes?: number;
+  halftimeBreakMinutes?: number;
+  lineupSize?: number;
   matchClockSeconds?: number;
   kickoffTime?: string;
   competition?: { name: string };
@@ -93,6 +96,10 @@ export interface LiveFixtureInfo {
   stadium?: string;
   homeScore?: number;
   awayScore?: number;
+  penaltiesHomeScore?: number | null;
+  penaltiesAwayScore?: number | null;
+  winnerTeamId?: string | null;
+  version?: number;
   homePossession?: number;
   awayPossession?: number;
   homeShots?: number;

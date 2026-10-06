@@ -16,7 +16,7 @@ export function SEOHead() {
   const faviconUrl = settings?.site_favicon_url || "";
 
   useEffect(() => {
-    const section = location.pathname.startsWith("/booking") ? "Turf Booking" : location.pathname.startsWith("/league/fixtures") ? "Fixtures" : location.pathname.startsWith("/league/standings") ? "Standings" : location.pathname.startsWith("/league") ? "Football League" : location.pathname.startsWith("/auth") ? "Account" : "Turf Booking & Football League";
+    const section = location.pathname.startsWith("/booking") ? "Turf Booking" : location.pathname.startsWith("/tournaments") ? "Tournaments" : location.pathname.startsWith("/league/fixtures") ? "Fixtures" : location.pathname.startsWith("/league/standings") ? "Standings" : location.pathname.startsWith("/league") ? "Football League" : location.pathname.startsWith("/auth") ? "Account" : "Turf Booking & Football League";
     document.title = `${section} | ${siteName}`;
     let canonical = document.querySelector<HTMLLinkElement>("link[rel='canonical']");
     if (!canonical) { canonical = document.createElement("link"); canonical.rel = "canonical"; document.head.appendChild(canonical); }

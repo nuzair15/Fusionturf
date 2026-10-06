@@ -36,7 +36,7 @@ export function Navbar() {
         </Link>
 
         <div className="hidden items-center gap-6 lg:flex">
-          {[{ to: "/booking", label: "Book a turf" }, { to: "/league", label: "League" }].map((item) => <Link key={item.to} to={item.to} className={`text-sm font-medium transition-colors ${pathname === item.to ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}>{item.label}</Link>)}
+          {[{ to: "/booking", label: "Book a turf" }, { to: "/league", label: "League" }, { to: "/tournaments", label: "Tournaments" }].map((item) => <Link key={item.to} to={item.to} className={`text-sm font-medium transition-colors ${pathname === item.to || pathname.startsWith(item.to + "/") ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}>{item.label}</Link>)}
           <form onSubmit={(e) => { e.preventDefault(); if (search.trim()) navigate(`/search?q=${encodeURIComponent(search.trim())}`); }} className="relative"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><input aria-label="Search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search football" className="h-9 w-44 rounded-full border bg-background pl-9 pr-3 text-sm" /></form>
         </div>
 

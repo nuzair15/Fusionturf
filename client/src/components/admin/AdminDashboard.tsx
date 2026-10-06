@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +11,9 @@ import { bookingCustomerName } from "@/lib/bookingCustomer";
 import { ErrorState } from "@/components/admin/ErrorState";
 import { ActivityFeed } from "@/components/admin/ActivityFeed";
 import type { DashboardStats, Booking } from "@/types";
+import type { Tournament } from "@/types/tournament";
+import { isTournamentOngoing } from "@/lib/tournamentTime";
+import { useAuth } from "@/providers/AuthProvider";
 import { businessDateKey, fixtureDateKey, isActiveMatch } from "@/lib/fixtures";
 import {
   DollarSign, Calendar, Building2, Wallet, Clock, Trophy,
@@ -61,6 +65,7 @@ function Skeleton({ className }: { className?: string }) {
 
 export function AdminDashboard() {
   const [period, setPeriod] = useState<Period>("today");
+  const { user } = useAuth();
 
   const { data: dashboard, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["admin-dashboard", period],
@@ -68,6 +73,8 @@ export function AdminDashboard() {
     retry: 1,
     staleTime: 30000,
   });
+  const { data: tournaments } = useQuery({ queryKey: ["admin-tournaments"], queryFn: () => api.get<Tournament[]>("/admin/tournaments"), enabled: user?.role === "SUPER_ADMIN" || user?.role === "LEAGUE_ADMIN" });
+  const activeTournaments = (tournaments || []).filter(t => isTournamentOngoing(t));
 
   const stats = dashboard?.stats;
   const periodStats = dashboard?.periodStats;
@@ -123,6 +130,8 @@ export function AdminDashboard() {
           </Button>
         ))}
       </motion.div>
+
+      {activeTournaments.length > 0 && <motion.div variants={item}><Card><CardHeader><CardTitle className="flex items-center gap-2"><Trophy className="h-4 w-4 text-amber-500" /> Tournaments happening now</CardTitle></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{activeTournaments.map(t => <Link key={t.id} to="/admin?tab=tournaments" className="flex items-center gap-3 rounded-xl border p-3 transition hover:border-primary/40 hover:bg-muted/30">{t.logoUrl ? <img src={t.logoUrl} alt="" className="h-10 w-10 object-contain" /> : <Trophy className="h-10 w-10 rounded bg-muted p-2" />}<span><span className="block text-sm font-semibold">{t.name}</span><span className="text-xs text-muted-foreground">{t.status} · {t._count?.teams || 0} teams</span></span></Link>)}</CardContent></Card></motion.div>}
 
       {/* 8 Stat Cards */}
       <motion.div variants={item} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

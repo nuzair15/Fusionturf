@@ -35,6 +35,7 @@ import { VenueCalendar } from "@/components/admin/VenueCalendar";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 import { useAuth } from "@/providers/AuthProvider";
 import { ADMIN_ROLE_TABS, ADMIN_TABS } from "@/config/adminNavigation";
+import { TournamentAdminPanel } from "@/components/admin/TournamentAdminPanel";
 
 const adminTabs = ADMIN_TABS;
 const roleTabs = ADMIN_ROLE_TABS;
@@ -447,6 +448,7 @@ export function AdminPage() {
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">
           {activeTab === "overview" && <AdminDashboard />}
+          {activeTab === "tournaments" && <TournamentAdminPanel />}
 
         {activeTab === "seasons" && (
           <>
@@ -908,7 +910,7 @@ export function AdminPage() {
                       <Users className="h-3.5 w-3.5" /> Lineups
                     </Button>
                     <Button size="sm" variant={f.status === "LIVE" ? "default" : "outline"} onClick={() => setLiveStatsFixtureId(f.id)}>
-                      <Activity className="h-3.5 w-3.5" /> Live
+                      <Activity className="h-3.5 w-3.5" /> {f.status === "COMPLETED" ? "Correct events" : "Live"}
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => {
                       setEditingItem(f);
@@ -2327,7 +2329,13 @@ export function AdminPage() {
             onSearch={setUserSearch}
           />
         )}
-      {liveStatsFixtureId && <MatchControlCenter fixtureId={liveStatsFixtureId} onClose={() => setLiveStatsFixtureId(null)} />}
+      {liveStatsFixtureId && <MatchControlCenter fixtureId={liveStatsFixtureId} onClose={() => {
+        queryClient.invalidateQueries({ queryKey: ["admin-fixtures"] });
+        queryClient.invalidateQueries({ queryKey: ["fixtures"] });
+        queryClient.invalidateQueries({ queryKey: ["standings"] });
+        queryClient.invalidateQueries({ queryKey: ["admin-standings"] });
+        setLiveStatsFixtureId(null);
+      }} />}
       {lineupFixture && (
         <LineupEditor
           fixture={lineupFixture}
