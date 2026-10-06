@@ -1,6 +1,6 @@
 import type { MatchStatus } from "@/types";
 
-export type TournamentFormat = "ROUND_ROBIN" | "SINGLE_ELIMINATION" | "DOUBLE_ELIMINATION" | "GROUPS_KNOCKOUT";
+export type TournamentFormat = "ROUND_ROBIN" | "DOUBLE_ROUND_ROBIN_FINAL" | "SINGLE_ELIMINATION" | "DOUBLE_ELIMINATION" | "GROUPS_KNOCKOUT";
 export type TournamentStatus = "DRAFT" | "PUBLISHED" | "LIVE" | "COMPLETED";
 export interface TournamentPlayer {
   id: string; teamId: string; firstName: string; lastName: string; jerseyNumber: number | null;
@@ -35,6 +35,7 @@ export interface Tournament {
 }
 export const TOURNAMENT_FORMAT_LABEL: Record<TournamentFormat, string> = {
   ROUND_ROBIN: "Round robin league",
+  DOUBLE_ROUND_ROBIN_FINAL: "Double round robin + final (same day)",
   SINGLE_ELIMINATION: "Single elimination",
   DOUBLE_ELIMINATION: "Double elimination",
   GROUPS_KNOCKOUT: "Groups + knockout",

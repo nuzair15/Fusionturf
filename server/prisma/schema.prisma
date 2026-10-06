@@ -215,7 +215,7 @@ model Tournament {
   status                String              @default("DRAFT")
   startDate             DateTime?
   endDate               DateTime?
-  timezone              String              @default("Asia/Riyadh")
+  timezone              String              @default("Asia/Kolkata")
   lineupSize            Int                 @default(6)
   halfLengthMinutes     Int                 @default(30)
   halftimeBreakMinutes  Int                 @default(10)

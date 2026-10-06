@@ -19,10 +19,12 @@ const name = z.string().trim().min(2).max(120);
 const optionalText = (max = 1000) => z.string().trim().max(max).nullable().optional();
 const optionalUrl = () => z.string().trim().url().max(2048).nullable().optional();
 const date = z.coerce.date().nullable().optional();
+const DOUBLE_ROUND_ROBIN_FINAL = "DOUBLE_ROUND_ROBIN_FINAL";
 const tournamentFields = z.object({
   name, slug: z.string().trim().toLowerCase().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(120),
   description: optionalText(3000), logoUrl: optionalUrl(),
   format: z.enum(TOURNAMENT_FORMATS), startDate: date, endDate: date,
+  timezone: z.enum(["Asia/Kolkata", "Asia/Riyadh"]).default("Asia/Kolkata"),
   lineupSize: z.coerce.number().int().min(3).max(11),
   halfLengthMinutes: z.coerce.number().int().min(5).max(90),
   halftimeBreakMinutes: z.coerce.number().int().min(0).max(45),
@@ -59,11 +61,12 @@ function assertDailyTiming(value: { kickoffTime?: string | null; matchIntervalMi
   if (hours * 60 + minutes + (value.matchesPerDay - 1) * value.matchIntervalMinutes >= 1440) throw new AppError("The last daily kickoff must start before midnight", 400);
 }
 function assertFormatSettings(value: { format: string; matchesPerPair: number }) {
-  if (!["ROUND_ROBIN", "GROUPS_KNOCKOUT"].includes(value.format) && value.matchesPerPair !== 1) throw new AppError("Multiple meetings per pair are available only for league and group formats", 400);
+  if (value.format === DOUBLE_ROUND_ROBIN_FINAL && value.matchesPerPair !== 2) throw new AppError("Double round robin with a final requires two meetings per pair", 400);
+  if (!["ROUND_ROBIN", "GROUPS_KNOCKOUT", DOUBLE_ROUND_ROBIN_FINAL].includes(value.format) && value.matchesPerPair !== 1) throw new AppError("Multiple meetings per pair are available only for league and group formats", 400);
 }
 function assertFixtureStage(format: string, stage: string) {
   const allowed: Record<string, string[]> = {
-    ROUND_ROBIN: ["LEAGUE"], SINGLE_ELIMINATION: ["KNOCKOUT", "FINAL"],
+    ROUND_ROBIN: ["LEAGUE"], DOUBLE_ROUND_ROBIN_FINAL: ["LEAGUE", "FINAL"], SINGLE_ELIMINATION: ["KNOCKOUT", "FINAL"],
     DOUBLE_ELIMINATION: ["WINNERS", "LOSERS", "FINAL"], GROUPS_KNOCKOUT: ["GROUP", "KNOCKOUT", "FINAL"],
   };
   if (!allowed[format]?.includes(stage)) throw new AppError("Fixture stage does not match the tournament format", 400);
@@ -134,7 +137,10 @@ adminRouter.get("/:tournamentId", wrap(async (req, res) => {
   res.json({ ...row, standings: buildStandings(row) });
 }));
 adminRouter.post("/", wrap(async (req, res) => {
-  const input = tournamentFields.parse(req.body);
+  const parsed = tournamentFields.parse(req.body);
+  const input = parsed.format === DOUBLE_ROUND_ROBIN_FINAL
+    ? { ...parsed, matchesPerPair: 2, timezone: "Asia/Kolkata", endDate: parsed.startDate }
+    : parsed;
   assertDailyTiming(input);
   assertFormatSettings(input);
   const row = await prisma.tournament.create({ data: { ...input, createdById: req.user!.userId } });
@@ -142,7 +148,11 @@ adminRouter.post("/", wrap(async (req, res) => {
 }));
 adminRouter.patch("/:tournamentId", wrap(async (req, res) => {
   const current = await tournamentOrThrow(req.params.tournamentId);
-  const input = tournamentFields.innerType().partial().parse(req.body);
+  const parsed = tournamentFields.innerType().partial().parse(req.body);
+  const candidate = { ...current, ...parsed };
+  const input = candidate.format === DOUBLE_ROUND_ROBIN_FINAL
+    ? { ...parsed, matchesPerPair: 2, timezone: "Asia/Kolkata", endDate: candidate.startDate }
+    : parsed;
   const next = { ...current, ...input };
   if (next.startDate && next.endDate && next.endDate < next.startDate) throw new AppError("End date must follow start date", 400);
   assertDailyTiming(next);
@@ -162,7 +172,10 @@ adminRouter.patch("/:tournamentId/status", wrap(async (req, res) => {
   if (status === "COMPLETED") {
     const pending = await prisma.tournamentFixture.count({ where: { tournamentId: current.id, status: { notIn: ["COMPLETED", "CANCELLED"] } } });
     if (pending) throw new AppError("Finish or cancel all fixtures before completing the tournament", 409);
-    if (["SINGLE_ELIMINATION", "DOUBLE_ELIMINATION", "GROUPS_KNOCKOUT"].includes(current.format)) {
+    if (current.format === DOUBLE_ROUND_ROBIN_FINAL) {
+      const final = await prisma.tournamentFixture.findFirst({ where: { tournamentId: current.id, stage: "FINAL", status: "COMPLETED" } });
+      if (!final?.winnerTeamId) throw new AppError("Generate and finish the final before completing the tournament", 409);
+    } else if (["SINGLE_ELIMINATION", "DOUBLE_ELIMINATION", "GROUPS_KNOCKOUT"].includes(current.format)) {
       const teams = await prisma.tournamentTeam.findMany({ where: { tournamentId: current.id }, select: { id: true, groupName: true } });
       const fixtures = await prisma.tournamentFixture.findMany({ where: { tournamentId: current.id, stage: { in: ["KNOCKOUT", "WINNERS", "LOSERS", "FINAL"] }, status: "COMPLETED" }, select: { homeTeamId: true, awayTeamId: true, winnerTeamId: true } });
       let contenderIds = teams.map(t => t.id);
@@ -264,6 +277,8 @@ adminRouter.post("/:tournamentId/fixtures/generate", wrap(async (req, res) => {
   let groups: Map<string, string> | null = null;
   if (tournament.format === "ROUND_ROBIN") {
     planned = roundRobin(tournament.teams.map(t => t.id), tournament.matchesPerPair);
+  } else if (tournament.format === DOUBLE_ROUND_ROBIN_FINAL) {
+    planned = roundRobin(tournament.teams.map(t => t.id), 2);
   } else if (tournament.format === "GROUPS_KNOCKOUT") {
     const count = tournament.groupCount || 2;
     if (tournament.teams.length < count * 2) throw new AppError("Each group needs at least two teams", 400);
@@ -282,11 +297,17 @@ adminRouter.post("/:tournamentId/fixtures/generate", wrap(async (req, res) => {
     planned = seededPairs(tournament.teams.map(t => t.id), 1, tournament.format === "DOUBLE_ELIMINATION" ? "WINNERS" : "KNOCKOUT");
   }
   const slots = new Map<string, number>();
+  if (tournament.format === DOUBLE_ROUND_ROBIN_FINAL) {
+    const [hours, minutes] = tournament.kickoffTime.split(":").map(Number);
+    const finalKickoffMinutes = hours * 60 + minutes + planned.length * tournament.matchIntervalMinutes;
+    if (finalKickoffMinutes >= 1440) throw new AppError("The league matches and final do not fit on one day. Choose an earlier kickoff, a shorter match interval, or fewer teams.", 400);
+  }
+  const matchesPerDay = tournament.format === DOUBLE_ROUND_ROBIN_FINAL ? planned.length + 1 : tournament.matchesPerDay;
   const data = planned.map((pair, index) => {
     const key = `${pair.stage}:${pair.round}`;
     const slot = (slots.get(key) || 0) + 1;
     slots.set(key, slot);
-    return fixtureCreateData(tournament.id, pair, fixtureKickoff(tournament.startDate!, tournament.kickoffTime!, index, tournament.matchesPerDay, tournament.matchIntervalMinutes, tournament.timezone), slot);
+    return fixtureCreateData(tournament.id, pair, fixtureKickoff(tournament.startDate!, tournament.kickoffTime!, index, matchesPerDay, tournament.matchIntervalMinutes, tournament.timezone), slot);
   });
   if (tournament.endDate && data.some(f => f.kickoffAt.getTime() > tournament.endDate!.getTime() + 86400000)) throw new AppError("Generated fixtures extend beyond the tournament end date", 400);
   await prisma.$transaction(async tx => {
@@ -299,10 +320,10 @@ adminRouter.post("/:tournamentId/fixtures/generate", wrap(async (req, res) => {
 adminRouter.post("/:tournamentId/fixtures/next-round", wrap(async (req, res) => {
   const tournament = await prisma.tournament.findUnique({ where: { id: req.params.tournamentId }, include: { teams: { orderBy: [{ seed: "asc" }, { createdAt: "asc" }] }, fixtures: { orderBy: [{ round: "asc" }, { slot: "asc" }] } } });
   if (!tournament) throw new AppError("Tournament not found", 404);
-  if (!["SINGLE_ELIMINATION", "DOUBLE_ELIMINATION", "GROUPS_KNOCKOUT"].includes(tournament.format)) throw new AppError("This format has no knockout rounds", 400);
+  if (!["SINGLE_ELIMINATION", "DOUBLE_ELIMINATION", "GROUPS_KNOCKOUT", DOUBLE_ROUND_ROBIN_FINAL].includes(tournament.format)) throw new AppError("This format has no knockout rounds", 400);
   if (!tournament.fixtures.length || tournament.fixtures.some(f => !["COMPLETED", "CANCELLED"].includes(f.status))) throw new AppError("Finish all current fixtures before advancing", 409);
   const knockout = tournament.fixtures.filter(f => ["KNOCKOUT", "WINNERS", "LOSERS", "FINAL"].includes(f.stage));
-  const nextRound = knockout.length ? Math.max(...knockout.map(f => f.round)) + 1 : 1;
+  const nextRound = knockout.length ? Math.max(...knockout.map(f => f.round)) + 1 : tournament.format === DOUBLE_ROUND_ROBIN_FINAL ? Math.max(...tournament.fixtures.map(f => f.round)) + 1 : 1;
   const losses = new Map(tournament.teams.map(t => [t.id, 0]));
   for (const match of knockout) {
     if (match.status === "CANCELLED") continue;
@@ -318,7 +339,12 @@ adminRouter.post("/:tournamentId/fixtures/next-round", wrap(async (req, res) => 
   contenders = contenders.filter(teamId => (losses.get(teamId) || 0) < (tournament.format === "DOUBLE_ELIMINATION" ? 2 : 1));
   if (contenders.length < 2) throw new AppError("Tournament has a winner; no further round is needed", 409);
   let planned: PlannedPair[];
-  if (tournament.format === "DOUBLE_ELIMINATION") {
+  if (tournament.format === DOUBLE_ROUND_ROBIN_FINAL) {
+    if (knockout.length) throw new AppError("The final has already been generated", 409);
+    const ranked = standings(tournament.teams.map(t => t.id), tournament.fixtures.filter(f => f.stage === "LEAGUE"));
+    if (ranked.length < 2) throw new AppError("At least two ranked teams are required for the final", 409);
+    planned = [{ homeTeamId: ranked[0].teamId, awayTeamId: ranked[1].teamId, round: nextRound, stage: "FINAL" }];
+  } else if (tournament.format === "DOUBLE_ELIMINATION") {
     const unbeaten = contenders.filter(t => losses.get(t) === 0);
     const oneLoss = contenders.filter(t => losses.get(t) === 1);
     planned = unbeaten.length === 1 && oneLoss.length === 1
@@ -331,6 +357,14 @@ adminRouter.post("/:tournamentId/fixtures/next-round", wrap(async (req, res) => 
   }
   if (!planned.length) throw new AppError("No pairings can be made yet", 409);
   const lastKickoff = tournament.fixtures.reduce((latest, f) => f.kickoffAt > latest ? f.kickoffAt : latest, new Date(0));
+  if (tournament.format === DOUBLE_ROUND_ROBIN_FINAL) {
+    const kickoffAt = new Date(lastKickoff.getTime() + tournament.matchIntervalMinutes * 60_000);
+    if (tournamentLocalDate(kickoffAt, tournament.timezone) !== tournamentLocalDate(lastKickoff, tournament.timezone)) throw new AppError("The final would start on the next day. Shorten the match interval before generating fixtures.", 400);
+    const pair = planned[0];
+    await prisma.tournamentFixture.create({ data: fixtureCreateData(tournament.id, pair, kickoffAt, 1) });
+    res.status(201).json({ count: 1, round: nextRound });
+    return;
+  }
   const dayAfterLast = new Date(tournamentLocalDate(lastKickoff, tournament.timezone) + "T00:00:00Z");
   dayAfterLast.setUTCDate(dayAfterLast.getUTCDate() + 1);
   const today = tournamentLocalDate(new Date(), tournament.timezone);

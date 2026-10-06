@@ -7,6 +7,12 @@ it("round trips a Riyadh match time without using the browser timezone", () => {
   expect(tournamentDateTimeInput(iso, "Asia/Riyadh")).toBe("2026-10-10T18:00");
 });
 
+it("round trips an India match time without using the browser timezone", () => {
+  const iso = tournamentDateTimeIso("2026-10-10T08:00", "Asia/Kolkata");
+  expect(iso).toBe("2026-10-10T02:30:00.000Z");
+  expect(tournamentDateTimeInput(iso, "Asia/Kolkata")).toBe("2026-10-10T08:00");
+});
+
 it("shows a published tournament throughout its final local calendar day", () => {
   expect(isTournamentOngoing({ status: "PUBLISHED", startDate: "2026-10-10T00:00:00Z", endDate: "2026-10-11T00:00:00Z", timezone: "Asia/Riyadh" }, new Date("2026-10-11T19:00:00Z"))).toBe(true);
 });

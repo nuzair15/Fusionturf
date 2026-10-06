@@ -4,7 +4,7 @@ Tournament data lives in separate `tournament_*` tables. Tournament teams, playe
 
 ## Admin workflow
 
-1. Open **Admin → Tournaments → New tournament**. Choose round robin, single elimination, double elimination or groups plus knockout. Set the tournament logo, Riyadh kickoff time, match spacing, players on the field, minutes per half and halftime break.
+1. Open **Admin → Tournaments → New tournament**. Choose round robin, double round robin plus a final, single elimination, double elimination or groups plus knockout. Set the tournament logo, timezone, kickoff time, match spacing, players on the field, minutes per half and halftime break. The double round robin plus final option runs every match on the selected day in India Standard Time.
 2. Add tournament teams and players. Logos and photos can be uploaded or entered as image URLs. For a group tournament, assign every team to a group or leave every group empty for automatic assignment.
 3. Generate opening fixtures, or add fixtures manually. Scheduled fixtures can be edited or deleted. The next knockout round becomes available after all current fixtures finish.
 4. Set exactly the configured number of starters for both teams. Add substitutes as needed. Publish the tournament before starting a match.

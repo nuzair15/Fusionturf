@@ -54,7 +54,10 @@ class ApiClient {
           }
         }
         const error = await response.json().catch(() => ({ error: "Request failed" }));
-        const message = error.error || error.message || `HTTP ${response.status}`;
+        const validationDetails = Array.isArray(error.details)
+          ? error.details.map((detail: { field?: string; message?: string }) => `${detail.field || "Field"}: ${detail.message || "Invalid value"}`).join("; ")
+          : "";
+        const message = validationDetails || error.error || error.message || `HTTP ${response.status}`;
 
         // A 401 on a request that WAS sent with a token (as opposed to a
         // login/register attempt, which has no token yet) means the server

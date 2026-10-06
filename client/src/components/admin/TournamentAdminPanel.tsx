@@ -20,13 +20,14 @@ const emptyTournament = {
   name: "", slug: "", description: "", logoUrl: "", format: "ROUND_ROBIN" as TournamentFormat,
   startDate: "", endDate: "", lineupSize: 6, halfLengthMinutes: 30, halftimeBreakMinutes: 10,
   matchesPerPair: 1, groupCount: 2, qualifiersPerGroup: 2,
-  kickoffTime: "18:00", matchIntervalMinutes: 90, matchesPerDay: 2,
+  timezone: "Asia/Kolkata", kickoffTime: "08:00", matchIntervalMinutes: 45, matchesPerDay: 2,
 };
 const emptyTeam = { name: "", shortName: "", logoUrl: "", city: "", coach: "", contact: "", description: "", groupName: "", seed: "" };
 const emptyPlayer = { firstName: "", lastName: "", jerseyNumber: "", position: "", photoUrl: "", nationality: "", dateOfBirth: "" };
 const emptyFixture = { homeTeamId: "", awayTeamId: "", kickoffAt: "", stage: "LEAGUE", round: 1, groupName: "" };
 const fixtureStages: Record<TournamentFormat, string[]> = {
   ROUND_ROBIN: ["LEAGUE"], SINGLE_ELIMINATION: ["KNOCKOUT", "FINAL"],
+  DOUBLE_ROUND_ROBIN_FINAL: ["LEAGUE", "FINAL"],
   DOUBLE_ELIMINATION: ["WINNERS", "LOSERS", "FINAL"], GROUPS_KNOCKOUT: ["GROUP", "KNOCKOUT", "FINAL"],
 };
 const dateOnly = (value?: string | null) => value ? value.slice(0, 10) : "";
@@ -64,7 +65,7 @@ export function TournamentAdminPanel() {
       format: tournament.format, startDate: dateOnly(tournament.startDate), endDate: dateOnly(tournament.endDate),
       lineupSize: tournament.lineupSize, halfLengthMinutes: tournament.halfLengthMinutes, halftimeBreakMinutes: tournament.halftimeBreakMinutes,
       matchesPerPair: tournament.matchesPerPair, groupCount: tournament.groupCount || 2, qualifiersPerGroup: tournament.qualifiersPerGroup || 2,
-      kickoffTime: tournament.kickoffTime || "18:00", matchIntervalMinutes: tournament.matchIntervalMinutes, matchesPerDay: tournament.matchesPerDay,
+      timezone: tournament.timezone, kickoffTime: tournament.kickoffTime || "08:00", matchIntervalMinutes: tournament.matchIntervalMinutes, matchesPerDay: tournament.matchesPerDay,
     });
   }, [tournament, creating]);
   useEffect(() => {
@@ -81,7 +82,9 @@ export function TournamentAdminPanel() {
   };
   const saveTournament = async () => {
     const body = { ...tournamentForm, name: tournamentForm.name.trim(), slug: tournamentForm.slug.trim(), startDate: tournamentForm.startDate || null, endDate: tournamentForm.endDate || null, groupCount: tournamentForm.format === "GROUPS_KNOCKOUT" ? Number(tournamentForm.groupCount) : null, qualifiersPerGroup: tournamentForm.format === "GROUPS_KNOCKOUT" ? Number(tournamentForm.qualifiersPerGroup) : null, logoUrl: tournamentForm.logoUrl || null, kickoffTime: tournamentForm.kickoffTime || null };
-    if (!body.name || !body.slug) { setError("Name and slug are required"); return; }
+    if (body.name.length < 2) { setError("Tournament name must contain at least 2 characters."); return; }
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(body.slug)) { setError("URL slug can contain lowercase letters, numbers, and single hyphens only."); return; }
+    if (body.format === "DOUBLE_ROUND_ROBIN_FINAL" && (!body.startDate || !body.kickoffTime)) { setError("Choose the tournament date and first kickoff time."); return; }
     if (creating) {
       setBusy(true); setError("");
       try {
@@ -105,7 +108,7 @@ export function TournamentAdminPanel() {
   };
   const saveFixture = async () => {
     if (!selectedId) return;
-    const body = { ...fixtureForm, kickoffAt: fixtureForm.kickoffAt ? tournamentDateTimeIso(fixtureForm.kickoffAt, tournament?.timezone || "Asia/Riyadh") : "", round: Number(fixtureForm.round), groupName: fixtureForm.groupName || null };
+    const body = { ...fixtureForm, kickoffAt: fixtureForm.kickoffAt ? tournamentDateTimeIso(fixtureForm.kickoffAt, tournament?.timezone || "Asia/Kolkata") : "", round: Number(fixtureForm.round), groupName: fixtureForm.groupName || null };
     const original = tournament?.fixtures.find(row => row.id === editingFixtureId);
     const teamsChanged = original && (original.homeTeamId !== body.homeTeamId || original.awayTeamId !== body.awayTeamId);
     const ok = await act(() => editingFixtureId ? api.patch(`/admin/tournaments/${selectedId}/fixtures/${editingFixtureId}`, body) : api.post(`/admin/tournaments/${selectedId}/fixtures`, body), editingFixtureId ? teamsChanged ? "Fixture updated. Set lineups for the new teams." : "Fixture updated" : "Fixture added");
@@ -141,6 +144,7 @@ export function TournamentAdminPanel() {
     setPlayerForm({ firstName: player.firstName, lastName: player.lastName, jerseyNumber: player.jerseyNumber == null ? "" : String(player.jerseyNumber), position: player.position || "", photoUrl: player.photoUrl || "", nationality: player.nationality || "", dateOfBirth: dateOnly(player.dateOfBirth) });
   };
   const hasFixtures = !!tournament?.fixtures.length;
+  const hasFinal = !!tournament?.fixtures.some(f => f.stage === "FINAL");
   const allFinished = hasFixtures && tournament!.fixtures.every(f => ["COMPLETED", "CANCELLED"].includes(f.status));
 
   return <div className="space-y-5">
@@ -172,18 +176,20 @@ export function TournamentAdminPanel() {
           <ImageUpload label="Tournament logo" value={tournamentForm.logoUrl} onChange={logoUrl => setTournamentForm({ ...tournamentForm, logoUrl })} />
           <Input aria-label="Tournament logo URL" placeholder="Or paste a logo image URL" value={tournamentForm.logoUrl} onChange={e => setTournamentForm({ ...tournamentForm, logoUrl: e.target.value })} />
           <div className="grid gap-3 sm:grid-cols-3">
-            <div><Label>Format</Label><Select value={tournamentForm.format} onChange={e => { const format = e.target.value as TournamentFormat; setTournamentForm({ ...tournamentForm, format, matchesPerPair: format === "ROUND_ROBIN" || format === "GROUPS_KNOCKOUT" ? tournamentForm.matchesPerPair : 1 }); }}>{Object.entries(TOURNAMENT_FORMAT_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></div>
-            <div><Label>Start date</Label><Input type="date" value={tournamentForm.startDate} onChange={e => setTournamentForm({ ...tournamentForm, startDate: e.target.value })} /></div>
-            <div><Label>End date</Label><Input type="date" value={tournamentForm.endDate} onChange={e => setTournamentForm({ ...tournamentForm, endDate: e.target.value })} /></div>
+            <div><Label>Format</Label><Select value={tournamentForm.format} onChange={e => { const format = e.target.value as TournamentFormat; const singleDayFinal = format === "DOUBLE_ROUND_ROBIN_FINAL"; setTournamentForm({ ...tournamentForm, format, matchesPerPair: singleDayFinal ? 2 : format === "ROUND_ROBIN" || format === "GROUPS_KNOCKOUT" ? tournamentForm.matchesPerPair : 1, timezone: singleDayFinal ? "Asia/Kolkata" : tournamentForm.timezone, endDate: singleDayFinal ? tournamentForm.startDate : tournamentForm.endDate, kickoffTime: singleDayFinal && tournamentForm.kickoffTime === "18:00" ? "08:00" : tournamentForm.kickoffTime, matchIntervalMinutes: singleDayFinal && tournamentForm.matchIntervalMinutes === 90 ? 45 : tournamentForm.matchIntervalMinutes }); }}>{Object.entries(TOURNAMENT_FORMAT_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></div>
+            <div><Label>Start date</Label><Input type="date" value={tournamentForm.startDate} onChange={e => setTournamentForm({ ...tournamentForm, startDate: e.target.value, endDate: tournamentForm.format === "DOUBLE_ROUND_ROBIN_FINAL" ? e.target.value : tournamentForm.endDate })} /></div>
+            <div><Label>End date</Label><Input type="date" disabled={tournamentForm.format === "DOUBLE_ROUND_ROBIN_FINAL"} value={tournamentForm.endDate} onChange={e => setTournamentForm({ ...tournamentForm, endDate: e.target.value })} /></div>
             <div><Label>Players on field per team</Label><Input type="number" min={3} max={11} value={tournamentForm.lineupSize} onChange={e => setTournamentForm({ ...tournamentForm, lineupSize: Number(e.target.value) })} /></div>
             <div><Label>Minutes per half</Label><Input type="number" min={5} max={90} value={tournamentForm.halfLengthMinutes} onChange={e => setTournamentForm({ ...tournamentForm, halfLengthMinutes: Number(e.target.value) })} /></div>
             <div><Label>Halftime break (minutes)</Label><Input type="number" min={0} max={45} value={tournamentForm.halftimeBreakMinutes} onChange={e => setTournamentForm({ ...tournamentForm, halftimeBreakMinutes: Number(e.target.value) })} /></div>
-            <div><Label>Kickoff time (Riyadh)</Label><Input type="time" value={tournamentForm.kickoffTime} onChange={e => setTournamentForm({ ...tournamentForm, kickoffTime: e.target.value })} /></div>
+            <div><Label>Timezone</Label><Select disabled={tournamentForm.format === "DOUBLE_ROUND_ROBIN_FINAL"} value={tournamentForm.timezone} onChange={e => setTournamentForm({ ...tournamentForm, timezone: e.target.value })}><option value="Asia/Kolkata">India Standard Time</option><option value="Asia/Riyadh">Riyadh time</option></Select></div>
+            <div><Label>First kickoff ({tournamentForm.timezone === "Asia/Kolkata" ? "India time" : "Riyadh time"})</Label><Input type="time" value={tournamentForm.kickoffTime} onChange={e => setTournamentForm({ ...tournamentForm, kickoffTime: e.target.value })} /></div>
             <div><Label>Minutes between matches</Label><Input type="number" min={30} max={360} value={tournamentForm.matchIntervalMinutes} onChange={e => setTournamentForm({ ...tournamentForm, matchIntervalMinutes: Number(e.target.value) })} /></div>
-            <div><Label>Matches per day</Label><Input type="number" min={1} max={24} value={tournamentForm.matchesPerDay} onChange={e => setTournamentForm({ ...tournamentForm, matchesPerDay: Number(e.target.value) })} /></div>
+            {tournamentForm.format !== "DOUBLE_ROUND_ROBIN_FINAL" && <div><Label>Matches per day</Label><Input type="number" min={1} max={24} value={tournamentForm.matchesPerDay} onChange={e => setTournamentForm({ ...tournamentForm, matchesPerDay: Number(e.target.value) })} /></div>}
             {(tournamentForm.format === "ROUND_ROBIN" || tournamentForm.format === "GROUPS_KNOCKOUT") && <div><Label>Meetings per pair</Label><Select value={tournamentForm.matchesPerPair} onChange={e => setTournamentForm({ ...tournamentForm, matchesPerPair: Number(e.target.value) })}><option value={1}>Once</option><option value={2}>Twice</option></Select></div>}
             {tournamentForm.format === "GROUPS_KNOCKOUT" && <><div><Label>Number of groups</Label><Input type="number" min={2} max={16} value={tournamentForm.groupCount} onChange={e => setTournamentForm({ ...tournamentForm, groupCount: Number(e.target.value) })} /></div><div><Label>Qualifiers per group</Label><Input type="number" min={1} max={4} value={tournamentForm.qualifiersPerGroup} onChange={e => setTournamentForm({ ...tournamentForm, qualifiersPerGroup: Number(e.target.value) })} /></div></>}
           </div>
+          {tournamentForm.format === "DOUBLE_ROUND_ROBIN_FINAL" && <p className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-muted-foreground">Every team plays every other team twice. After those matches finish, generate a final between the top two teams. All fixtures use India time and remain on the selected date.</p>}
           <p className="text-xs text-muted-foreground">Full time is after {tournamentForm.halfLengthMinutes * 2} minutes of play. The match clock pauses during halftime.</p>
           <div className="flex flex-wrap gap-2"><Button disabled={busy || tournament?.status === "COMPLETED"} onClick={saveTournament}>{creating ? "Create tournament" : "Save settings"}</Button>
             {!creating && tournament?.status === "DRAFT" && <Button disabled={busy} variant="outline" onClick={() => act(() => api.patch(`/admin/tournaments/${selectedId}/status`, { status: "PUBLISHED" }), "Tournament published")}>Publish tournament</Button>}
@@ -215,7 +221,7 @@ export function TournamentAdminPanel() {
         {!creating && section === "fixtures" && tournament && <div className="space-y-4">
           <Card><CardContent className="flex flex-wrap items-center gap-2 p-4">
             <Button disabled={busy || hasFixtures || tournament.teams.length < 2} onClick={() => act(() => api.post(`/admin/tournaments/${selectedId}/fixtures/generate`, {}), "Fixtures generated")}>Generate fixtures</Button>
-            {["SINGLE_ELIMINATION", "DOUBLE_ELIMINATION", "GROUPS_KNOCKOUT"].includes(tournament.format) && <Button disabled={busy || !allFinished} variant="outline" onClick={() => act(() => api.post(`/admin/tournaments/${selectedId}/fixtures/next-round`, {}), "Next round generated")}>Generate next round</Button>}
+            {["SINGLE_ELIMINATION", "DOUBLE_ELIMINATION", "GROUPS_KNOCKOUT", "DOUBLE_ROUND_ROBIN_FINAL"].includes(tournament.format) && !(tournament.format === "DOUBLE_ROUND_ROBIN_FINAL" && hasFinal) && <Button disabled={busy || !allFinished} variant="outline" onClick={() => act(() => api.post(`/admin/tournaments/${selectedId}/fixtures/next-round`, {}), tournament.format === "DOUBLE_ROUND_ROBIN_FINAL" ? "Final generated" : "Next round generated")}>{tournament.format === "DOUBLE_ROUND_ROBIN_FINAL" ? "Generate final" : "Generate next round"}</Button>}
             <p className="text-xs text-muted-foreground">Generate the opening schedule, then edit kickoff times or add fixtures manually. Advance knockout rounds after all current matches finish.</p>
           </CardContent></Card>
           <Card><CardHeader><CardTitle>{editingFixtureId ? "Edit fixture" : "Add fixture"}</CardTitle></CardHeader><CardContent className="grid gap-3 sm:grid-cols-3">

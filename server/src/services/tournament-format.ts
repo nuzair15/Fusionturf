@@ -1,4 +1,4 @@
-export const TOURNAMENT_FORMATS = ["ROUND_ROBIN", "SINGLE_ELIMINATION", "DOUBLE_ELIMINATION", "GROUPS_KNOCKOUT"] as const;
+export const TOURNAMENT_FORMATS = ["ROUND_ROBIN", "DOUBLE_ROUND_ROBIN_FINAL", "SINGLE_ELIMINATION", "DOUBLE_ELIMINATION", "GROUPS_KNOCKOUT"] as const;
 export type TournamentFormat = typeof TOURNAMENT_FORMATS[number];
 
 export type PlannedPair = { homeTeamId: string; awayTeamId: string; round: number; stage: string; groupName?: string };

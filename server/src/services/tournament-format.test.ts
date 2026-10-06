@@ -20,6 +20,15 @@ describe("independent tournament scheduling", () => {
     }
   });
 
+  it("builds the league stage for a double round robin followed by a final", () => {
+    const fixtures = roundRobin(["a", "b", "c", "d"], 2);
+    expect(fixtures).toHaveLength(12);
+    expect(Math.max(...fixtures.map(fixture => fixture.round))).toBe(6);
+    expect(standings(["a", "b", "c", "d"], fixtures.map((fixture, index) => ({
+      ...fixture, homeScore: index < 2 ? 2 : 0, awayScore: 0, status: "COMPLETED",
+    }))).slice(0, 2)).toHaveLength(2);
+  });
+
   it("spreads seeded teams across groups and gives odd knockout fields a bye", () => {
     const groups = assignGroups(Array.from({ length: 7 }, (_, i) => ({ id: String(i) })), 3);
     expect([...groups.values()].filter(group => group === "A")).toHaveLength(3);
