@@ -49,6 +49,26 @@ describe("calendar requests return details and an image", () => {
     expect(html).toContain("3 bookings · 4.5 hours booked");
     expect(html).toContain("repeat(1,1fr)");
   });
+  it("aligns the month to Sunday-first weekdays and visibly marks booked dates", () => {
+    const html = calendarHtml(snapshot.venue, "2026-10-01", "2026-10-31", [{ ...snapshot.bookings[0], date: new Date("2026-10-08") }], "staff");
+    expect(html).toContain("October 2026");
+    expect(html).toContain('<div class="weekdays"><div>Sun</div><div>Mon</div>');
+    // October 1 is Thursday: four leading cells and five complete calendar rows.
+    expect(html.match(/class="day outside"/g)).toHaveLength(4);
+    expect(html.match(/data-date="2026-10-/g)).toHaveLength(31);
+    expect(html).toMatch(/class="day booked[^"]*" data-date="2026-10-08"/);
+    expect(html).toContain('<span class="count">1 booking</span>');
+    expect(html).toContain('class="slot confirmed"');
+    expect(html).toContain("Legacy Customer");
+    expect(html).toContain("--background:hsl(222 47% 5%)");
+    expect(html).toContain("--primary:hsl(142 76% 55%)");
+  });
+  it("escapes booking labels in the themed image", () => {
+    const html = calendarHtml({ ...snapshot.venue, name: "<img onerror=alert(1)>" }, snapshot.startDate, snapshot.endDate, [{ ...snapshot.bookings[0], customerName: "<script>alert(1)</script>" }], "staff");
+    expect(html).not.toContain("<script>");
+    expect(html).not.toContain("<img onerror");
+    expect(html).toContain("&lt;script&gt;");
+  });
   it("returns the PNG and the exact live details together in a single MCP result", () => {
     const details = calendarDetails(snapshot);
     const png = Buffer.from("89504e470d0a1a0a", "hex");
