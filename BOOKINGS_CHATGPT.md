@@ -23,13 +23,15 @@ Manage or revoke linked accounts at https://fusionturf.in/connect/chatgpt. Revoc
 - “Create a public calendar PNG for [venue] for the next seven days.”
 - “Screenshot the staff calendar for [venue] for October 2026.”
 
+Calendar, schedule and booking-overview requests automatically use `get_calendar`. This tool fetches the live details once and returns a readable PNG plus matching booking details and a booking/hour summary. Staff copies include names, references and colour-coded status; public copies hide customer information. “Fetch the calendar” defaults to the next seven days in the venue's timezone; day/month views and explicit date ranges are supported. After this tool update, refresh Fusion Bookings in ChatGPT Plugins and start a new Work chat so the new tool descriptions and instructions are loaded.
+
 Creation reserves the slot with status **PENDING** and payment **PENDING**. Ask to confirm the booking if appropriate. Confirming a booking does not mark its payment paid, and cancelling does not refund a payment.
 
 Calendar PNGs are rendered from live booking data. The default public copy omits customer names; a staff copy includes names. Website screenshots show the actual admin interface and can contain customer details. Image exports cover at most 31 days and 200 active bookings. Screenshots capture the current viewport of the booking list or the complete requested calendar component.
 
 ## Tools
 
-`list_venues`, `check_availability`, `quote_booking`, `search_bookings`, `get_booking`, `create_booking`, `reschedule_booking`, `cancel_booking`, `set_booking_status`, `generate_calendar_image`, `screenshot_bookings`.
+`list_venues`, `check_availability`, `quote_booking`, `search_bookings`, `get_booking`, `create_booking`, `reschedule_booking`, `cancel_booking`, `set_booking_status`, `get_calendar`, `generate_calendar_image`, `screenshot_bookings`.
 
 All data tools require an active individual staff account with `SUPER_ADMIN`, `BOOKING_MANAGER` or `BOOKING_ADMIN` role. OAuth scopes separate reads from writes. Staff permissions are checked for every invocation. Tokens and authorization codes are hashed in PostgreSQL. Refresh tokens rotate, and authorization codes are short-lived and single-use. Bookings and audit logs stay in the existing database.
 
@@ -91,3 +93,5 @@ Rollback artifacts are stored on the EC2 host in `/home/ubuntu/fusion-bookings-b
 The 1 GB host exhausted Node's default compiler heap during staging. This release was built and checked locally, and its portable compiled JavaScript and frontend assets were transferred to the server; dependencies and the native Prisma client were installed/generated on Linux. For future builds on this host, provide a sufficient compiler heap (for example, `NODE_OPTIONS=--max-old-space-size=768 npm run build`) or build locally and transfer the compiled assets. Preserve the production frontend API URL and server environment.
 
 Validation: 72 server unit tests and 18 client tests passed, as did schema/migration comparison, frontend asset budgets and browser end-to-end booking/OAuth/image checks. Existing dependency audit findings remain in the baseline: five server findings and nine client findings. The affected server package versions are unchanged by this integration; resolving unrelated dependency upgrades requires a separate change.
+
+The subsequent calendar update adds a twelfth tool, `get_calendar`, and changes the server instructions to include a generated image automatically with calendar/schedule overviews. Its image and structured booking details share one live data fetch. Default dates use the venue timezone; staff/public privacy, overnight times, booking totals and matching image/data output are covered by nine additional tests (81 server tests now pass). No database migration, new API key, package installation or frontend rebuild is required for this update.
