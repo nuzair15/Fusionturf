@@ -14,7 +14,7 @@ import { authenticate, authorize } from "../../middleware/auth.js";
 import { AppError } from "../../middleware/errorHandler.js";
 import { BOOKING_ROLES, SCOPES, hash, integrationBase, issuerUrl, oauthProvider, publicOrigin, resourceUrl } from "./auth.js";
 import { createBookingMcpServer } from "./tools.js";
-import { readInvoicePdf } from "./files.js";
+import { readBookingFile } from "./files.js";
 
 const router = Router();
 const endpoint = (path: string) => `${publicOrigin}${integrationBase}/${path}`;
@@ -46,11 +46,14 @@ if (config.bookingsMcp.enabled) {
   router.use(`${integrationBase}/oauth/revoke`, revocationHandler({ provider: oauthProvider }));
   router.get(`${integrationBase}/files/:id/:fileName`, rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false }), asyncRoute(async (req, res) => {
     const token = typeof req.query.token === "string" ? req.query.token : "";
-    const file = await readInvoicePdf(req.params.id, req.params.fileName, token);
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="${file.fileName}"`);
+    const file = await readBookingFile(req.params.id, req.params.fileName, token);
+    res.setHeader("Content-Type", file.mimeType);
+    res.setHeader("Content-Disposition", `${file.mimeType === "image/png" ? "inline" : "attachment"}; filename="${file.fileName}"`);
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("Referrer-Policy", "no-referrer");
+    // ChatGPT's isolated viewer has a different origin; signed capabilities and
+    // current staff permissions still control every file request.
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
     res.send(file.bytes);
   }));
 

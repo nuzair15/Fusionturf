@@ -52,9 +52,12 @@ describe("calendar requests return details and an image", () => {
   it("returns the PNG and the exact live details together in a single MCP result", () => {
     const details = calendarDetails(snapshot);
     const png = Buffer.from("89504e470d0a1a0a", "hex");
-    const result = calendarMcpResult({ image: png, details });
+    const file = { url: "https://fusionturf.in/api/integrations/bookings/files/file/calendar.png?token=test", fileName: "calendar.png", mimeType: "image/png", size: png.length, expiresAt: "2030-01-10T00:15:00Z" };
+    const result = calendarMcpResult({ image: png, details }, file);
     expect(result.content[0]).toEqual({ type: "image", data: png.toString("base64"), mimeType: "image/png" });
-    expect(result.structuredContent).toBe(details);
-    expect(JSON.parse(result.content[1].text!)).toEqual(details);
+    expect(result.structuredContent).toEqual({ ...details, image: file });
+    expect(JSON.parse(result.content[1].text!)).toEqual(result.structuredContent);
+    expect(result.content[2]).toMatchObject({ type: "resource_link", uri: file.url, mimeType: "image/png" });
+    expect(result.content[3].text).toContain(`[Open / save calendar PNG](${file.url})`);
   });
 });

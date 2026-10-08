@@ -16,6 +16,13 @@ if (!response.ok) throw new Error(`MCP tools/list: HTTP ${response.status}`);
 const payload = await response.json();
 const names = payload.result?.tools?.map(tool => tool.name) || [];
 for (const required of ["list_venues", "search_bookings", "create_booking", "reschedule_booking", "cancel_booking", "get_calendar", "get_booking_invoice", "generate_calendar_image", "screenshot_bookings"]) if (!names.includes(required)) throw new Error(`Missing tool: ${required}`);
+for (const name of ["get_calendar", "generate_calendar_image", "screenshot_bookings"]) {
+  const tool = payload.result.tools.find(tool => tool.name === name);
+  if (tool._meta?.ui?.resourceUri !== "ui://fusion-bookings/image-v1.html") throw new Error(`Missing image viewer: ${name}`);
+}
+const viewerResponse = await fetch(`${base}/mcp`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 5, method: "resources/read", params: { uri: "ui://fusion-bookings/image-v1.html" } }), signal: AbortSignal.timeout(15000) });
+const viewer = (await viewerResponse.json()).result?.contents?.[0];
+if (viewer?.mimeType !== "text/html;profile=mcp-app" || !viewer.text.includes("ui/notifications/tool-result") || !viewer._meta?.ui?.csp?.resourceDomains.includes(origin)) throw new Error("Booking image viewer or image origin policy is missing");
 const denied = await fetch(`${base}/mcp`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "list_venues", arguments: {} } }), signal: AbortSignal.timeout(15000) });
 const deniedPayload = await denied.json();
 if (!deniedPayload.result?.isError || !deniedPayload.result?._meta?.["mcp/www_authenticate"]) throw new Error("Anonymous booking access was not rejected correctly");
