@@ -14,6 +14,7 @@ import { authenticate, authorize } from "../../middleware/auth.js";
 import { AppError } from "../../middleware/errorHandler.js";
 import { BOOKING_ROLES, SCOPES, hash, integrationBase, issuerUrl, oauthProvider, publicOrigin, resourceUrl } from "./auth.js";
 import { createBookingMcpServer } from "./tools.js";
+import { readInvoicePdf } from "./files.js";
 
 const router = Router();
 const endpoint = (path: string) => `${publicOrigin}${integrationBase}/${path}`;
@@ -43,6 +44,15 @@ if (config.bookingsMcp.enabled) {
   router.use(`${integrationBase}/oauth/register`, clientRegistrationHandler({ clientsStore: oauthProvider.clientsStore }));
   router.use(`${integrationBase}/oauth/token`, tokenHandler({ provider: oauthProvider }));
   router.use(`${integrationBase}/oauth/revoke`, revocationHandler({ provider: oauthProvider }));
+  router.get(`${integrationBase}/files/:id/:fileName`, rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false }), asyncRoute(async (req, res) => {
+    const token = typeof req.query.token === "string" ? req.query.token : "";
+    const file = await readInvoicePdf(req.params.id, req.params.fileName, token);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${file.fileName}"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.send(file.bytes);
+  }));
 
   const staff = [authenticate, authorize(...BOOKING_ROLES)];
   router.get(`${integrationBase}/requests/:id`, ...staff, asyncRoute(async (req, res) => {

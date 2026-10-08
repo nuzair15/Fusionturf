@@ -93,7 +93,7 @@ const bookingPluginCors = cors({
   exposedHeaders: ["WWW-Authenticate", "MCP-Protocol-Version"],
 });
 app.use((req, res, next) => {
-  const pluginEndpoint = req.path.startsWith("/.well-known/oauth-") || /^\/api\/integrations\/bookings\/(mcp$|oauth\/|resource-metadata$|oauth-metadata$)/.test(req.path);
+  const pluginEndpoint = req.path.startsWith("/.well-known/oauth-") || /^\/api\/integrations\/bookings\/(mcp$|oauth\/|files\/|resource-metadata$|oauth-metadata$)/.test(req.path);
   return (pluginEndpoint ? bookingPluginCors : websiteCors)(req, res, next);
 });
 
@@ -139,7 +139,7 @@ app.use(csrfProtection);
 // request; "tiny" in production keeps request logging (still useful for
 // debugging on a single small instance) without the extra formatting work.
 if (config.nodeEnv !== "test") {
-  app.use(morgan(config.nodeEnv === "production" ? "tiny" : "dev"));
+  app.use(morgan(config.nodeEnv === "production" ? "tiny" : "dev", { skip: req => req.path.startsWith("/api/integrations/bookings/files/") }));
 }
 
 app.use("/api/auth/login", authRateLimit);

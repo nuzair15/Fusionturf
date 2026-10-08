@@ -22,6 +22,7 @@ Manage or revoke linked accounts at https://fusionturf.in/connect/chatgpt. Revoc
 - “Cancel booking [number] because the customer cancelled.”
 - “Create a public calendar PNG for [venue] for the next seven days.”
 - “Screenshot the staff calendar for [venue] for October 2026.”
+- “Send the booking details and invoice PDF for booking [number].”
 
 Calendar, schedule and booking-overview requests automatically use `get_calendar`. This tool fetches the live details once and returns a readable PNG plus matching booking details and a booking/hour summary. Staff copies include names, references and colour-coded status; public copies hide customer information. “Fetch the calendar” defaults to the next seven days in the venue's timezone; day/month views and explicit date ranges are supported. After this tool update, refresh Fusion Bookings in ChatGPT Plugins and start a new Work chat so the new tool descriptions and instructions are loaded.
 
@@ -31,7 +32,13 @@ Calendar PNGs are rendered from live booking data. The default public copy omits
 
 ## Tools
 
-`list_venues`, `check_availability`, `quote_booking`, `search_bookings`, `get_booking`, `create_booking`, `reschedule_booking`, `cancel_booking`, `set_booking_status`, `get_calendar`, `generate_calendar_image`, `screenshot_bookings`.
+`list_venues`, `check_availability`, `quote_booking`, `search_bookings`, `get_booking`, `get_booking_invoice`, `create_booking`, `reschedule_booking`, `cancel_booking`, `set_booking_status`, `get_calendar`, `generate_calendar_image`, `screenshot_bookings`.
+
+Invoice requests use `get_booking_invoice`, which returns a real A4 PDF, matching booking/payment details, a file resource, and a clickable download link in the chat. ChatGPT Work can download the exact file and attach it when its environment supports that; the plugin does not invent ChatGPT file IDs or guarantee a native attachment in every client. The PDF follows the website's invoice layout and current business settings, terms, charges, services and discounts. Captures/refunds use the payment ledger when present, with a legacy-payment fallback. Cancelled bookings show their cancelled status and no new payment due. Exporting never changes a booking or payment.
+
+Invoice links expire after 15 minutes and check the originating connection and staff permissions on each download. Revoking the connection or removing the staff role invalidates access. The signing key is separate from website login credentials. PDF files are stored outside the public web root under `server/.cache/bookings-invoices`, with expired-file cleanup on subsequent exports; download URLs are excluded from request logs. Request the invoice again for a fresh link. Refresh Fusion Bookings and start a new Work chat after installing this tool update.
+
+The production Nginx configuration uses a dedicated `location ^~ /api/integrations/bookings/files/` proxy with `access_log off` so the expiring download capabilities are not recorded in its access log. The API also omits these URLs from its request logger.
 
 All data tools require an active individual staff account with `SUPER_ADMIN`, `BOOKING_MANAGER` or `BOOKING_ADMIN` role. OAuth scopes separate reads from writes. Staff permissions are checked for every invocation. Tokens and authorization codes are hashed in PostgreSQL. Refresh tokens rotate, and authorization codes are short-lived and single-use. Bookings and audit logs stay in the existing database.
 
@@ -95,3 +102,5 @@ The 1 GB host exhausted Node's default compiler heap during staging. This releas
 Validation: 72 server unit tests and 18 client tests passed, as did schema/migration comparison, frontend asset budgets and browser end-to-end booking/OAuth/image checks. Existing dependency audit findings remain in the baseline: five server findings and nine client findings. The affected server package versions are unchanged by this integration; resolving unrelated dependency upgrades requires a separate change.
 
 The subsequent calendar update adds a twelfth tool, `get_calendar`, and changes the server instructions to include a generated image automatically with calendar/schedule overviews. Its image and structured booking details share one live data fetch. Default dates use the venue timezone; staff/public privacy, overnight times, booking totals and matching image/data output are covered by nine additional tests (81 server tests now pass). No database migration, new API key, package installation or frontend rebuild is required for this update.
+
+The invoice update adds a thirteenth tool, `get_booking_invoice`, and a scoped PDF download endpoint. Booking, payment ledger and invoice settings are read in a consistent database snapshot before rendering. Validation includes 90 server tests, actual PDF generation/download and MCP resource retrieval, malformed-link rejection, staff demotion/connection revocation, and inspection of the generated A4 PDF's text and layout. No new database migration or package installation is required.

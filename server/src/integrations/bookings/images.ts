@@ -9,7 +9,7 @@ import { calendarRange, type CalendarRequest } from "./calendar.js";
 
 let rendering = false;
 export async function withBrowser<T>(run: (browser: Browser) => Promise<T>): Promise<T> {
-  if (rendering) throw new AppError("Another image is being rendered. Try again shortly.", 429);
+  if (rendering) throw new AppError("Another file is being generated. Try again shortly.", 429);
   rendering = true;
   let browser: Browser | undefined;
   try {

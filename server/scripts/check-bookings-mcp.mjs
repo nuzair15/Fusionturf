@@ -15,11 +15,14 @@ const response = await fetch(`${base}/mcp`, { method: "POST", headers: { "Conten
 if (!response.ok) throw new Error(`MCP tools/list: HTTP ${response.status}`);
 const payload = await response.json();
 const names = payload.result?.tools?.map(tool => tool.name) || [];
-for (const required of ["list_venues", "search_bookings", "create_booking", "reschedule_booking", "cancel_booking", "get_calendar", "generate_calendar_image", "screenshot_bookings"]) if (!names.includes(required)) throw new Error(`Missing tool: ${required}`);
+for (const required of ["list_venues", "search_bookings", "create_booking", "reschedule_booking", "cancel_booking", "get_calendar", "get_booking_invoice", "generate_calendar_image", "screenshot_bookings"]) if (!names.includes(required)) throw new Error(`Missing tool: ${required}`);
 const denied = await fetch(`${base}/mcp`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "list_venues", arguments: {} } }), signal: AbortSignal.timeout(15000) });
 const deniedPayload = await denied.json();
 if (!deniedPayload.result?.isError || !deniedPayload.result?._meta?.["mcp/www_authenticate"]) throw new Error("Anonymous booking access was not rejected correctly");
 const calendarDenied = await fetch(`${base}/mcp`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "get_calendar", arguments: { venueId: "authentication-check" } } }), signal: AbortSignal.timeout(15000) });
 const calendarDeniedPayload = await calendarDenied.json();
 if (!calendarDeniedPayload.result?.isError || !calendarDeniedPayload.result?._meta?.["mcp/www_authenticate"]) throw new Error("Anonymous calendar access was not rejected correctly");
+const invoiceDenied = await fetch(`${base}/mcp`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "get_booking_invoice", arguments: { bookingIdOrNumber: "authentication-check" } } }), signal: AbortSignal.timeout(15000) });
+const invoiceDeniedPayload = await invoiceDenied.json();
+if (!invoiceDeniedPayload.result?.isError || !invoiceDeniedPayload.result?._meta?.["mcp/www_authenticate"]) throw new Error("Anonymous invoice access was not rejected correctly");
 console.log(`PASS: enabled, OAuth discovery, ${names.length} tools, anonymous booking access blocked.`);
