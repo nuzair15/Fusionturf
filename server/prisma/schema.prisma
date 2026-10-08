@@ -199,6 +199,9 @@ model User {
   matchResultRevisions MatchResultRevision[]
   playerTransfers      PlayerTransfer[]
   createdTournaments   Tournament[]         @relation("TournamentCreator")
+  mcpGrants            McpGrant[]
+  mcpConnections       McpConnection[]
+  mcpOperations        McpOperation[]
 
   @@map("users")
 }
@@ -608,6 +611,67 @@ model Booking {
   @@index([deletedAt])
   @@index([turfId, startAt, endAt])
   @@map("bookings")
+}
+
+// Private ChatGPT integration. Tokens and authorization codes are stored only as hashes.
+model McpClient {
+  id        String   @id
+  metadata  Json
+  createdAt DateTime @default(now())
+  grants    McpGrant[]
+  connections McpConnection[]
+  @@map("mcp_clients")
+}
+
+model McpGrant {
+  id            String    @id @default(uuid())
+  clientId      String
+  client        McpClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  redirectUri   String
+  state         String?
+  codeChallenge String
+  resource      String
+  scopes        String[]
+  userId        String?
+  user          User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash      String?   @unique
+  expiresAt     DateTime
+  consumedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  @@index([expiresAt])
+  @@map("mcp_grants")
+}
+
+model McpConnection {
+  id               String    @id @default(uuid())
+  clientId         String
+  client           McpClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessHash       String    @unique
+  refreshHash      String    @unique
+  resource         String
+  scopes           String[]
+  accessExpiresAt  DateTime
+  refreshExpiresAt DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  @@index([userId, revokedAt])
+  @@map("mcp_connections")
+}
+
+model McpOperation {
+  id          String   @id
+  userId      String
+  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tool        String
+  inputHash   String
+  state       String   @default("PENDING")
+  result      Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@map("mcp_operations")
 }
 
 model BookingService {

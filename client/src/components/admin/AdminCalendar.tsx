@@ -33,15 +33,19 @@ type ViewMode = "month" | "week" | "day";
 
 export function AdminCalendar({ venues }: { venues: Venue[] }) {
   const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [viewMode, setViewMode] = useState<ViewMode>("month");
-  const [selectedVenue, setSelectedVenue] = useState(venues[0]?.id || "");
+  const [captureParams] = useState(() => new URLSearchParams(window.location.search));
+  const captureDate = captureParams.get("mcpDate");
+  const initialDate = captureDate && /^\d{4}-\d{2}-\d{2}$/.test(captureDate) ? captureDate : null;
+  const initialView = captureParams.get("mcpView");
+  const [year, setYear] = useState(initialDate ? Number(initialDate.slice(0, 4)) : now.getFullYear());
+  const [month, setMonth] = useState(initialDate ? Number(initialDate.slice(5, 7)) : now.getMonth() + 1);
+  const [viewMode, setViewMode] = useState<ViewMode>(initialView === "week" || initialView === "day" ? initialView : "month");
+  const [selectedVenue, setSelectedVenue] = useState(captureParams.get("mcpVenue") || venues[0]?.id || "");
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [hoveredBooking, setHoveredBooking] = useState<Booking | null>(null);
   const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [weekOffset, setWeekOffset] = useState(0);
+  const [selectedDate, setSelectedDate] = useState<string | null>(initialDate);
+  const [weekOffset, setWeekOffset] = useState(initialDate ? Math.floor((Number(initialDate.slice(8, 10)) - 1 + new Date(Number(initialDate.slice(0, 4)), Number(initialDate.slice(5, 7)) - 1, 1).getDay()) / 7) : 0);
   const gridRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
@@ -214,7 +218,7 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
   const navigateNext = () => viewMode === "week" ? setWeekOffset((value) => value + 1) : next();
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-booking-calendar={isLoading || !calendarData ? "loading" : "ready"}>
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -328,7 +332,7 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
             </div>
             <div ref={gridRef} className="relative" style={{ height: 18 * 48 }}>
               {HOURS.map((h) => (
-                <div key={h} className="flex border-t">
+                <div key={h} className="flex border-t" style={{ height: 48 }}>
                   <div className="w-16 shrink-0 p-1 pr-2 text-right text-[10px] text-muted-foreground">
                     {h > 12 ? h - 12 : h}{h >= 12 ? "p" : "a"}
                   </div>
@@ -363,8 +367,8 @@ export function AdminCalendar({ venues }: { venues: Venue[] }) {
                       style={{
                         top: `${top}%`,
                         height: `${Math.max(height, 2)}%`,
-                        left: `${16 + di * ((100 - 16) / 7)}%`,
-                        width: `${(100 - 16) / 7}%`,
+                        left: `calc(64px + ${di * 100 / 7}% - ${64 * di / 7}px)`,
+                        width: "calc((100% - 64px) / 7)",
                       }}
                       onMouseEnter={(e) => handleMouseEnter(b, e)}
                       onMouseLeave={handleMouseLeave}

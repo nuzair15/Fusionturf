@@ -16,6 +16,11 @@ export const config = {
   nodeEnv: process.env.NODE_ENV || "development",
   corsOrigin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
   frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
+  bookingsMcp: {
+    enabled: process.env.BOOKINGS_MCP_ENABLED === "true",
+    publicUrl: process.env.BOOKINGS_MCP_PUBLIC_URL || "http://localhost:5000",
+    chromiumExecutable: process.env.BOOKINGS_CHROMIUM_EXECUTABLE || undefined,
+  },
 
   database: {
     url: process.env.DATABASE_URL || fallbackDatabaseUrl,

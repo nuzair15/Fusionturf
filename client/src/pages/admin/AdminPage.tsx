@@ -204,7 +204,7 @@ export function AdminPage() {
 
   const { data: users } = useQuery({ queryKey: ["admin-users", userSearch], queryFn: () => api.get<{ data: User[] }>("/admin/users", { limit: "100", ...(userSearch ? { search: userSearch } : {}) }), enabled: tabEnabled("users") });
 
-  const { data: seasons } = useQuery({ queryKey: ["admin-seasons"], queryFn: () => api.get<Season[]>("/admin/seasons"), enabled: unlocked });
+  const { data: seasons } = useQuery({ queryKey: ["admin-seasons"], queryFn: () => api.get<Season[]>("/admin/seasons"), enabled: unlocked && !!user && ["SUPER_ADMIN", "LEAGUE_ADMIN", "STATISTICIAN", "REFEREE", "VIEWER"].includes(user.role) });
 
   const currentSeason = (seasons || []).find((s: Season) => s.isCurrent);
 
@@ -1652,7 +1652,7 @@ export function AdminPage() {
 
         {activeTab === "bookings" && (
           <div className="space-y-4">
-            <h2 className="text-xl font-bold">Bookings</h2>
+            <div className="flex items-center gap-3"><h2 className="text-xl font-bold">Bookings</h2><a href="/connect/chatgpt" className="text-sm font-medium text-primary hover:underline">Connect ChatGPT</a></div>
             <DataTable<Booking>
               title=""
               columns={[

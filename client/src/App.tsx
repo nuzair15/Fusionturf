@@ -29,6 +29,7 @@ const TournamentFixturePage = lazy(() => import("@/pages/tournaments/TournamentP
 const NewsPage = lazy(() => import("@/pages/league/NewsPage").then((m) => ({ default: m.NewsPage })));
 const SearchPage = lazy(() => import("@/pages/search/SearchPage").then((m) => ({ default: m.SearchPage })));
 const AuthPage = lazy(() => import("@/pages/auth/AuthPage").then((m) => ({ default: m.AuthPage })));
+const ChatGPTConnectionPage = lazy(() => import("@/pages/integrations/ChatGPTConnectionPage").then((m) => ({ default: m.ChatGPTConnectionPage })));
 import { ApiErrorNotice } from "@/components/ApiErrorNotice";
 import { PageSkeleton } from "@/components/PageState";
 import { NotFoundPage } from "@/pages/NotFoundPage";
@@ -75,6 +76,7 @@ export default function App() {
                     <Route path="/tournaments/:slug/fixtures/:fixtureId" element={<TournamentFixturePage />} />
                     <Route path="/search" element={<SearchPage />} />
                     <Route path="/auth" element={<AuthPage />} />
+                    <Route path="/connect/chatgpt" element={<ChatGPTConnectionPage />} />
                     <Route path="/dashboard" element={<DashboardPage />} />
                     <Route path="/admin" element={<AdminPage />} />
                     <Route path="/admin/*" element={<AdminPage />} />

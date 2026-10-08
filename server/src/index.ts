@@ -14,6 +14,7 @@ import prisma from "./config/database.js";
 import { startOutboxWorker, stopOutboxWorker } from "./services/outbox.js";
 import { randomUUID } from "crypto";
 import { csrfProtection } from "./middleware/csrf.js";
+import bookingsIntegrationRoutes from "./integrations/bookings/routes.js";
 
 if (config.nodeEnv === "production") {
   const required = ["DATABASE_URL", "JWT_SECRET"];
@@ -85,7 +86,16 @@ const corsOptions: cors.CorsOptions = {
   },
   credentials: true,
 };
-app.use(cors(corsOptions));
+const websiteCors = cors(corsOptions);
+const bookingPluginCors = cors({
+  origin: ["https://chatgpt.com", ...(Array.isArray(config.corsOrigin) ? config.corsOrigin : [config.corsOrigin])],
+  credentials: false,
+  exposedHeaders: ["WWW-Authenticate", "MCP-Protocol-Version"],
+});
+app.use((req, res, next) => {
+  const pluginEndpoint = req.path.startsWith("/.well-known/oauth-") || /^\/api\/integrations\/bookings\/(mcp$|oauth\/|resource-metadata$|oauth-metadata$)/.test(req.path);
+  return (pluginEndpoint ? bookingPluginCors : websiteCors)(req, res, next);
+});
 
 // gzip API responses. JSON payloads (fixtures, standings, league lists)
 // compress very well, and shrinking what actually goes over the wire
@@ -168,6 +178,7 @@ app.post("/api/upload", authenticate, authorize("SUPER_ADMIN", "LEAGUE_ADMIN", "
 });
 
 // API Routes
+app.use(bookingsIntegrationRoutes);
 app.use("/api", routes);
 
 // Error handling

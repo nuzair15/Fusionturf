@@ -39,6 +39,10 @@ WORKDIR /app
 # Run as an unprivileged user rather than root inside the container.
 RUN addgroup -S nodejs && adduser -S nodejs -G nodejs
 
+# Calendar PNGs and staff screenshots use Chromium rather than an AI API.
+RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont
+ENV BOOKINGS_CHROMIUM_EXECUTABLE=/usr/bin/chromium-browser
+
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist

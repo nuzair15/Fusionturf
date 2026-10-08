@@ -723,7 +723,8 @@ export const cancelBooking = async (req: Request, res: Response, next: NextFunct
 
 export const adminUpdateBookingStatus = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { status } = req.body;
+    const { status, cancellationReason } = req.body;
+    if (cancellationReason !== undefined && (typeof cancellationReason !== "string" || cancellationReason.length > 1000)) throw new AppError("Cancellation reason must be a string of at most 1000 characters", 400);
     if (!["PENDING", "CONFIRMED", "CANCELLED", "COMPLETED"].includes(status)) {
       throw new AppError("Invalid status", 400);
     }
@@ -741,7 +742,7 @@ export const adminUpdateBookingStatus = async (req: Request, res: Response, next
       if (!transitions[booking.status]?.includes(status)) throw new AppError(`Cannot move a booking from ${booking.status} to ${status}`, 409);
       const changed = await tx.booking.updateMany({
         where: { id: booking.id, status: booking.status },
-        data: { status, blocksAvailability: status === "PENDING" || status === "CONFIRMED" || status === "RESCHEDULED" },
+        data: { status, blocksAvailability: status === "PENDING" || status === "CONFIRMED" || status === "RESCHEDULED", ...(status === "CANCELLED" && cancellationReason !== undefined ? { cancellationReason } : {}) },
       });
       if (changed.count !== 1) throw new AppError("Booking changed concurrently; retry the request", 409);
       if (status === "CANCELLED") await releaseCouponOnce(tx, booking.id);
