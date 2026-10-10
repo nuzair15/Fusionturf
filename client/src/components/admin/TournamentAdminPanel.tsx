@@ -252,6 +252,6 @@ export function TournamentAdminPanel() {
         </div>}
       </div>}
     </div>
-    {liveFixtureId && liveApi && <MatchControlCenter fixtureId={liveFixtureId} apiClient={liveApi} onClose={() => { setLiveFixtureId(null); void refetchTournament(); void refresh(); }} />}
+    {liveFixtureId && liveApi && <MatchControlCenter fixtureId={liveFixtureId} apiClient={liveApi} allowReopenCompleted onClose={() => { setLiveFixtureId(null); void refetchTournament(); void refresh(); }} />}
   </div>;
 }

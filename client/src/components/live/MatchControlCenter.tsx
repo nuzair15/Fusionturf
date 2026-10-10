@@ -44,7 +44,7 @@ type DialogKind = "goal" | "own-goal" | "penalty" | "awarded-goal" | "yellow" | 
 
 let activityId = 1;
 
-export function MatchControlCenter({ fixtureId, onClose, apiClient = liveMatchApi }: { fixtureId: string; onClose: () => void; apiClient?: typeof liveMatchApi }) {
+export function MatchControlCenter({ fixtureId, onClose, apiClient = liveMatchApi, allowReopenCompleted = false }: { fixtureId: string; onClose: () => void; apiClient?: typeof liveMatchApi; allowReopenCompleted?: boolean }) {
   const [data, setData] = useState<LiveMatchData | null>(null);
   const [loading, setLoading] = useState(true);
   const [minute, setMinute] = useState(0);
@@ -63,6 +63,9 @@ export function MatchControlCenter({ fixtureId, onClose, apiClient = liveMatchAp
   const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
   const [draftHydrated, setDraftHydrated] = useState(false);
   const [shootoutDialogOpen, setShootoutDialogOpen] = useState(false);
+  const [clockDialogOpen, setClockDialogOpen] = useState(false);
+  const [clockMinutes, setClockMinutes] = useState("0");
+  const [clockRemainderSeconds, setClockRemainderSeconds] = useState("0");
   const fetchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const correctionInputRef = useRef<HTMLInputElement>(null);
   const teamStatValues = useRef<Record<string, number>>({});
@@ -189,8 +192,8 @@ export function MatchControlCenter({ fixtureId, onClose, apiClient = liveMatchAp
     }
   }, [fetchStats, pushActivity]);
 
-  const setStatus = useCallback((status: MatchStatus) => {
-    return runAction(() => apiClient.setStatus(fixtureId, status), `Match ${status === "LIVE" ? "started/resumed" : status.toLowerCase().replace("_", " ")}`);
+  const setStatus = useCallback((status: MatchStatus, statusCorrectionReason?: string) => {
+    return runAction(() => apiClient.setStatus(fixtureId, status, statusCorrectionReason), `Match ${status === "LIVE" ? "started/resumed" : status.toLowerCase().replace("_", " ")}`);
   }, [fixtureId, runAction]);
 
   const subbedOffIds = useMemo(() => {
@@ -199,6 +202,28 @@ export function MatchControlCenter({ fixtureId, onClose, apiClient = liveMatchAp
     return set;
   }, [data]);
   const events = useMemo(() => (data ? buildTimeline(data) : []), [data]);
+
+  const openClockDialog = useCallback(() => {
+    setClockMinutes(String(Math.floor(clockSeconds / 60)));
+    setClockRemainderSeconds(String(clockSeconds % 60));
+    setClockDialogOpen(true);
+  }, [clockSeconds]);
+
+  const setMatchClock = useCallback(async () => {
+    const minutes = Number(clockMinutes);
+    const seconds = Number(clockRemainderSeconds);
+    if (!Number.isInteger(minutes) || minutes < 0 || minutes > 300 || !Number.isInteger(seconds) || seconds < 0 || seconds > 59) {
+      toast("Invalid clock time", "Use 0–300 minutes and 0–59 seconds.", "warning");
+      return;
+    }
+    const total = minutes * 60 + seconds;
+    const result = await runAction(() => apiClient.setClock(fixtureId, total), `Match clock set to ${minutes}:${String(seconds).padStart(2, "0")}`);
+    if (result) {
+      setClockSeconds(total);
+      setMinute(Math.floor(total / 60));
+      setClockDialogOpen(false);
+    }
+  }, [apiClient, clockMinutes, clockRemainderSeconds, fixtureId, runAction]);
 
   const undoLast = useCallback(() => {
     if (undoStack.length === 0) { toast("Nothing to undo", undefined, "warning"); return; }
@@ -452,10 +477,22 @@ export function MatchControlCenter({ fixtureId, onClose, apiClient = liveMatchAp
           minute={minute}
           onClose={closeConsole}
           onTogglePause={() => setStatus(data.fixture.status === "LIVE" || data.fixture.status === "EXTRA_TIME" ? "PAUSED" : data.fixture.halfLengthMinutes && clockSeconds >= data.fixture.halfLengthMinutes * 120 ? "EXTRA_TIME" : "LIVE")}
-          onResetTimer={() => runAction(() => apiClient.resetClock(fixtureId), "Match clock reset").then(() => { setMinute(0); setClockSeconds(0); })}
+          onResetTimer={() => runAction(() => apiClient.resetClock(fixtureId), "Match clock reset").then(result => { if (result) { setMinute(0); setClockSeconds(0); } })}
+          onSetTimer={openClockDialog}
           clockSeconds={clockSeconds}
           timerRunning={timerRunning}
         />
+        {clockDialogOpen && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="set-clock-title">
+          <div className="w-full max-w-sm rounded-xl border bg-background p-5 text-foreground shadow-2xl">
+            <h2 id="set-clock-title" className="text-lg font-bold">Set match clock</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Jump to an exact elapsed match time. A running clock continues from the new value.</p>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <label className="text-sm font-medium">Minutes<input type="number" min="0" max="300" step="1" value={clockMinutes} onChange={event => setClockMinutes(event.target.value)} className="mt-1 flex h-10 w-full rounded-md border bg-background px-3 py-2" /></label>
+              <label className="text-sm font-medium">Seconds<input type="number" min="0" max="59" step="1" value={clockRemainderSeconds} onChange={event => setClockRemainderSeconds(event.target.value)} className="mt-1 flex h-10 w-full rounded-md border bg-background px-3 py-2" /></label>
+            </div>
+            <div className="mt-5 flex justify-end gap-2"><Button variant="ghost" disabled={busy} onClick={() => setClockDialogOpen(false)}>Cancel</Button><Button disabled={busy} onClick={() => void setMatchClock()}>Set clock</Button></div>
+          </div>
+        </div>}
         {data.fixture.halfLengthMinutes && <p className="mt-2 rounded-lg border bg-card px-3 py-2 text-center text-xs text-muted-foreground">
           {data.fixture.lineupSize} a side · Half time at {data.fixture.halfLengthMinutes}' · Full time at {data.fixture.halfLengthMinutes * 2}' · {data.fixture.halftimeBreakMinutes} minute break
         </p>}
@@ -482,6 +519,17 @@ export function MatchControlCenter({ fixtureId, onClose, apiClient = liveMatchAp
           <label className="mt-3 block text-sm font-medium" htmlFor="fixture-correction-reason">Correction reason</label>
           <input ref={correctionInputRef} id="fixture-correction-reason" className="mt-2 flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm" value={correctionReason} onChange={(e) => setCorrectionReason(e.target.value)} placeholder="Example: Incorrect goal recorded after full time" />
           <div className="mt-3 flex flex-wrap items-center gap-3">
+            {allowReopenCompleted && <Button
+              type="button"
+              disabled={busy || !correction()}
+              onClick={() => setConfirm({
+                title: "Reopen this match?",
+                description: "The match will return to Live at its current clock and score. Its winner will be cleared until you finish it again.",
+                onConfirm: () => setStatus("LIVE", correction()),
+              })}
+            >
+              Reopen match
+            </Button>}
             {(data.fixture.isGrandFinal || data.fixture.hasKnockoutBracket) && (
               <Button
                 type="button"

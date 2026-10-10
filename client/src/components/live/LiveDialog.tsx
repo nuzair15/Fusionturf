@@ -10,15 +10,20 @@ export function LiveDialog({ open, onClose, title, children, footer }: {
   footer?: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!open) return;
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onCloseRef.current(); };
     document.addEventListener("keydown", handler);
     document.body.style.overflow = "hidden";
     const timer = setTimeout(() => ref.current?.focus(), 50);
     return () => { clearTimeout(timer); document.removeEventListener("keydown", handler); document.body.style.overflow = ""; };
-  }, [open, onClose]);
+  }, [open]);
 
   return (
     <AnimatePresence>

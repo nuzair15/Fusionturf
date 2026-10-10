@@ -8,9 +8,10 @@ type Correction = { correctionReason?: string };
 export const liveMatchApi = {
   fetchLiveStats: (fixtureId: string) => api.get<LiveMatchData>(`/admin/fixtures/${fixtureId}/live-stats`),
 
-  setStatus: (fixtureId: string, status: MatchStatus) =>
-    api.patch(`/admin/fixtures/${fixtureId}/status`, { status }),
+  setStatus: (fixtureId: string, status: MatchStatus, correctionReason?: string) =>
+    api.patch(`/admin/fixtures/${fixtureId}/status`, { status, correctionReason }),
   resetClock: (fixtureId: string) => api.post(`/admin/fixtures/${fixtureId}/live-stats/reset-clock`),
+  setClock: (fixtureId: string, seconds: number) => api.post(`/admin/fixtures/${fixtureId}/live-stats/reset-clock`, { seconds }),
 
   completePenaltyShootout: (fixtureId: string, body: { homeScore: number; awayScore: number; penaltiesHomeScore: number; penaltiesAwayScore: number; winnerTeamId: string; reason?: string; version?: number }) =>
     api.patch(`/admin/fixtures/${fixtureId}/score`, body),

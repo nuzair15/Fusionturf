@@ -117,7 +117,7 @@ export const getLiveStats = async (req: Request, res: Response, next: NextFuncti
         id: fixture.id,
         matchDate: fixture.matchDate,
         status: fixture.status,
-        matchClockSeconds: fixture.matchClockSeconds + (fixture.status === "LIVE" && fixture.matchClockStartedAt
+        matchClockSeconds: fixture.matchClockSeconds + (["LIVE", "EXTRA_TIME"].includes(fixture.status) && fixture.matchClockStartedAt
           ? Math.max(0, Math.floor((Date.now() - fixture.matchClockStartedAt.getTime()) / 1000)) : 0),
         matchClockServerTime: new Date().toISOString(),
         kickoffTime: fixture.kickoffTime,

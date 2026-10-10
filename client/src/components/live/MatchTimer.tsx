@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Pause, Play, RotateCcw } from "lucide-react";
+import { FastForward, Pause, Play, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MatchStatus } from "@/types";
 import { matchPeriodClock } from "@/lib/matchClock";
@@ -10,13 +10,14 @@ export function formatMatchClock(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-export function MatchTimer({ running, seconds, status, halfLengthMinutes = 30, onTogglePause, onReset }: {
+export function MatchTimer({ running, seconds, status, halfLengthMinutes = 30, onTogglePause, onReset, onSet }: {
   running: boolean;
   seconds: number;
   status: MatchStatus;
   halfLengthMinutes?: number;
   onTogglePause: () => void;
   onReset: () => void;
+  onSet: () => void;
 }) {
   // The server owns elapsed time; the parent interpolates between polls so the
   // display stays smooth while multiple operators remain synchronized.
@@ -54,6 +55,14 @@ export function MatchTimer({ running, seconds, status, halfLengthMinutes = 30, o
           className="flex h-10 w-11 items-center justify-center rounded-full bg-muted text-muted-foreground transition hover:bg-accent active:scale-95"
         >
           <RotateCcw className="h-3.5 w-3.5" />
+        </button>
+        <button
+          onClick={onSet}
+          aria-label="Set match clock"
+          title="Jump to a specific match time"
+          className="flex h-10 w-11 items-center justify-center rounded-full bg-muted text-muted-foreground transition hover:bg-accent active:scale-95"
+        >
+          <FastForward className="h-3.5 w-3.5" />
         </button>
       </div>
     </div>

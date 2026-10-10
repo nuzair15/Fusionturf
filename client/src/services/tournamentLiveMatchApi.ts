@@ -10,8 +10,9 @@ export function tournamentLiveMatchApi(tournamentId: string) {
   const action = (fixtureId: string, body: Record<string, unknown>) => api.post(`${root(fixtureId)}/live-action`, body);
   return {
     fetchLiveStats: (fixtureId: string) => api.get<LiveMatchData>(`${root(fixtureId)}/live-stats`),
-    setStatus: (fixtureId: string, status: MatchStatus) => action(fixtureId, { action: "setStatus", status }),
+    setStatus: (fixtureId: string, status: MatchStatus, correctionReason?: string) => action(fixtureId, { action: "setStatus", status, correctionReason }),
     resetClock: (fixtureId: string) => action(fixtureId, { action: "resetClock" }),
+    setClock: (fixtureId: string, seconds: number) => action(fixtureId, { action: "setClock", seconds }),
     completePenaltyShootout: (fixtureId: string, body: { homeScore: number; awayScore: number; penaltiesHomeScore: number; penaltiesAwayScore: number; winnerTeamId: string; reason?: string; version?: number }) => action(fixtureId, { action: "completePenaltyShootout", ...body, correctionReason: body.reason }),
     updateLiveStat: (fixtureId: string, body: { playerId: string; statType: StatType; teamId: string; action: "increment" | "decrement"; minute?: number; correctionReason?: string }) => action(fixtureId, { ...body, action: "updateLiveStat", statAction: body.action }),
     updateTeamStats: (fixtureId: string, body: Record<string, number | string>) => action(fixtureId, { action: "updateTeamStats", ...body }),

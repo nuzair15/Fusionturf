@@ -44,6 +44,10 @@ describe.skipIf(!process.env.TOURNAMENT_TEST_DATABASE_URL)("tournament live matc
       await liveAction(fixture.id, { action: "setStatus", status: "LIVE" }, "test-admin");
       await liveAction(fixture.id, { action: "setStatus", status: "COMPLETED" }, "test-admin");
       expect((await liveStats(fixture.id)).fixture.winnerTeamId).toBe(home.id);
+      await expect(liveAction(fixture.id, { action: "setStatus", status: "LIVE" }, "test-admin")).rejects.toMatchObject({ statusCode: 400 });
+      await liveAction(fixture.id, { action: "setStatus", status: "LIVE", correctionReason: "Match ended accidentally" }, "test-admin");
+      expect((await liveStats(fixture.id)).fixture).toMatchObject({ status: "LIVE", winnerTeamId: null });
+      await liveAction(fixture.id, { action: "setStatus", status: "COMPLETED" }, "test-admin");
       expect(await prisma.team.count()).toBe(before.teams);
       expect(await prisma.player.count()).toBe(before.players);
       expect(await prisma.fixture.count()).toBe(before.fixtures);

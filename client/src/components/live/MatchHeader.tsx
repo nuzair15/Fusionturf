@@ -5,12 +5,13 @@ import { MatchTimer } from "./MatchTimer";
 import { formatDate, formatTime } from "@/lib/utils";
 import { fixtureDateKey } from "@/lib/fixtures";
 
-export function MatchHeader({ data, minute, onClose, onTogglePause, onResetTimer, timerRunning, clockSeconds }: {
+export function MatchHeader({ data, minute, onClose, onTogglePause, onResetTimer, onSetTimer, timerRunning, clockSeconds }: {
   data: LiveMatchData;
   minute: number;
   onClose: () => void;
   onTogglePause: () => void;
   onResetTimer: () => void;
+  onSetTimer: () => void;
   timerRunning: boolean;
   clockSeconds: number;
 }) {
@@ -55,7 +56,7 @@ export function MatchHeader({ data, minute, onClose, onTogglePause, onResetTimer
           awayLogo={awayTeam.logoUrl}
         />
         <div className="flex items-center gap-3">
-          <MatchTimer seconds={clockSeconds} status={fixture.status} halfLengthMinutes={fixture.halfLengthMinutes} running={timerRunning} onTogglePause={onTogglePause} onReset={onResetTimer} />
+          <MatchTimer seconds={clockSeconds} status={fixture.status} halfLengthMinutes={fixture.halfLengthMinutes} running={timerRunning} onTogglePause={onTogglePause} onReset={onResetTimer} onSet={onSetTimer} />
           <div className="flex flex-col items-center rounded-full bg-white/10 px-4 py-1.5">
             <span className="text-[9px] font-semibold uppercase tracking-wider text-emerald-100/70">Event minute · auto</span>
             <span className="min-w-10 text-center text-lg font-black tabular-nums text-white">

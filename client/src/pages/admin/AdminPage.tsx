@@ -2329,7 +2329,7 @@ export function AdminPage() {
             onSearch={setUserSearch}
           />
         )}
-      {liveStatsFixtureId && <MatchControlCenter fixtureId={liveStatsFixtureId} onClose={() => {
+      {liveStatsFixtureId && <MatchControlCenter fixtureId={liveStatsFixtureId} allowReopenCompleted onClose={() => {
         queryClient.invalidateQueries({ queryKey: ["admin-fixtures"] });
         queryClient.invalidateQueries({ queryKey: ["fixtures"] });
         queryClient.invalidateQueries({ queryKey: ["standings"] });

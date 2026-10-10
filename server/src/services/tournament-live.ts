@@ -125,10 +125,10 @@ export async function liveAction(fixtureId: string, raw: unknown, userId: string
     const action = base.action;
     if (["SCHEDULED", "POSTPONED", "CANCELLED"].includes(f.status) && action !== "setStatus") throw new AppError("Start the match before recording events", 409);
     if (f.status === "PENALTIES" && action !== "completePenaltyShootout") throw new AppError("Finish the penalty shootout before other changes", 409);
-    if (f.status === "COMPLETED" && !["updateGoal", "updateCard", "removeEvent", "removeGoal", "setMatchRating", "setManOfTheMatch", "completePenaltyShootout"].includes(action)) throw new AppError("Completed matches are read-only", 409);
+    if (f.status === "COMPLETED" && !["setStatus", "updateGoal", "updateCard", "removeEvent", "removeGoal", "setMatchRating", "setManOfTheMatch", "completePenaltyShootout"].includes(action)) throw new AppError("Completed matches are read-only", 409);
     if (f.status === "COMPLETED" && !base.correctionReason?.trim()) throw new AppError("Enter a correction reason for a completed match", 400);
     const downstream = f.status === "COMPLETED" && await tx.tournamentFixture.count({ where: { tournamentId: f.tournamentId, stage: { in: ["KNOCKOUT", "WINNERS", "LOSERS", "FINAL"] }, round: { gt: f.round } } });
-    if (downstream && ["updateGoal", "removeEvent", "removeGoal", "completePenaltyShootout"].includes(action)) throw new AppError("A later knockout round already exists. Correct that bracket before changing this result.", 409);
+    if (downstream && ["setStatus", "updateGoal", "removeEvent", "removeGoal", "completePenaltyShootout"].includes(action)) throw new AppError("A later knockout round already exists. Correct that bracket before changing this result.", 409);
     const eventMinute = (v: unknown) => minute.parse(v ?? Math.floor(f.matchClockSeconds / 60));
     let result: unknown = { ok: true };
     if (action === "setStatus") {
@@ -138,18 +138,24 @@ export async function liveAction(fixtureId: string, raw: unknown, userId: string
         POSTPONED: ["SCHEDULED"], LIVE: ["PAUSED", "HALF_TIME", "EXTRA_TIME", "PENALTIES", "COMPLETED"],
         PAUSED: ["LIVE", "HALF_TIME", "EXTRA_TIME", "PENALTIES", "COMPLETED"],
         HALF_TIME: ["LIVE", "EXTRA_TIME", "PENALTIES", "COMPLETED"],
-        EXTRA_TIME: ["PAUSED", "PENALTIES", "COMPLETED"], PENALTIES: [],
+        EXTRA_TIME: ["PAUSED", "PENALTIES", "COMPLETED"], PENALTIES: [], COMPLETED: ["LIVE"],
       };
       if (!valid[f.status]?.includes(status)) throw new AppError("Invalid match status change", 409);
       const elapsed = running(f.status) && f.matchClockStartedAt ? Math.max(0, Math.floor((Date.now() - f.matchClockStartedAt.getTime()) / 1000)) : 0;
       if (status === "COMPLETED" && knockoutStage(f.stage) && !f.winnerTeamId && f.homeScore === f.awayScore) throw new AppError("A knockout match needs a winner. Record a penalty shootout for a draw.", 409);
       result = await tx.tournamentFixture.update({ where: { id: f.id }, data: {
         status, matchClockSeconds: f.matchClockSeconds + elapsed, matchClockStartedAt: running(status) ? new Date() : null,
-        winnerTeamId: status === "COMPLETED" ? (f.winnerTeamId || (f.homeScore === f.awayScore ? null : f.homeScore > f.awayScore ? f.homeTeamId : f.awayTeamId)) : f.winnerTeamId,
+        winnerTeamId: status === "COMPLETED" ? (f.winnerTeamId || (f.homeScore === f.awayScore ? null : f.homeScore > f.awayScore ? f.homeTeamId : f.awayTeamId)) : f.status === "COMPLETED" ? null : f.winnerTeamId,
       } });
       if (status === "LIVE" && f.tournament.status === "PUBLISHED") await tx.tournament.update({ where: { id: f.tournamentId }, data: { status: "LIVE" } });
-    } else if (action === "resetClock") {
-      result = await tx.tournamentFixture.update({ where: { id: f.id }, data: { matchClockSeconds: 0, matchClockStartedAt: running(f.status) ? new Date() : null } });
+    } else if (action === "resetClock" || action === "setClock") {
+      const seconds = action === "resetClock" ? 0 : z.number().int().min(0).max(18_000).parse(base.seconds);
+      const previousSeconds = f.matchClockSeconds + (running(f.status) && f.matchClockStartedAt ? Math.max(0, Math.floor((Date.now() - f.matchClockStartedAt.getTime()) / 1000)) : 0);
+      result = await tx.tournamentFixture.update({ where: { id: f.id }, data: { matchClockSeconds: seconds, matchClockStartedAt: running(f.status) ? new Date() : null } });
+      await tx.tournamentEvent.create({ data: {
+        fixtureId: f.id, kind: "CORRECTION", minute: Math.floor(seconds / 60), note: action === "resetClock" ? "Match clock reset" : "Match clock adjusted",
+        metadata: { action: action === "resetClock" ? "CLOCK_RESET" : "CLOCK_SET", previousSeconds, nextSeconds: seconds, userId },
+      } });
     } else if (action === "completePenaltyShootout") {
       const input = z.object({ penaltiesHomeScore: z.number().int().min(0), penaltiesAwayScore: z.number().int().min(0), winnerTeamId: uuid }).parse(base);
       if (!knockoutStage(f.stage) || !["PENALTIES", "COMPLETED"].includes(f.status)) throw new AppError("Penalty result is only available for a knockout shootout", 409);

@@ -217,11 +217,17 @@ export const updateFixture = async (req: Request, res: Response, next: NextFunct
 
 export const updateFixtureStatus = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { status, reason } = req.body;
+    const { status, reason, correctionReason } = req.body;
     const allowed = ["SCHEDULED", "LIVE", "PAUSED", "HALF_TIME", "EXTRA_TIME", "PENALTIES", "COMPLETED", "CANCELLED", "POSTPONED"];
     if (!allowed.includes(status)) throw new AppError("Invalid fixture status", 400);
     const fixture = await prisma.fixture.findUnique({ where: { id: req.params.id } });
     if (!fixture) throw new AppError("Fixture not found", 404);
+    const reopening = fixture.status === "COMPLETED" && status === "LIVE";
+    const stateReason = typeof correctionReason === "string" && correctionReason.trim() ? correctionReason.trim() : typeof reason === "string" ? reason.trim() : "";
+    if (reopening && !stateReason) throw new AppError("Completed matches require a correction reason before reopening", 400);
+    if (reopening && await prisma.bracketMatch.count({ where: { fixtureId: fixture.id } })) {
+      throw new AppError("Bracket matches cannot be reopened after completion because the winner may already be assigned to the next round", 409, "BRACKET_CORRECTION_CONFLICT");
+    }
     if (!canTransitionMatch(fixture.status, status)) {
       throw new AppError(`Cannot move a fixture from ${fixture.status} to ${status}`, 409, "ILLEGAL_MATCH_STATE");
     }
@@ -240,13 +246,13 @@ export const updateFixtureStatus = async (req: Request, res: Response, next: Nex
     const now = new Date();
     if (status === "COMPLETED") {
       if (fixture.homeScore === null || fixture.awayScore === null) throw new AppError("Completed fixtures require scores", 400);
-      const elapsed = fixture.status === "LIVE" && fixture.matchClockStartedAt
+      const elapsed = ["LIVE", "EXTRA_TIME"].includes(fixture.status) && fixture.matchClockStartedAt
         ? fixture.matchClockSeconds + Math.max(0, Math.floor((now.getTime() - fixture.matchClockStartedAt.getTime()) / 1000))
         : fixture.matchClockSeconds;
       await leagueSystem.processMatchResult(req.params.id, fixture.homeScore, fixture.awayScore);
       await prisma.fixture.update({ where: { id: fixture.id }, data: { matchClockSeconds: elapsed, matchClockStartedAt: null } });
     } else {
-      const elapsed = fixture.status === "LIVE" && fixture.matchClockStartedAt
+      const elapsed = ["LIVE", "EXTRA_TIME"].includes(fixture.status) && fixture.matchClockStartedAt
         ? fixture.matchClockSeconds + Math.max(0, Math.floor((now.getTime() - fixture.matchClockStartedAt.getTime()) / 1000))
         : fixture.matchClockSeconds;
       await prisma.$transaction(async (tx) => {
@@ -256,17 +262,27 @@ export const updateFixtureStatus = async (req: Request, res: Response, next: Nex
           version: nextVersion,
           ...(status === "POSTPONED" ? { postponementReason: reason ? String(reason).trim() : null } : {}),
           matchClockSeconds: elapsed,
-          matchClockStartedAt: status === "LIVE" ? now : null,
+          matchClockStartedAt: ["LIVE", "EXTRA_TIME"].includes(status) ? now : null,
+          ...(reopening ? { winnerTeamId: null, finalizedAt: null, suspensionsProcessedAt: null } : {}),
         } });
         if (changed.count !== 1) throw new AppError("Fixture was changed by another operator", 409, "VERSION_CONFLICT");
         await appendMatchEvent(tx, {
           fixtureId: fixture.id,
           type: "STATE_CHANGE",
-          payload: { fromStatus: fixture.status, toStatus: status, elapsedSeconds: elapsed, reason: reason || null, sourceVersion: nextVersion },
+          payload: { fromStatus: fixture.status, toStatus: status, elapsedSeconds: elapsed, reason: stateReason || null, sourceVersion: nextVersion },
           idempotencyKey: req.header("Idempotency-Key") || `fixture-state:${fixture.id}:${nextVersion}`,
           createdById: req.user?.userId,
         });
       }, { isolationLevel: "Serializable" });
+    }
+    if (reopening) {
+      await Promise.all([
+        leagueSystem.recalculateStandings(fixture.seasonId),
+        leagueSystem.recalculatePlayerStats(fixture.seasonId),
+        leagueSystem.recalculateFriendlyPlayerStats(fixture.seasonId),
+        leagueSystem.recalculateTeamStats(fixture.seasonId),
+      ]);
+      await leagueSystem.autoDetectAwards(fixture.seasonId);
     }
     await syncFixtureBooking(fixture.id);
     res.json(await prisma.fixture.findUnique({ where: { id: req.params.id } }));
@@ -365,19 +381,25 @@ export const getFixtureResultHistory = async (req: Request, res: Response, next:
 
 export const resetFixtureClock = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const requestedSeconds = req.body?.seconds ?? 0;
+    if (!Number.isInteger(requestedSeconds) || requestedSeconds < 0 || requestedSeconds > 18_000) {
+      throw new AppError("Clock must be an integer between 0 and 18000 seconds", 400);
+    }
     const fixture = await prisma.$transaction(async (tx) => {
       const current = await tx.fixture.findFirst({ where: { id: req.params.id, deletedAt: null } });
       if (!current) throw new AppError("Fixture not found", 404);
+      const previousSeconds = current.matchClockSeconds + (["LIVE", "EXTRA_TIME"].includes(current.status) && current.matchClockStartedAt
+        ? Math.max(0, Math.floor((Date.now() - current.matchClockStartedAt.getTime()) / 1000)) : 0);
       const nextVersion = current.version + 1;
       const updated = await tx.fixture.update({
         where: { id: current.id },
-        data: { version: nextVersion, matchClockSeconds: 0, matchClockStartedAt: current.status === "LIVE" ? new Date() : null },
+        data: { version: nextVersion, matchClockSeconds: requestedSeconds, matchClockStartedAt: ["LIVE", "EXTRA_TIME"].includes(current.status) ? new Date() : null },
       });
       await appendMatchEvent(tx, {
         fixtureId: current.id,
         type: "CLOCK",
-        payload: { action: "RESET", previousSeconds: current.matchClockSeconds, nextSeconds: 0, sourceVersion: nextVersion },
-        idempotencyKey: req.header("Idempotency-Key") || `fixture-clock-reset:${current.id}:${nextVersion}`,
+        payload: { action: requestedSeconds === 0 ? "RESET" : "SET", previousSeconds, nextSeconds: requestedSeconds, sourceVersion: nextVersion },
+        idempotencyKey: req.header("Idempotency-Key") || `fixture-clock-set:${current.id}:${nextVersion}`,
         createdById: req.user?.userId,
       });
       return updated;

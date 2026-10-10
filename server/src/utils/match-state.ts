@@ -7,7 +7,7 @@ export const MATCH_TRANSITIONS: Record<MatchStatus, readonly MatchStatus[]> = {
   HALF_TIME: ["LIVE", "EXTRA_TIME", "COMPLETED"],
   EXTRA_TIME: ["PAUSED", "PENALTIES", "COMPLETED"],
   PENALTIES: ["COMPLETED"],
-  COMPLETED: [],
+  COMPLETED: ["LIVE"],
   POSTPONED: ["SCHEDULED", "CANCELLED"],
   CANCELLED: [],
 };
