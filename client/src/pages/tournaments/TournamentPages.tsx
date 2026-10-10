@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarDays, Clock3, Trophy, Users, ArrowLeft } from "lucide-react";
+import { CalendarDays, Clock3, Trophy, Users, ArrowLeft, Target, Handshake, ShieldAlert } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageError, PageSkeleton } from "@/components/PageState";
 import type { Tournament, TournamentFixture } from "@/types/tournament";
 import { TOURNAMENT_FORMAT_LABEL } from "@/types/tournament";
+import { calculateTournamentLeaders, type TournamentStatKey, type TournamentStatLeader } from "@/lib/tournamentStats";
 
 const dateLabel = (value: string, timezone: string) => new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: timezone }).format(new Date(value));
 const score = (fixture: TournamentFixture) => ["SCHEDULED", "POSTPONED", "CANCELLED"].includes(fixture.status) ? "vs" : `${fixture.homeScore} – ${fixture.awayScore}`;
@@ -37,22 +38,43 @@ function FixtureRow({ fixture, tournament }: { fixture: TournamentFixture; tourn
   </Link>;
 }
 
+const statisticSections: Array<{ key: TournamentStatKey; title: string; empty: string; icon: typeof Trophy; tone: string }> = [
+  { key: "goals", title: "Top scorers", empty: "No goals recorded yet.", icon: Target, tone: "bg-emerald-500/10 text-emerald-600" },
+  { key: "assists", title: "Top assisters", empty: "No assists recorded yet.", icon: Handshake, tone: "bg-sky-500/10 text-sky-600" },
+  { key: "yellowCards", title: "Yellow cards", empty: "No yellow cards recorded yet.", icon: ShieldAlert, tone: "bg-amber-500/10 text-amber-600" },
+  { key: "redCards", title: "Red cards", empty: "No red cards recorded yet.", icon: ShieldAlert, tone: "bg-red-500/10 text-red-600" },
+];
+
+function TournamentLeaderboard({ title, empty, icon: Icon, tone, rows }: { title: string; empty: string; icon: typeof Trophy; tone: string; rows: TournamentStatLeader[] }) {
+  return <Card className="overflow-hidden">
+    <CardHeader className="border-b"><CardTitle className="flex items-center gap-2"><span className={`rounded-lg p-2 ${tone}`}><Icon className="h-4 w-4" /></span>{title}</CardTitle></CardHeader>
+    <CardContent className="p-0">{rows.length ? <div>{rows.slice(0, 10).map((row, index) => <div key={row.playerId || `${row.teamId}:${row.playerName}`} className="flex items-center gap-3 border-b px-4 py-3 last:border-0">
+      <span className="w-5 text-center text-xs font-bold text-muted-foreground">{index + 1}</span>
+      {row.photoUrl ? <img src={row.photoUrl} alt="" className="h-9 w-9 rounded-full object-cover" /> : <span className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-xs font-bold">{row.playerName.split(/\s+/).map(part => part[0]).join("").slice(0, 2).toUpperCase()}</span>}
+      <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{row.playerName}</p><p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">{row.teamLogoUrl && <img src={row.teamLogoUrl} alt="" className="h-4 w-4 object-contain" />}{row.teamName}</p></div>
+      <span className="text-xl font-black tabular-nums">{row.value}</span>
+    </div>)}</div> : <p className="p-6 text-center text-sm text-muted-foreground">{empty}</p>}</CardContent>
+  </Card>;
+}
+
 export function TournamentDetailPage() {
   const { slug } = useParams();
-  const [tab, setTab] = useState<"fixtures" | "teams" | "standings">("fixtures");
+  const [tab, setTab] = useState<"fixtures" | "teams" | "standings" | "statistics">("fixtures");
   const { data: tournament, isLoading, isError, refetch } = useQuery({ queryKey: ["tournament", slug], queryFn: () => api.get<Tournament>(`/tournaments/${slug}`), enabled: !!slug, refetchInterval: 10000 });
   if (isLoading) return <PageSkeleton />;
   if (isError || !tournament) return <PageError title="Tournament unavailable" description="This tournament may not be published yet." onRetry={() => void refetch()} />;
+  const leaders = calculateTournamentLeaders(tournament);
   return <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
     <Link to="/tournaments" className="mb-5 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" /> All tournaments</Link>
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-950 via-emerald-900 to-teal-900 p-6 text-white sm:p-9">
       <div className="flex flex-wrap items-start gap-5">{tournament.logoUrl ? <img src={tournament.logoUrl} alt="" className="h-20 w-20 rounded-xl bg-white/10 object-contain p-2" /> : <Trophy className="h-20 w-20 rounded-xl bg-white/10 p-5" />}<div><div className="flex flex-wrap gap-2"><Badge className="bg-white/15 text-white">{tournament.status}</Badge><Badge className="bg-white/15 text-white">{TOURNAMENT_FORMAT_LABEL[tournament.format]}</Badge></div><h1 className="mt-3 text-3xl font-black sm:text-4xl">{tournament.name}</h1><p className="mt-2 max-w-3xl text-sm text-white/75">{tournament.description}</p></div></div>
       <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-xs text-white/75"><span><Users className="mr-1 inline h-3.5 w-3.5" />{tournament.teams.length} teams</span><span><CalendarDays className="mr-1 inline h-3.5 w-3.5" />{tournament.fixtures.length} fixtures</span><span><Clock3 className="mr-1 inline h-3.5 w-3.5" />{tournament.lineupSize} a side · {tournament.halfLengthMinutes} min halves</span></div>
     </div>
-    <div className="my-6 flex gap-2">{(["fixtures", "teams", ...(Object.keys(tournament.standings).length ? ["standings" as const] : [])] as const).map(value => <Button key={value} variant={tab === value ? "default" : "outline"} onClick={() => setTab(value)} className="capitalize">{value}</Button>)}</div>
+    <div className="my-6 flex flex-wrap gap-2">{(["fixtures", "teams", ...(Object.keys(tournament.standings).length ? ["standings" as const] : []), "statistics"] as const).map(value => <Button key={value} variant={tab === value ? "default" : "outline"} onClick={() => setTab(value)} className="capitalize">{value}</Button>)}</div>
     {tab === "fixtures" && <div className="space-y-3">{tournament.fixtures.length ? tournament.fixtures.map(row => <FixtureRow key={row.id} fixture={row} tournament={tournament} />) : <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">Fixtures have not been scheduled.</p>}</div>}
     {tab === "teams" && <div className="grid gap-4 md:grid-cols-2">{tournament.teams.map(team => <Card key={team.id}><CardHeader><CardTitle className="flex items-center gap-3">{team.logoUrl ? <img src={team.logoUrl} alt="" className="h-11 w-11 object-contain" /> : <Users className="h-10 w-10 rounded bg-muted p-2" />}{team.name}</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">{team.city}{team.coach ? ` · Coach ${team.coach}` : ""}{team.groupName ? ` · Group ${team.groupName}` : ""}</p>{team.description && <p className="mt-2 text-sm">{team.description}</p>}<h3 className="mt-4 text-xs font-bold uppercase tracking-wide text-muted-foreground">Players</h3><div className="mt-2 grid gap-1 sm:grid-cols-2">{team.players.filter(p => p.isActive).map(player => <div key={player.id} className="flex items-center gap-2 rounded-lg border p-2 text-sm">{player.photoUrl ? <img src={player.photoUrl} alt="" className="h-7 w-7 rounded-full object-cover" /> : <span className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-xs">{player.jerseyNumber ?? "–"}</span>}<span>{player.firstName} {player.lastName}<span className="block text-[11px] text-muted-foreground">{player.position}</span></span></div>)}</div></CardContent></Card>)}</div>}
     {tab === "standings" && <div className="space-y-5">{Object.entries(tournament.standings).map(([group, rows]) => <Card key={group}><CardHeader><CardTitle>{group === "LEAGUE" ? "League table" : `Group ${group}`}</CardTitle></CardHeader><CardContent className="overflow-x-auto"><table className="w-full min-w-[560px] text-sm"><thead><tr className="border-b text-left text-xs text-muted-foreground"><th className="py-2">#</th><th>Team</th><th>MP</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Pts</th></tr></thead><tbody>{rows.map((row, index) => <tr key={row.teamId} className="border-b last:border-0"><td className="py-2">{index + 1}</td><td className="font-medium">{tournament.teams.find(t => t.id === row.teamId)?.name || "Team"}</td><td>{row.played}</td><td>{row.wins}</td><td>{row.draws}</td><td>{row.losses}</td><td>{row.goalsFor}</td><td>{row.goalsAgainst}</td><td>{row.goalDifference}</td><td className="font-bold">{row.points}</td></tr>)}</tbody></table></CardContent></Card>)}</div>}
+    {tab === "statistics" && <div className="grid gap-5 md:grid-cols-2">{statisticSections.map(section => <TournamentLeaderboard key={section.key} title={section.title} empty={section.empty} icon={section.icon} tone={section.tone} rows={leaders[section.key]} />)}</div>}
   </div>;
 }
 
