@@ -141,11 +141,6 @@ export async function liveAction(fixtureId: string, raw: unknown, userId: string
         EXTRA_TIME: ["PAUSED", "PENALTIES", "COMPLETED"], PENALTIES: [],
       };
       if (!valid[f.status]?.includes(status)) throw new AppError("Invalid match status change", 409);
-      if (status === "LIVE" && f.status === "SCHEDULED") {
-        const lineups = await tx.tournamentLineup.findMany({ where: { fixtureId: f.id, isStarter: true } });
-        const home = lineups.filter(l => l.teamId === f.homeTeamId).length, away = lineups.filter(l => l.teamId === f.awayTeamId).length;
-        if (home !== f.tournament.lineupSize || away !== f.tournament.lineupSize) throw new AppError(`Set ${f.tournament.lineupSize} starters for each team before kickoff`, 409);
-      }
       const elapsed = running(f.status) && f.matchClockStartedAt ? Math.max(0, Math.floor((Date.now() - f.matchClockStartedAt.getTime()) / 1000)) : 0;
       if (status === "COMPLETED" && knockoutStage(f.stage) && !f.winnerTeamId && f.homeScore === f.awayScore) throw new AppError("A knockout match needs a winner. Record a penalty shootout for a draw.", 409);
       result = await tx.tournamentFixture.update({ where: { id: f.id }, data: {
