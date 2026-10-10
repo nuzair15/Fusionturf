@@ -522,11 +522,18 @@ export function MatchControlCenter({ fixtureId, onClose, apiClient = liveMatchAp
             {allowReopenCompleted && <Button
               type="button"
               disabled={busy || !correction()}
-              onClick={() => setConfirm({
-                title: "Reopen this match?",
-                description: "The match will return to Live at its current clock and score. Its winner will be cleared until you finish it again.",
-                onConfirm: () => setStatus("LIVE", correction()),
-              })}
+              onClick={() => {
+                const reason = correctionReason.trim();
+                if (!reason) {
+                  correctionInputRef.current?.focus();
+                  return;
+                }
+                setConfirm({
+                  title: "Reopen this match?",
+                  description: "The match will return to Live at its current clock and score. Its winner will be cleared until you finish it again.",
+                  onConfirm: () => setStatus("LIVE", reason),
+                });
+              }}
             >
               Reopen match
             </Button>}
