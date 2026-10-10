@@ -48,6 +48,10 @@ describe.skipIf(!process.env.TOURNAMENT_TEST_DATABASE_URL)("tournament live matc
       await liveAction(fixture.id, { action: "setStatus", status: "LIVE", correctionReason: "Match ended accidentally" }, "test-admin");
       expect((await liveStats(fixture.id)).fixture).toMatchObject({ status: "LIVE", winnerTeamId: null });
       await liveAction(fixture.id, { action: "setStatus", status: "COMPLETED" }, "test-admin");
+      await prisma.tournament.update({ where: { id: tournament.id }, data: { status: "COMPLETED" } });
+      await liveAction(fixture.id, { action: "setStatus", status: "LIVE", correctionReason: "Tournament and match ended accidentally" }, "test-admin");
+      expect(await prisma.tournament.findUnique({ where: { id: tournament.id } })).toMatchObject({ status: "LIVE" });
+      expect((await liveStats(fixture.id)).fixture).toMatchObject({ status: "LIVE", winnerTeamId: null });
       expect(await prisma.team.count()).toBe(before.teams);
       expect(await prisma.player.count()).toBe(before.players);
       expect(await prisma.fixture.count()).toBe(before.fixtures);

@@ -121,14 +121,18 @@ export async function liveAction(fixtureId: string, raw: unknown, userId: string
     const f = await tx.tournamentFixture.findUnique({ where: { id: fixtureId }, include: { tournament: true } });
     if (!f) throw new AppError("Tournament fixture not found", 404);
     if (f.tournament.status === "DRAFT") throw new AppError("Publish the tournament before starting matches", 409);
-    if (f.tournament.status === "COMPLETED") throw new AppError("Tournament is completed", 409);
     const action = base.action;
+    const reopensCompletedTournament = f.tournament.status === "COMPLETED"
+      && f.status === "COMPLETED"
+      && action === "setStatus"
+      && base.status === "LIVE";
+    if (f.tournament.status === "COMPLETED" && !reopensCompletedTournament) throw new AppError("Tournament is completed", 409);
     if (["SCHEDULED", "POSTPONED", "CANCELLED"].includes(f.status) && action !== "setStatus") throw new AppError("Start the match before recording events", 409);
     if (f.status === "PENALTIES" && action !== "completePenaltyShootout") throw new AppError("Finish the penalty shootout before other changes", 409);
     if (f.status === "COMPLETED" && !["setStatus", "updateGoal", "updateCard", "removeEvent", "removeGoal", "setMatchRating", "setManOfTheMatch", "completePenaltyShootout"].includes(action)) throw new AppError("Completed matches are read-only", 409);
     if (f.status === "COMPLETED" && !base.correctionReason?.trim()) throw new AppError("Enter a correction reason for a completed match", 400);
     const downstream = f.status === "COMPLETED" && await tx.tournamentFixture.count({ where: { tournamentId: f.tournamentId, stage: { in: ["KNOCKOUT", "WINNERS", "LOSERS", "FINAL"] }, round: { gt: f.round } } });
-    if (downstream && ["setStatus", "updateGoal", "removeEvent", "removeGoal", "completePenaltyShootout"].includes(action)) throw new AppError("A later knockout round already exists. Correct that bracket before changing this result.", 409);
+    if (downstream && ["updateGoal", "removeEvent", "removeGoal", "completePenaltyShootout"].includes(action)) throw new AppError("A later knockout round already exists. Correct that bracket before changing this result.", 409);
     const eventMinute = (v: unknown) => minute.parse(v ?? Math.floor(f.matchClockSeconds / 60));
     let result: unknown = { ok: true };
     if (action === "setStatus") {
@@ -147,7 +151,7 @@ export async function liveAction(fixtureId: string, raw: unknown, userId: string
         status, matchClockSeconds: f.matchClockSeconds + elapsed, matchClockStartedAt: running(status) ? new Date() : null,
         winnerTeamId: status === "COMPLETED" ? (f.winnerTeamId || (f.homeScore === f.awayScore ? null : f.homeScore > f.awayScore ? f.homeTeamId : f.awayTeamId)) : f.status === "COMPLETED" ? null : f.winnerTeamId,
       } });
-      if (status === "LIVE" && f.tournament.status === "PUBLISHED") await tx.tournament.update({ where: { id: f.tournamentId }, data: { status: "LIVE" } });
+      if (status === "LIVE" && ["PUBLISHED", "COMPLETED"].includes(f.tournament.status)) await tx.tournament.update({ where: { id: f.tournamentId }, data: { status: "LIVE" } });
     } else if (action === "resetClock" || action === "setClock") {
       const seconds = action === "resetClock" ? 0 : z.number().int().min(0).max(18_000).parse(base.seconds);
       const previousSeconds = f.matchClockSeconds + (running(f.status) && f.matchClockStartedAt ? Math.max(0, Math.floor((Date.now() - f.matchClockStartedAt.getTime()) / 1000)) : 0);
