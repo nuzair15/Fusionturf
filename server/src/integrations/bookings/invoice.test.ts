@@ -64,7 +64,7 @@ describe("booking invoice PDF", () => {
     vi.useFakeTimers();
     try {
       const token = signInvoiceDownload(id, fileName, owner);
-      vi.setSystemTime(Date.now() + 16 * 60_000);
+      vi.setSystemTime(Date.now() + 25 * 60 * 60_000);
       expect(() => verifyInvoiceDownload(id, fileName, token)).toThrow("expired");
     } finally { vi.useRealTimers(); }
   });

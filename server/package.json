@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "mcp:install-browser": "playwright install chromium --only-shell",
     "mcp:smoke": "node scripts/check-bookings-mcp.mjs",
+    "mcp:check-ui": "node scripts/check-bookings-export-ui.mjs",
     "start": "node dist/production.js",
     "start:dev": "node dist/index.js",
     "db:generate": "prisma generate",

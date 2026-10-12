@@ -20,6 +20,7 @@ export const config = {
     enabled: process.env.BOOKINGS_MCP_ENABLED === "true",
     publicUrl: process.env.BOOKINGS_MCP_PUBLIC_URL || "http://localhost:5000",
     chromiumExecutable: process.env.BOOKINGS_CHROMIUM_EXECUTABLE || undefined,
+    exportDirectory: process.env.BOOKINGS_EXPORT_DIRECTORY || undefined,
   },
 
   database: {

@@ -48,7 +48,7 @@ if (config.bookingsMcp.enabled) {
     const token = typeof req.query.token === "string" ? req.query.token : "";
     const file = await readBookingFile(req.params.id, req.params.fileName, token);
     res.setHeader("Content-Type", file.mimeType);
-    res.setHeader("Content-Disposition", `${file.mimeType === "image/png" ? "inline" : "attachment"}; filename="${file.fileName}"`);
+    res.setHeader("Content-Disposition", `${file.mimeType === "image/png" && req.query.download !== "1" ? "inline" : "attachment"}; filename="${file.fileName}"`);
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("Referrer-Policy", "no-referrer");
     // ChatGPT's isolated viewer has a different origin; signed capabilities and

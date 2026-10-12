@@ -5,13 +5,14 @@ import { escapeHtml, withBrowser } from "./images.js";
 import { storeInvoicePdf, type InvoiceFileOwner } from "./files.js";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
+import { exportFileSchema, fileDeliveryInstructions } from "./delivery.js";
 
 export const invoiceOutputSchema = {
   bookingId: z.string(), bookingNumber: z.string(), invoiceNumber: z.string(), customerName: z.string(),
   venue: z.string(), turf: z.string(), timezone: z.string(), date: z.string(), startTime: z.string(), endTime: z.string(), status: z.string(), currency: z.literal("INR"),
   rental: z.object({ grossRental: z.number().int(), quantity: z.number().int(), unitMinutes: z.number().int(), rate: z.number().int() }),
   servicesTotalMinor: z.number().int(), totalAmountMinor: z.number().int(), discountAmountMinor: z.number().int(), amountPaidMinor: z.number().int(), refundedAmountMinor: z.number().int(), balanceDueMinor: z.number().int(),
-  file: z.object({ url: z.string().url(), fileName: z.string(), mimeType: z.literal("application/pdf"), size: z.number().int(), expiresAt: z.string().datetime() }),
+  file: exportFileSchema("application/pdf"),
 };
 
 export type InvoicePayment = { amount: number; status: string; method?: string | null; transactionId?: string | null; refundAmount?: number };
@@ -118,8 +119,8 @@ export function invoiceMcpResult(invoice: Awaited<ReturnType<typeof getBookingIn
   return {
     structuredContent: invoice,
     content: [
-      { type: "resource_link" as const, uri: invoice.file.url, name: invoice.file.fileName, title: `Invoice ${invoice.invoiceNumber}`, description: "Booking details and invoice PDF. Download link expires in 15 minutes.", mimeType: "application/pdf", size: invoice.file.size },
-      { type: "text" as const, text: `The invoice PDF is ready. Include this download link in your reply: [Download ${invoice.file.fileName}](${invoice.file.url}). If your environment supports file downloads, you may download this exact PDF and attach it in chat. ${JSON.stringify(invoice)}` },
+      { type: "resource_link" as const, uri: invoice.file.downloadUrl, name: invoice.file.fileName, title: `Invoice ${invoice.invoiceNumber}`, description: "Booking details and invoice PDF. Download verified by the server; link lasts 24 hours.", mimeType: "application/pdf", size: invoice.file.size },
+      { type: "text" as const, text: `The server verified the PDF download. Include [Download ${invoice.file.fileName}](${invoice.file.downloadUrl}) in your reply. ${fileDeliveryInstructions} ${JSON.stringify(invoice)}` },
     ],
   };
 }

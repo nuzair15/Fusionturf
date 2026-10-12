@@ -7,19 +7,20 @@ import { ACCESS_COOKIE } from "../../utils/session.js";
 import { publicOrigin } from "./auth.js";
 import { calendarRange, type CalendarRequest } from "./calendar.js";
 import { calendarHtml } from "./calendar-image.js";
+import { RenderQueue } from "./render-queue.js";
 export { calendarHtml } from "./calendar-image.js";
 
-let rendering = false;
+const renderQueue = new RenderQueue();
 export async function withBrowser<T>(run: (browser: Browser) => Promise<T>): Promise<T> {
-  if (rendering) throw new AppError("Another file is being generated. Try again shortly.", 429);
-  rendering = true;
-  let browser: Browser | undefined;
-  try {
-    browser = await chromium.launch({ headless: true, executablePath: config.bookingsMcp.chromiumExecutable, timeout: 20_000, args: ["--disable-dev-shm-usage"] });
-    return await run(browser);
-  } finally {
-    try { await browser?.close(); } finally { rendering = false; }
-  }
+  return renderQueue.run(async () => {
+    let browser: Browser | undefined;
+    try {
+      browser = await chromium.launch({ headless: true, executablePath: config.bookingsMcp.chromiumExecutable, timeout: 20_000, args: ["--disable-dev-shm-usage"] });
+      return await run(browser);
+    } finally {
+      await browser?.close().catch(() => { console.error("Booking export browser cleanup failed"); });
+    }
+  });
 }
 
 export const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]!));

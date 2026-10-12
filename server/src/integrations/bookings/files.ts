@@ -1,4 +1,4 @@
-import { createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import jwt from "jsonwebtoken";
@@ -7,16 +7,17 @@ import prisma from "../../config/database.js";
 import { config } from "../../config/index.js";
 import { AppError } from "../../middleware/errorHandler.js";
 import { BOOKING_ROLES, integrationBase, publicOrigin } from "./auth.js";
+import { exportLifetimeSeconds } from "./delivery.js";
 
 function fileStore(kind: "invoice" | "image", extension: "pdf" | "png", mimeType: string) {
   const audience = `fusion-booking-${kind}-download`;
   // Download capabilities must never validate as website login credentials.
   const downloadKey = () => createHmac("sha256", config.jwt.secret).update(audience).digest("hex");
-  const cacheDirectory = () => path.resolve(".cache", `bookings-${kind}s`);
+  const cacheDirectory = () => path.resolve(config.bookingsMcp.exportDirectory || ".cache", `bookings-${kind}s`);
   const claimsSchema = z.object({ id: z.string().regex(/^[a-f0-9]{32}$/), fileName: z.string().regex(new RegExp(`^[A-Za-z0-9_-]{1,140}\\.${extension}$`)), userId: z.string().min(1), connectionId: z.string().min(1), exp: z.number() });
 
   function sign(id: string, fileName: string, owner: InvoiceFileOwner) {
-    return jwt.sign({ id, fileName, ...owner }, downloadKey(), { algorithm: "HS256", audience, issuer: publicOrigin, expiresIn: "15m" });
+    return jwt.sign({ id, fileName, userId: owner.userId, connectionId: owner.connectionId }, downloadKey(), { algorithm: "HS256", audience, issuer: publicOrigin, expiresIn: exportLifetimeSeconds });
   }
 
   function verify(id: string, fileName: string, token: string) {
@@ -37,7 +38,7 @@ function fileStore(kind: "invoice" | "image", extension: "pdf" | "png", mimeType
     for (const entry of entries) {
       const file = path.join(directory, entry);
       try {
-        if ((await stat(file)).mtimeMs < Date.now() - 60 * 60_000) await unlink(file);
+        if ((await stat(file)).mtimeMs < Date.now() - (exportLifetimeSeconds + 3600) * 1000) await unlink(file);
         else retained += 1;
       } catch (error: any) { if (error?.code !== "ENOENT") throw error; }
     }
@@ -50,7 +51,19 @@ function fileStore(kind: "invoice" | "image", extension: "pdf" | "png", mimeType
     const claims = verify(id, fileName, token);
     const url = new URL(`${integrationBase}/files/${id}/${fileName}`, publicOrigin);
     url.searchParams.set("token", token);
-    return { url: url.href, fileName, mimeType, size: bytes.length, expiresAt: new Date(claims.exp * 1000).toISOString() };
+    const downloadUrl = new URL(url);
+    downloadUrl.searchParams.set("download", "1");
+    // Success means the saved bytes can actually be delivered through the public
+    // proxy and current connection permissions, not merely rendered in memory.
+    try {
+      const saved = await readFile(path.join(directory, `${id}.${extension}`));
+      if (!saved.equals(bytes)) throw new Error("Stored export mismatch");
+      await verifyExportDelivery(downloadUrl.href, bytes, mimeType);
+    } catch (error) {
+      await unlink(path.join(directory, `${id}.${extension}`)).catch(() => {});
+      throw error;
+    }
+    return { url: url.href, downloadUrl: downloadUrl.href, fileName, mimeType, size: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex"), expiresAt: new Date(claims.exp * 1000).toISOString(), verifiedAt: new Date().toISOString() };
   }
 
   async function read(id: string, fileName: string, token: string, expectedUserId?: string) {
@@ -61,7 +74,7 @@ function fileStore(kind: "invoice" | "image", extension: "pdf" | "png", mimeType
     const file = path.join(cacheDirectory(), `${claims.id}.${extension}`);
     try {
       const metadata = await stat(file);
-      if (metadata.size > 5 * 1024 * 1024) throw new AppError("Invoice file is unavailable", 404);
+      if (metadata.size > 5 * 1024 * 1024) throw new AppError(`${kind} file is unavailable`, 404);
       return { bytes: await readFile(file), fileName: claims.fileName, mimeType };
     } catch (error: any) {
       if (error?.code === "ENOENT") throw new AppError(`This ${kind} file expired. Request a fresh ${kind} in ChatGPT.`, 404);
@@ -69,6 +82,42 @@ function fileStore(kind: "invoice" | "image", extension: "pdf" | "png", mimeType
     }
   }
   return { sign, verify, store, read };
+}
+
+export async function verifyExportDelivery(url: string, bytes: Buffer, mimeType: string) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(8000), redirect: "error" });
+      if (!response.ok) {
+        await response.body?.cancel();
+        if (response.status >= 500 && attempt === 0) continue;
+        throw new AppError("The export download could not be verified. Request the file again; no download link was issued.", 502);
+      }
+      if (response.headers.get("content-type")?.split(";")[0] !== mimeType || !response.headers.get("content-disposition")?.startsWith("attachment;")) {
+        await response.body?.cancel();
+        throw new AppError("The export endpoint did not deliver the expected file. No download link was issued.", 502);
+      }
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("Missing export body");
+      const chunks: Buffer[] = [];
+      let size = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          size += value.byteLength;
+          if (size > bytes.length) throw new AppError("The downloaded export does not match the generated file. No download link was issued.", 502);
+          chunks.push(Buffer.from(value));
+        }
+      } finally { await reader.cancel().catch(() => {}); }
+      if (!Buffer.concat(chunks).equals(bytes)) throw new AppError("The downloaded export does not match the generated file. No download link was issued.", 502);
+      return;
+    } catch (error) {
+      if (!(error instanceof AppError) && attempt === 0) continue;
+      if (error instanceof AppError) throw error;
+      throw new AppError("The export download is temporarily unreachable. Request the file again; no download link was issued.", 502);
+    }
+  }
 }
 
 export type InvoiceFileOwner = { userId: string; connectionId: string };

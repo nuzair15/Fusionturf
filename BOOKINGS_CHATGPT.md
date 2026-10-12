@@ -36,7 +36,7 @@ Calendar PNGs are rendered from live booking data. The default public copy omits
 
 Invoice requests use `get_booking_invoice`, which returns a real A4 PDF, matching booking/payment details, a file resource, and a clickable download link in the chat. ChatGPT Work can download the exact file and attach it when its environment supports that; the plugin does not invent ChatGPT file IDs or guarantee a native attachment in every client. The PDF follows the website's invoice layout and current business settings, terms, charges, services and discounts. Captures/refunds use the payment ledger when present, with a legacy-payment fallback. Cancelled bookings show their cancelled status and no new payment due. Exporting never changes a booking or payment.
 
-Invoice links expire after 15 minutes and check the originating connection and staff permissions on each download. Revoking the connection or removing the staff role invalidates access. The signing key is separate from website login credentials. PDF files are stored outside the public web root under `server/.cache/bookings-invoices`, with expired-file cleanup on subsequent exports; download URLs are excluded from request logs. Request the invoice again for a fresh link. Refresh Fusion Bookings and start a new Work chat after installing this tool update.
+Invoice links expire after 24 hours and check the originating connection and staff permissions on each download. Revoking the connection or removing the staff role invalidates access. The signing key is separate from website login credentials. PDF files are stored outside the public web root under `server/.cache/bookings-invoices`, with cleanup after the 24-hour validity window plus a one-hour grace period on subsequent exports; download URLs are excluded from request logs. Request the invoice again for a fresh link. Refresh Fusion Bookings and start a new Work chat after installing this tool update.
 
 The production Nginx configuration uses a dedicated `location ^~ /api/integrations/bookings/files/` proxy with `access_log off` so the expiring download capabilities are not recorded in its access log. The API also omits these URLs from its request logger.
 
@@ -64,7 +64,7 @@ npm run build
 npx playwright install --with-deps chromium --only-shell
 ```
 
-The existing PM2 deployment uses Playwright's browser cache. Alpine Docker uses the system Chromium installed by `server/Dockerfile`; the executable can also be specified with `BOOKINGS_CHROMIUM_EXECUTABLE`. Image rendering is limited to one browser at a time per API process.
+The existing PM2 deployment uses Playwright's browser cache. Alpine Docker uses the system Chromium installed by `server/Dockerfile`; the executable can also be specified with `BOOKINGS_CHROMIUM_EXECUTABLE`. Image rendering uses one browser at a time per API process, with up to three queued requests and a 30-second queue deadline.
 
 Nginx must proxy OAuth discovery to the API. Add this inside the HTTPS server block, ahead of the generic dot-file deny rule:
 
@@ -91,6 +91,35 @@ This read-only check verifies discovery, tool listing, and rejection of anonymou
 
 Official references: [MCP plugin setup](https://developers.openai.com/plugins/quickstart), [authentication](https://developers.openai.com/plugins/build/auth).
 
+## Verified downloads and presentation checks
+
+PNG and PDF exports return `downloadUrl` for saving, `url` for preview, `size`, `sha256`, `verifiedAt`, and `expiresAt`. Before returning success, the server reads the saved file back, fetches its download URL through the public proxy, checks its content type and attachment disposition, and compares every byte. Transient network/server errors get one bounded retry. A failed check returns an error and removes the unusable export instead of issuing a link.
+
+ChatGPT must include the exact HTTPS `downloadUrl` in its reply. The server does not create files inside ChatGPT's working environment. Never invent `sandbox:/mnt/data` paths or file IDs. A native attachment is optional and may only be claimed after the host has actually attached the downloaded, size/checksum-verified file. Always retain the HTTPS link. The widget has separate preview/download links, uses host navigation when available, shows the expiry time, and can refresh the same dates and audience with a read-only calendar call.
+
+Links last 24 hours and remain subject to connection revocation and current staff permissions. These are snapshots; refresh for current bookings. Files survive ordinary PM2 restarts because `server/.cache` is outside the compiled build. For ephemeral deployments, set `BOOKINGS_EXPORT_DIRECTORY` to a persistent volume outside the public web root. Multiple API replicas need a shared filesystem at that path; do not use separate per-replica caches. Existing 15-minute links retain their original expiry; generate fresh exports after upgrading.
+
+Build and run the real-browser delivery regression check:
+
+```sh
+npm run build --prefix server
+npm test --prefix server
+npm run mcp:check-ui --prefix server
+npm run mcp:smoke --prefix server -- https://fusionturf.in
+```
+
+For an authenticated pre-presentation check, provide a current OAuth access token in `BOOKINGS_MCP_ACCESS_TOKEN` and optionally `BOOKINGS_MCP_VENUE_ID`, `BOOKINGS_MCP_START_DATE`, `BOOKINGS_MCP_END_DATE`, and `BOOKINGS_MCP_BOOKING_ID`, then run `mcp:smoke`. It generates two concurrent public calendars, downloads and checks their bytes/checksums, and retrieves the exact MCP file resources. Supplying a booking ID also checks its PDF. It never changes bookings or payments and never prints access/download tokens. The unauthenticated smoke check only verifies discovery, metadata and denial of anonymous access.
+
+After deployment, refresh the plugin metadata in ChatGPT settings and start a new chat. Before presenting, request your exact calendar, open its Download PNG link, and save a copy locally so the presentation has a copy available without a network connection. Automated checks cover the server and widget; they cannot guarantee ChatGPT client rendering, browser downloads, or external network availability.
+
+## Verified delivery release - October 10, 2026
+
+MCP server version `1.4.0` is live on the existing `fusionturf-api` PM2 service. The release was built locally, tested with 104 passing server tests (19 existing database-dependent tests skipped), and exercised through the isolated local booking/OAuth end-to-end flow, authenticated concurrent-calendar/PDF smoke checks, and real-browser viewer/download/refresh checks. The same browser check passed on the production host before rollout.
+
+Post-release checks used the actual connected Fusion Booking plugin: concurrent October month/day exports and an existing booking invoice all returned server-verified 24-hour links. The October public PNG was independently fetched and its size/SHA-256 matched the tool result. No production booking/payment data was changed. No migrations, dependency changes or frontend rebuild were needed.
+
+The previous backend/source backup is `/home/ubuntu/fusion-booking-delivery-20261010/backup/previous-backend.tar.gz`. The initial deployment applied source/build changes on top of commit `62deb35` without committing or pushing them. On October 12, the download fixes were incorporated into Git after updating to `d5b06a9`, preserving the five intervening tournament and match-control commits. Keep `server/.cache` (or the configured persistent export directory) when deploying. The October 10 backup predates those newer changes; use a current backup for any subsequent deployment or rollback.
+
 ## Production release — October 8, 2026
 
 Deployed to the existing PM2 service on `13.51.121.254`. The database migration, OAuth discovery proxy, browser installation, updated frontend and enabled MCP configuration are live. Production checks passed for all 11 tool definitions, rejection of anonymous booking access, the connection page and its assets, database health, existing tournament routes, and a public calendar PNG rendered from production venue data. No production bookings were created by the checks.
@@ -105,7 +134,7 @@ The subsequent calendar update adds a twelfth tool, `get_calendar`, and changes 
 
 The invoice update adds a thirteenth tool, `get_booking_invoice`, and a scoped PDF download endpoint. Booking, payment ledger and invoice settings are read in a consistent database snapshot before rendering. Validation includes 90 server tests, actual PDF generation/download and MCP resource retrieval, malformed-link rejection, staff demotion/connection revocation, and inspection of the generated A4 PDF's text and layout. No new database migration or package installation is required.
 
-The image delivery fix adds an MCP Apps viewer (`ui://fusion-bookings/image-v1.html`) to all three image tools. An MCP image content block alone is input to the model and does not guarantee a visible image in chat. Results now include a signed PNG URL, a resource link, and explicit instructions to include the clickable image link. The viewer receives the same structured result through the MCP Apps bridge, with ChatGPT compatibility aliases supported. It displays the image with a full-size link, loading and expired-link states. Image URLs expire after 15 minutes and check the originating connection and current staff permissions on every download. PNG capabilities are isolated from PDF capabilities and website login tokens. The file endpoint permits cross-origin image embedding while retaining these access checks and suppressing capability URLs in logs. No dependency installation, frontend rebuild or database migration is required.
+The image delivery fix adds an MCP Apps viewer (`ui://fusion-bookings/image-v1.html`) to all three image tools. An MCP image content block alone is input to the model and does not guarantee a visible image in chat. Results now include a signed PNG URL, a resource link, and explicit instructions to include the clickable image link. The viewer receives the same structured result through the MCP Apps bridge, with ChatGPT compatibility aliases supported. It displays the image with a full-size link, loading and expired-link states. Image URLs expire after 24 hours and check the originating connection and current staff permissions on every download. PNG capabilities are isolated from PDF capabilities and website login tokens. The file endpoint permits cross-origin image embedding while retaining these access checks and suppressing capability URLs in logs. No dependency installation, frontend rebuild or database migration is required.
 
 After deploying this fix, refresh the Fusion Bookings connection in ChatGPT's plugin settings to reload tool metadata, then start a new conversation and ask "Fetch the October 2026 calendar". It should show the viewer and include an "Open / save calendar PNG" link. Clients without component support can still open the link. Validation includes 92 server tests and browser end-to-end checks for viewer rendering, PNG HTTP/MCP reads, tampering, staff demotion and disconnect.
 

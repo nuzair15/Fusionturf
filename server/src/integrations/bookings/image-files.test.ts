@@ -13,11 +13,13 @@ describe("booking image download capabilities", () => {
     expect(() => verifyInvoiceDownload(id, name.replace(".png", ".pdf"), token)).toThrow();
     expect(() => jwt.verify(token, config.jwt.secret)).toThrow();
   });
-  it("expires after fifteen minutes", () => {
+  it("survives a presentation and expires after twenty-four hours", () => {
     vi.useFakeTimers();
     try {
       const token = signImageDownload(id, name, owner);
       vi.setSystemTime(Date.now() + 16 * 60_000);
+      expect(verifyImageDownload(id, name, token)).toMatchObject(owner);
+      vi.setSystemTime(Date.now() + 24 * 60 * 60_000);
       expect(() => verifyImageDownload(id, name, token)).toThrow("expired");
     } finally { vi.useRealTimers(); }
   });
