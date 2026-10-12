@@ -36,6 +36,8 @@ Calendar PNGs are rendered from live booking data. The default public copy omits
 
 Invoice requests use `get_booking_invoice`, which returns a real A4 PDF, matching booking/payment details, a file resource, and a clickable download link in the chat. ChatGPT Work can download the exact file and attach it when its environment supports that; the plugin does not invent ChatGPT file IDs or guarantee a native attachment in every client. The PDF follows the website's invoice layout and current business settings, terms, charges, services and discounts. Captures/refunds use the payment ledger when present, with a legacy-payment fallback. Cancelled bookings show their cancelled status and no new payment due. Exporting never changes a booking or payment.
 
+The PDF's Billed To section and structured invoice details include the customer's saved booking phone. If it is absent or blank, the linked account phone is used. If neither exists, the PDF omits the customer phone line. The business contact phone remains separate. Request a new invoice after deploying a template change; previously generated PDFs are snapshots.
+
 Invoice links expire after 24 hours and check the originating connection and staff permissions on each download. Revoking the connection or removing the staff role invalidates access. The signing key is separate from website login credentials. PDF files are stored outside the public web root under `server/.cache/bookings-invoices`, with cleanup after the 24-hour validity window plus a one-hour grace period on subsequent exports; download URLs are excluded from request logs. Request the invoice again for a fresh link. Refresh Fusion Bookings and start a new Work chat after installing this tool update.
 
 The production Nginx configuration uses a dedicated `location ^~ /api/integrations/bookings/files/` proxy with `access_log off` so the expiring download capabilities are not recorded in its access log. The API also omits these URLs from its request logger.
@@ -119,6 +121,51 @@ MCP server version `1.4.0` is live on the existing `fusionturf-api` PM2 service.
 Post-release checks used the actual connected Fusion Booking plugin: concurrent October month/day exports and an existing booking invoice all returned server-verified 24-hour links. The October public PNG was independently fetched and its size/SHA-256 matched the tool result. No production booking/payment data was changed. No migrations, dependency changes or frontend rebuild were needed.
 
 The previous backend/source backup is `/home/ubuntu/fusion-booking-delivery-20261010/backup/previous-backend.tar.gz`. The initial deployment applied source/build changes on top of commit `62deb35` without committing or pushing them. On October 12, the download fixes were incorporated into Git after updating to `d5b06a9`, preserving the five intervening tournament and match-control commits. Keep `server/.cache` (or the configured persistent export directory) when deploying. The October 10 backup predates those newer changes; use a current backup for any subsequent deployment or rollback.
+
+## EC2 update for invoice customer phones - October 12, 2026
+
+Version `1.4.1` adds the customer phone to MCP invoices, including the account-phone fallback for older bookings. This update changes only the backend; it needs no database migration or frontend rebuild. On October 12, the EC2 checkout was at `d5b06a9` with the earlier download fixes still uncommitted. Eighteen of those nineteen files matched Git commit `3b8b69b`; only the deployment history in this document differed. The commands below save those deployed source changes in a scoped Git stash before pulling their committed versions and the phone fix. The untracked `backups/` directory and ignored export cache stay in place.
+
+Run as `ubuntu` on the existing host:
+
+```bash
+set -euo pipefail
+cd /opt/fusionturf
+test "$(git branch --show-current)" = main
+
+release_backup="$HOME/fusion-league-backups/invoice-phone-$(date -u +%Y%m%dT%H%M%SZ)"
+install -d -m 700 "$release_backup"
+tar -czf "$release_backup/backend.tar.gz" server/dist
+git rev-parse HEAD > "$release_backup/previous-commit.txt"
+
+git stash push --include-untracked -m "EC2 MCP source backup before invoice phone update" -- \
+  BOOKINGS_CHATGPT.md server/.env.example server/package.json \
+  server/scripts/check-bookings-mcp.mjs server/scripts/check-bookings-export-ui.mjs \
+  server/src/config/index.ts server/src/integrations/bookings
+git diff --quiet
+git diff --cached --quiet
+git pull --ff-only origin main
+
+npm ci --include=dev --prefix server
+npm run db:generate --prefix server
+NODE_OPTIONS=--max-old-space-size=768 npm run build --prefix server
+npm run mcp:check-ui --prefix server
+pm2 restart fusionturf-api --update-env
+curl -fsS --retry 10 --retry-all-errors --retry-delay 2 \
+  http://127.0.0.1:5000/api/health -o /dev/null
+npm run mcp:smoke --prefix server -- https://fusionturf.in
+echo "Previous backend saved at: $release_backup/backend.tar.gz"
+```
+
+Keep the saved stash; its MCP changes are already incorporated into Git, so do not reapply it after the pull. If other tracked changes remain, the `git diff` checks stop the sequence before updating. Refresh the plugin metadata and generate a fresh invoice after the restart. The smoke check verifies discovery, schemas, and anonymous-access rejection; confirm the customer phone in a freshly generated PDF as the final functional check.
+
+If the updated backend fails, use the printed backup path to restore the compiled backend and restart PM2. The shell variable remains available when using the same shell:
+
+```bash
+test -s "$release_backup/backend.tar.gz"
+tar -xzf "$release_backup/backend.tar.gz" -C /opt/fusionturf
+pm2 restart fusionturf-api --update-env
+```
 
 ## Production release — October 8, 2026
 

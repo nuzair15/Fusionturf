@@ -42,11 +42,32 @@ describe("booking invoice PDF", () => {
     const html = invoiceHtml(booking, { site_name: "Fusion Test", contact_phone: "12345", invoice_terms: "Custom booking terms" });
     for (const value of ["BOOKING DETAILS &amp; INVOICE", "FUSIONRK-INV-2030-0001", "Ahmed", "Custom booking terms", "3 × 30 min", "8:00 AM to 9:30 AM", "Asia/Kolkata", "02 Jan 2030"]) expect(html).toContain(value);
   });
+  it("shows the booking customer phone separately from the business phone", () => {
+    const customer = { ...booking, customerPhone: " +91 98765 43210 ", user: { firstName: "Staff", lastName: "Account", phone: "11111" } };
+    expect(invoiceDetails(customer).customerPhone).toBe("+91 98765 43210");
+    const html = invoiceHtml(customer, { site_name: "Fusion Test", contact_phone: "22222" });
+    expect(html).toContain('<h3>Billed To</h3><p><strong>Ahmed</strong></p><p>Phone: +91 98765 43210</p>');
+    expect(html).toContain('<h3>Fusion Test</h3><p>Phone: 22222</p>');
+    expect(html).not.toContain("11111");
+  });
+  it("falls back to the linked account phone on older bookings", () => {
+    for (const customerPhone of [undefined, null, "", "  "]) {
+      const legacy = { ...booking, customerPhone, user: { firstName: "Ahmed", lastName: "Customer", phone: " 9876543210 " } };
+      expect(invoiceDetails(legacy).customerPhone).toBe("9876543210");
+      expect(invoiceHtml(legacy, {})).toContain('<p>Phone: 9876543210</p>');
+    }
+  });
+  it("omits the customer phone line when no phone was saved", () => {
+    expect(invoiceDetails(booking).customerPhone).toBe("");
+    expect(invoiceHtml(booking, {})).not.toContain("Phone:");
+  });
   it("escapes customer strings and configured text before rendering", () => {
-    const html = invoiceHtml({ ...booking, customerName: '<script>alert("bad")</script>' }, { site_name: "Fusion <img>", invoice_terms: "<script>bad()</script>" });
+    const html = invoiceHtml({ ...booking, customerName: '<script>alert("bad")</script>', customerPhone: '<img src=x onerror="bad()">' }, { site_name: "Fusion <img>", invoice_terms: "<script>bad()</script>" });
     expect(html).not.toContain("<script>");
     expect(html).toContain("&lt;script&gt;");
     expect(html).toContain("Fusion &lt;img&gt;");
+    expect(html).not.toContain('<img src=x');
+    expect(html).toContain('Phone: &lt;img src=x onerror=&quot;bad()&quot;&gt;');
   });
   it("blocks arbitrary invoice asset hosts and script URLs", () => {
     for (const url of ["http://169.254.169.254/latest/meta-data/file.png", "https://evil.example/logo.png", "javascript:alert(1)", "https://user:pass@evil.example/a.png", "data:image/svg+xml,<svg/>"]) expect(invoiceAssetUrl(url)).toBe("");

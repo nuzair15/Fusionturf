@@ -16,6 +16,7 @@ if (!response.ok) throw new Error(`MCP tools/list: HTTP ${response.status}`);
 const payload = await response.json();
 const names = payload.result?.tools?.map(tool => tool.name) || [];
 for (const required of ["list_venues", "search_bookings", "create_booking", "reschedule_booking", "cancel_booking", "get_calendar", "get_booking_invoice", "generate_calendar_image", "screenshot_bookings"]) if (!names.includes(required)) throw new Error(`Missing tool: ${required}`);
+if (!payload.result.tools.find(tool => tool.name === "get_booking_invoice").outputSchema?.required?.includes("customerPhone")) throw new Error("Invoice customer phone output schema is missing; deploy the current backend.");
 for (const name of ["get_calendar", "generate_calendar_image", "screenshot_bookings"]) {
   const tool = payload.result.tools.find(tool => tool.name === name);
   if (tool._meta?.ui?.resourceUri !== "ui://fusion-bookings/image-v1.html") throw new Error(`Missing image viewer: ${name}`);
